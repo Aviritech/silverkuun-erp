@@ -17,8 +17,12 @@ export async function signIn(_prev: LoginState, formData: FormData): Promise<Log
 
   const supabase = await createClient();
   const { error } = await supabase.auth.signInWithPassword(parsed.data);
-  // One message for every failure, so the form does not reveal which accounts exist.
-  if (error) return { error: "That email and password don't match an active account." };
+  if (error) {
+    // Log the real cause on the server only; the form shows one message for every failure
+    // so it does not reveal which accounts exist.
+    console.error("Sign-in failed", { email: parsed.data.email, status: error.status, code: error.code, message: error.message });
+    return { error: "That email and password don't match an active account." };
+  }
 
   redirect("/");
 }
