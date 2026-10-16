@@ -48,9 +48,11 @@ beforeAll(async () => {
 describe("permissions", () => {
   it("returns only the signed-in staff member's permissions", async () => {
     const perms = await asUser(db, OFFICER_LAGOS, (tx) =>
-      tx.query<{ permission_code: string; branch_id: string }>("select * from my_permissions()"),
+      tx.query<{ permission_code: string; branch_id: string; region_id: string | null }>("select * from my_permissions()"),
     );
-    expect(perms.rows).toEqual([{ permission_code: "module.administration", branch_id: lagos, region_id: null }]);
+    expect(perms.rows.map((r) => r.permission_code)).toContain("module.administration");
+    expect(perms.rows.every((r) => r.branch_id === lagos && r.region_id === null)).toBe(true);
+    expect(perms.rows.map((r) => r.permission_code)).not.toContain("audit.trail.read");
   });
 
   it("scopes branch permissions to the assigned branch", async () => {

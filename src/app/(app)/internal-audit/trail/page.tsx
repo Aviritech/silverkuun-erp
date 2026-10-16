@@ -16,6 +16,12 @@ export default async function AuditTrailPage() {
     .limit(PAGE_SIZE);
   if (error) throw error;
 
+  const actorIds = [...new Set(entries.map((e) => e.actor_id).filter(Boolean))];
+  const { data: actors } = actorIds.length
+    ? await supabase.rpc("staff_display_names", { p_ids: actorIds })
+    : { data: [] };
+  const actorName = new Map(((actors ?? []) as { id: string; full_name: string }[]).map((a) => [a.id, a.full_name]));
+
   return (
     <div>
       <h1 className="text-2xl font-semibold">Audit trail</h1>
@@ -40,7 +46,7 @@ export default async function AuditTrailPage() {
                   {e.table_name.replace("public.", "")} {e.record_id}
                 </td>
                 <td className="px-4 py-2">{e.changed_fields?.join(", ") ?? "—"}</td>
-                <td className="px-4 py-2 font-mono text-xs">{e.actor_id ?? "system"}</td>
+                <td className="px-4 py-2">{e.actor_id ? (actorName.get(e.actor_id) ?? e.actor_id) : "System"}</td>
               </tr>
             ))}
           </tbody>
