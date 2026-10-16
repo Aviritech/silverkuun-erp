@@ -6,5 +6,9 @@ export const administrationModule: DepartmentModule = {
   description: "Member onboarding, approvals, contributions and member letters.",
   basePath: "/administration",
   permission: "module.administration",
-  nav: [{ label: "Overview", href: "/administration" }],
+  nav: [
+    { label: "Overview", href: "/administration" },
+    { label: "Members", href: "/administration/members", permission: "members.read" },
+    { label: "Approvals", href: "/administration/approvals", permission: "members.approve" },
+  ],
 };
