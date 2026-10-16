@@ -45,7 +45,19 @@ npx supabase db push         # apply migrations to the linked Supabase project
 npm run dev
 ```
 
-To create the first system administrator, create a user in Supabase Auth, then run in the SQL editor:
+For local testing, `npx supabase start` (or `npx supabase db reset`) loads `supabase/seed.sql`: two branches and one
+test account per role, all with the password `Password123!`.
+
+| Email | Role | Scope |
+| --- | --- | --- |
+| sysadmin@kuun.test | System Administrator | Whole organisation |
+| officer.lagos@kuun.test | Administrative Officer | Lagos |
+| manager.lagos@kuun.test | Branch Manager | Lagos |
+| head.admin@kuun.test | Head of Administration | Whole organisation |
+| auditor@kuun.test | Internal Auditor | Whole organisation |
+
+On a real Supabase project, create the first system administrator by adding a user in Supabase Auth, then running in
+the SQL editor:
 
 ```sql
 insert into public.regions (code, name) values ('HQ', 'Head Office');
