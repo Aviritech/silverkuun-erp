@@ -11,12 +11,18 @@ export function ActionButton({
   pendingLabel,
   confirm,
   variant,
+  disabled = false,
+  title,
 }: {
   action: () => Promise<ActionState>;
   label: string;
   pendingLabel?: string;
   confirm?: string;
   variant?: "primary" | "secondary" | "danger";
+  /** Shows the button greyed out, e.g. until a precondition is met. */
+  disabled?: boolean;
+  /** Hover text, useful for saying why the button is disabled. */
+  title?: string;
 }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
@@ -26,7 +32,8 @@ export function ActionButton({
       <Button
         type="button"
         variant={variant}
-        disabled={pending}
+        disabled={disabled || pending}
+        title={title}
         onClick={() => {
           if (confirm && !window.confirm(confirm)) return;
           setError(undefined);

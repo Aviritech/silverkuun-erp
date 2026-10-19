@@ -90,22 +90,24 @@ export default async function MemberPage({ params }: { params: Promise<{ id: str
       {/* Workflow */}
       {editable && canManage && (
         <Card title="Send for approval">
-          {missing.length > 0 ? (
-            <p className="text-sm text-zinc-700">
-              Upload these before sending the file to the Branch Manager:{" "}
-              <strong>{missing.map((t) => DOCUMENT_TYPES[t]).join(", ")}</strong>.
-            </p>
-          ) : (
-            <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            {missing.length > 0 ? (
+              <p className="text-sm text-zinc-700">
+                Upload these before sending the file to the Branch Manager:{" "}
+                <strong>{missing.map((t) => DOCUMENT_TYPES[t]).join(", ")}</strong>.
+              </p>
+            ) : (
               <p className="text-sm text-zinc-700">All required documents are uploaded. Check the details, then send the file.</p>
-              <ActionButton
-                action={submitMember.bind(null, member.id)}
-                label="Send to Branch Manager"
-                pendingLabel="Sending…"
-                confirm="Send this file to the Branch Manager? You won't be able to edit it until it's returned."
-              />
-            </div>
-          )}
+            )}
+            <ActionButton
+              action={submitMember.bind(null, member.id)}
+              label="Send to Branch Manager"
+              pendingLabel="Sending…"
+              confirm="Send this file to the Branch Manager? You won't be able to edit it until it's returned."
+              disabled={missing.length > 0}
+              title={missing.length > 0 ? "Upload the required documents first" : undefined}
+            />
+          </div>
         </Card>
       )}
 
