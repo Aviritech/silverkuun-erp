@@ -1,7 +1,7 @@
 import "server-only";
 import { dbFailure } from "@/lib/db-errors";
 import { createClient } from "@/lib/supabase/server";
-import type { Direction, FinanceStatus } from "./constants";
+import type { BillStatus, Direction, FinanceStatus } from "./constants";
 
 export type BankAccount = {
   id: string;
@@ -67,6 +67,14 @@ export type FinanceTransaction = {
   paid_by: string | null;
   paid_at: string | null;
   posted_at: string | null;
+  department_code: string | null;
+  plan_type: string | null;
+  staff_id: string | null;
+  supplier_id: string | null;
+  supplier_bill_id: string | null;
+  currency: string;
+  foreign_amount: string | null;
+  fx_rate: string | null;
 };
 
 export type JournalLine = {
@@ -78,6 +86,10 @@ export type JournalLine = {
   member_id: string | null;
   bank_account_id: string | null;
   description: string | null;
+  department_code: string | null;
+  plan_type: string | null;
+  staff_id: string | null;
+  supplier_id: string | null;
 };
 
 export type JournalEntry = {
@@ -86,7 +98,8 @@ export type JournalEntry = {
   branch_id: string;
   entry_date: string;
   description: string;
-  source: "manual" | "transaction" | "reversal";
+  source: "manual" | "transaction" | "reversal" | "bill";
+  bill_id: string | null;
   transaction_id: string | null;
   status: "draft" | "posted";
   reverses_entry_id: string | null;
@@ -177,12 +190,28 @@ export async function getTransactionBundle(id: string) {
     ? await supabase.storage.from("finance-evidence").createSignedUrls(attachments.map((a) => a.storage_path), 120)
     : { data: [] };
   const urls = new Map((signed.data ?? []).map((s) => [s.path, s.signedUrl]));
-  const [staffName, members] = await Promise.all([
-    staffNameLookup([t.created_by, t.submitted_by, t.approved_by, t.paid_by, ...attachments.map((a) => a.uploaded_by)]),
+  const [staffName, members, tags] = await Promise.all([
+    staffNameLookup([t.created_by, t.submitted_by, t.approved_by, t.paid_by, t.staff_id, ...attachments.map((a) => a.uploaded_by)]),
     memberNames([t.member_id]),
+    Promise.all([
+      t.department_code ? supabase.from("departments").select("name").eq("code", t.department_code).maybeSingle() : null,
+      t.plan_type ? supabase.from("plan_types").select("name").eq("code", t.plan_type).maybeSingle() : null,
+      t.supplier_id ? supabase.from("suppliers").select("name").eq("id", t.supplier_id).maybeSingle() : null,
+      t.supplier_bill_id ? supabase.from("supplier_bills").select("id, bill_no").eq("id", t.supplier_bill_id).maybeSingle() : null,
+    ]),
   ]);
+  const [department, product, supplier, bill] = tags.map((r) => r?.data ?? null) as [
+    { name: string } | null,
+    { name: string } | null,
+    { name: string } | null,
+    { id: string; bill_no: string } | null,
+  ];
   return {
     txn: t,
+    department: department?.name ?? null,
+    product: product?.name ?? null,
+    supplier: supplier?.name ?? null,
+    bill,
     rule,
     bank,
     attachments: attachments.map((a) => ({ ...a, url: urls.get(a.storage_path) ?? null })),
@@ -220,4 +249,125 @@ export async function getJournalBundle(id: string) {
     staffName,
     members,
   };
+}
+
+export type Supplier = {
+  id: string;
+  name: string;
+  contact_person: string | null;
+  phone: string | null;
+  email: string | null;
+  address: string | null;
+  bank_name: string | null;
+  account_number: string | null;
+  tax_id: string | null;
+  is_active: boolean;
+};
+
+export type SupplierBill = {
+  id: string;
+  bill_no: string;
+  supplier_id: string;
+  branch_id: string;
+  department_code: string | null;
+  bill_date: string;
+  due_date: string;
+  supplier_reference: string;
+  expense_account: string;
+  amount: string;
+  description: string;
+  status: BillStatus;
+  decision_reason: string | null;
+  journal_entry_id: string | null;
+  created_by: string;
+  created_at: string;
+  submitted_by: string | null;
+  submitted_at: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+};
+
+/** An approved bill with what has been paid against it (posted supplier payments) and what is still owed. */
+export type OpenBill = {
+  id: string;
+  bill_no: string;
+  supplier_id: string;
+  supplier_name: string;
+  branch_id: string;
+  bill_date: string;
+  due_date: string;
+  supplier_reference: string;
+  amount: string;
+  paid: string;
+  outstanding: string;
+};
+
+export async function listSuppliers(): Promise<Supplier[]> {
+  const supabase = await createClient();
+  return rows(supabase.from("suppliers").select("*").order("name"));
+}
+
+/** Approved bills with money still owed, for paying them. */
+export async function listOpenBills(): Promise<OpenBill[]> {
+  const supabase = await createClient();
+  return rows(
+    supabase
+      .from("supplier_bill_balances")
+      .select("id, bill_no, supplier_id, supplier_name, branch_id, bill_date, due_date, supplier_reference, amount, paid, outstanding")
+      .eq("status", "posted")
+      .gt("outstanding", 0)
+      .order("due_date"),
+  );
+}
+
+export async function listStaffOptions(): Promise<{ id: string; full_name: string; department_code: string }[]> {
+  const supabase = await createClient();
+  return rows(supabase.rpc("staff_options"));
+}
+
+export async function getBillBundle(id: string) {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("supplier_bills").select("*").eq("id", id).maybeSingle();
+  if (error) throw dbFailure(error);
+  if (!data) return null;
+  const bill = data as SupplierBill;
+  const [supplier, balance, attachments, payments, accounts] = await Promise.all([
+    rows<Supplier>(supabase.from("suppliers").select("*").eq("id", bill.supplier_id).single()),
+    rows<{ paid: string; outstanding: string }[]>(supabase.from("supplier_bill_balances").select("paid, outstanding").eq("id", id)),
+    rows<{ id: string; file_name: string; storage_path: string; uploaded_by: string; uploaded_at: string }[]>(
+      supabase.from("finance_attachments").select("*").eq("supplier_bill_id", id).order("uploaded_at"),
+    ),
+    rows<{ id: string; txn_no: string; txn_date: string; amount: string; status: FinanceStatus }[]>(
+      supabase.from("finance_transactions").select("id, txn_no, txn_date, amount, status").eq("supplier_bill_id", id).order("txn_date"),
+    ),
+    listLedgerAccounts(),
+  ]);
+  const signed = attachments.length
+    ? await supabase.storage.from("finance-evidence").createSignedUrls(attachments.map((a) => a.storage_path), 120)
+    : { data: [] };
+  const urls = new Map((signed.data ?? []).map((s) => [s.path, s.signedUrl]));
+  const staffName = await staffNameLookup([bill.created_by, bill.submitted_by, bill.approved_by, ...attachments.map((a) => a.uploaded_by)]);
+  return {
+    bill,
+    supplier,
+    paid: balance[0]?.paid ?? "0",
+    outstanding: balance[0]?.outstanding ?? bill.amount,
+    attachments: attachments.map((a) => ({ ...a, url: urls.get(a.storage_path) ?? null })),
+    payments,
+    accountName: new Map(accounts.map((a) => [a.code, a.name])),
+    staffName,
+  };
+}
+
+/** Choices for the reporting fields on a receipt or payment. */
+export async function loadDimensionChoices() {
+  const supabase = await createClient();
+  const [departments, products, staff, suppliers, openBills] = await Promise.all([
+    rows<{ code: string; name: string }[]>(supabase.from("departments").select("code, name").eq("is_active", true).order("name")),
+    rows<{ code: string; name: string }[]>(supabase.from("plan_types").select("code, name").eq("is_active", true).order("sort_order")),
+    listStaffOptions(),
+    listSuppliers(),
+    listOpenBills(),
+  ]);
+  return { departments, products, staff, suppliers, openBills };
 }

@@ -17,6 +17,10 @@ export type ReportFilters = {
   to: string;
   branch: string | null;
   region: string | null;
+  /** Department code, for reports with dimension filters. */
+  department: string | null;
+  /** Savings product (plan type) code, for reports with dimension filters. */
+  product: string | null;
   /** Report-specific choices, such as status or grouping. */
   options: Record<string, string>;
 };
@@ -28,12 +32,14 @@ export type ReportDefinition = {
   title: string;
   description: string;
   /** The department module the report lives under, for links back. */
-  basePath: "/accounts" | "/internal-audit";
+  basePath: "/accounts" | "/internal-audit" | "/administration";
   /** Needed to run or export the report. */
   permission: string;
   /** "period" shows from/to; "asAt" shows a single date (uses `to`). */
   dates: "period" | "asAt" | "none";
   branchFilter: boolean;
+  /** Which of the department and savings product filters the report offers. */
+  dimensionFilters?: readonly ("department" | "product")[];
   options?: ReportOption[];
   run: (supabase: SupabaseClient, filters: ReportFilters) => Promise<ReportResult>;
 };

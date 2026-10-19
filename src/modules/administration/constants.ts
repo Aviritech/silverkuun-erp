@@ -13,9 +13,25 @@ export const DOCUMENT_TYPES = {
   utility_bill: "Utility bill",
   passport_photo: "Passport photograph",
   signed_agreement_letter: "Signed agreement letter",
+  statement_of_account: "Statement of account",
+  maturity_letter: "Maturity and liquidation letter",
   other: "Other",
 } as const;
 export type DocumentType = keyof typeof DOCUMENT_TYPES;
+
+/** Letters and statements sent to the member; each records when and how it was issued. Mirrors record_document_issue(). */
+export const ISSUED_DOCUMENT_TYPES: DocumentType[] = ["signed_agreement_letter", "statement_of_account", "maturity_letter"];
+
+export const ISSUE_CHANNELS = {
+  in_person: "Handed over in person",
+  email: "Email",
+  whatsapp: "WhatsApp",
+  courier: "Courier",
+} as const;
+export type IssueChannel = keyof typeof ISSUE_CHANNELS;
+
+/** The signature drawn on approval is stored as a PNG data URL. Mirrors approve_member(). */
+export const MAX_SIGNATURE_LENGTH = 200_000;
 
 /** Must all be uploaded before a file can go to the Branch Manager. Mirrors submit_member() in the database. */
 export const REQUIRED_DOCUMENTS: DocumentType[] = ["kyc_form", "nin_slip", "means_of_id", "utility_bill"];

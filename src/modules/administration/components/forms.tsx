@@ -2,7 +2,7 @@
 
 import { Field, Input, Select, Textarea } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
-import { FREQUENCIES, PAYMENT_METHODS } from "../constants";
+import { FREQUENCIES, ISSUE_CHANNELS, PAYMENT_METHODS } from "../constants";
 import { InlineForm } from "@/components/inline-form";
 
 type Action = (prev: ActionState, formData: FormData) => Promise<ActionState>;
@@ -110,6 +110,70 @@ export function ReversalForm({ action, contributionId }: { action: Action; contr
             <Textarea name="notes" rows={2} required />
           </Field>
         </>
+      )}
+    </InlineForm>
+  );
+}
+
+export function IssueForm({ action }: { action: Action }) {
+  return (
+    <InlineForm action={action} openLabel="Record issue" submitLabel="Record issue">
+      {(e) => (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field label="Date issued" error={e.issued_on}>
+            <Input name="issued_on" type="date" max={today()} defaultValue={today()} required />
+          </Field>
+          <Field label="How it was sent" error={e.issue_channel}>
+            <Select name="issue_channel" required defaultValue="in_person">
+              {Object.entries(ISSUE_CHANNELS).map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Note (optional)" error={e.issue_note}>
+            <Input name="issue_note" placeholder="Received by, email address…" />
+          </Field>
+        </div>
+      )}
+    </InlineForm>
+  );
+}
+
+export function TargetForm({
+  action,
+  branches,
+  month,
+}: {
+  action: Action;
+  branches: { id: string; name: string }[];
+  month: string;
+}) {
+  return (
+    <InlineForm action={action} openLabel="Set a target" submitLabel="Save target" variant="primary">
+      {(e) => (
+        <div className="grid gap-3 sm:grid-cols-4">
+          <Field label="Branch" error={e.branch_id}>
+            <Select name="branch_id" required defaultValue="">
+              <option value="">Choose</option>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Month" error={e.month}>
+            <Input name="month" type="month" defaultValue={month} required />
+          </Field>
+          <Field label="New members" error={e.registrations}>
+            <Input name="registrations" type="number" min="0" step="1" required />
+          </Field>
+          <Field label="Collections (₦)" error={e.collections}>
+            <Input name="collections" type="number" min="0" step="0.01" required />
+          </Field>
+        </div>
       )}
     </InlineForm>
   );

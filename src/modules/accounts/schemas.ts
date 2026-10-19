@@ -10,6 +10,16 @@ const optionalId = z.guid().nullable().or(z.literal("").transform(() => null));
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a date");
 const notFuture = isoDate.refine((d) => d <= new Date().toISOString().slice(0, 10), "The date can't be in the future");
 const money = z.coerce.number("Enter an amount").positive("Enter an amount above zero").multipleOf(0.01, "Use at most two decimal places");
+const optionalCode = z
+  .string()
+  .regex(/^[a-z][a-z0-9_]{0,40}$/)
+  .nullable()
+  .or(z.literal("").transform(() => null));
+const optionalPositive = z.coerce
+  .number()
+  .positive("Enter an amount above zero")
+  .nullable()
+  .or(z.literal("").transform(() => null));
 const optionalMoney = z.coerce.number().min(0, "Can't be negative").multipleOf(0.01, "Use at most two decimal places").or(z.literal("").transform(() => 0));
 
 export const transactionSchema = z
@@ -25,8 +35,29 @@ export const transactionSchema = z
     reference: optionalText,
     description: z.string().trim().min(3, "Describe the transaction"),
     statement_line_id: optionalId,
+    department_code: optionalCode,
+    plan_type: optionalCode,
+    staff_id: optionalId,
+    supplier_id: optionalId,
+    supplier_bill_id: optionalId,
+    currency: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z]{3}$/, "Use a three-letter currency code, such as USD")
+      .or(z.literal("").transform(() => "NGN")),
+    foreign_amount: optionalPositive,
+    fx_rate: optionalPositive,
   })
-  .refine((v) => v.interest_amount < v.amount, { path: ["interest_amount"], message: "Interest must be less than the total amount" });
+  .refine((v) => v.interest_amount < v.amount, { path: ["interest_amount"], message: "Interest must be less than the total amount" })
+  .refine((v) => v.transaction_type !== "supplier_payment" || v.supplier_id, { path: ["supplier_id"], message: "Choose the supplier being paid" })
+  .refine((v) => v.currency === "NGN" || v.foreign_amount, { path: ["foreign_amount"], message: "Enter the amount in the foreign currency" })
+  .refine((v) => v.currency === "NGN" || v.fx_rate, { path: ["fx_rate"], message: "Enter the exchange rate used" })
+  .refine(
+    (v) => v.currency === "NGN" || !v.foreign_amount || !v.fx_rate || Math.round(v.foreign_amount * v.fx_rate * 100) === Math.round(v.amount * 100),
+    { path: ["amount"], message: "The naira amount must equal the foreign amount times the rate" },
+  )
+  .transform((v) => (v.currency === "NGN" ? { ...v, foreign_amount: null, fx_rate: null } : v));
 
 export const reasonSchema = z.object({ reason: z.string().trim().min(5, "Give a reason of at least a few words") });
 
@@ -74,7 +105,48 @@ export const postingRuleSchema = z.object({
   debit_account: z.string().regex(/^\d{4}$/).nullable().or(z.literal("").transform(() => null)),
   credit_account: z.string().regex(/^\d{4}$/).nullable().or(z.literal("").transform(() => null)),
   interest_account: z.string().regex(/^\d{4}$/).nullable().or(z.literal("").transform(() => null)),
+  requires_member: z.enum(["true", "false"]).transform((v) => v === "true"),
   is_active: z.enum(["true", "false"]).transform((v) => v === "true"),
+  reason: z.string().trim().min(5, "Say why the rule should change"),
+});
+
+export const supplierSchema = z.object({
+  name: z.string().trim().min(2, "Enter the supplier's name"),
+  contact_person: optionalText,
+  phone: optionalText,
+  email: z.email("Enter a valid email").nullable().or(z.literal("").transform(() => null)),
+  address: optionalText,
+  bank_name: optionalText,
+  account_number: z
+    .string()
+    .trim()
+    .regex(/^\d{10}$/, "A NUBAN account number is 10 digits")
+    .nullable()
+    .or(z.literal("").transform(() => null)),
+  tax_id: optionalText,
+});
+
+export const billSchema = z
+  .object({
+    supplier_id: z.guid("Choose the supplier"),
+    branch_id: z.guid("Choose the branch"),
+    department_code: optionalCode,
+    bill_date: notFuture,
+    due_date: isoDate,
+    supplier_reference: z.string().trim().min(1, "Enter the supplier's invoice number"),
+    expense_account: z.string().regex(/^\d{4}$/, "Choose what the bill is for"),
+    amount: money,
+    description: z.string().trim().min(3, "Describe what was supplied"),
+  })
+  .refine((b) => b.due_date >= b.bill_date, { path: ["due_date"], message: "The due date can't be before the bill date" });
+
+export const accrualSchema = z.object({
+  branch_id: z.guid("Choose the branch"),
+  entry_date: notFuture,
+  description: z.string().trim().min(3, "Describe the accrual"),
+  members: z
+    .array(z.object({ member_id: z.guid(), amount: money }))
+    .min(1, "Enter an ROI amount for at least one member"),
 });
 
 export const mappingSchema = z.object({

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { toCsv } from "@/lib/reports/csv";
-import { parseStatement, parseStatementAmount, parseStatementDate } from "./statement";
+import { parseStatement, parseStatementAmount, parseStatementDate, parseStatementRows } from "./statement";
 
 const mapping = { date: "Date", description: "Narration", reference: "Ref", debit: "Debit", credit: "Credit", balance: "Balance" };
 
@@ -43,5 +43,35 @@ describe("toCsv", () => {
   it("quotes separators and stops formula injection", () => {
     const csv = toCsv({ columns: [{ key: "a", label: "A" }], rows: [{ a: 'x,"y"' }, { a: "=HYPERLINK()" }, { a: -5 }] });
     expect(csv).toBe('﻿A\r\n"x,""y"""\r\n\'=HYPERLINK()\r\n-5\r\n');
+  });
+});
+
+describe("parseStatementRows (Excel statements)", () => {
+  it("skips the bank's details above the column names and reads Excel date numbers", () => {
+    const rows = [
+      ["GTBank statement of account", "", "", "", "", ""],
+      ["Account", "0123456789", "", "", "", ""],
+      [],
+      ["Date", "Narration", "Ref", "Debit", "Credit", "Balance"],
+      ["46296", "TRF FROM ADA OBI", "T1", "", "50000", "50000"],
+      ["", "", "", "", "", ""],
+      ["02/10/2026", "COT CHARGE", "", "250", "", "49750"],
+    ];
+    const { lines, errors } = parseStatementRows(rows, mapping);
+    expect(errors).toEqual([]);
+    expect(lines.map((l) => [l.date, l.amount])).toEqual([
+      ["2026-10-01", 50000],
+      ["2026-10-02", -250],
+    ]);
+  });
+
+  it("numbers rows as they appear in the sheet when reporting problems", () => {
+    const rows = [["Statement"], ["Date", "Narration", "Debit", "Credit"], ["not a date", "x", "1", ""]];
+    expect(parseStatementRows(rows, mapping).errors[0]).toMatch(/Row 3/);
+  });
+
+  it("rejects date numbers outside a sensible range", () => {
+    expect(parseStatementDate("46296")).toBe("2026-10-01");
+    expect(parseStatementDate("99999")).toBeNull();
   });
 });

@@ -14,9 +14,18 @@ export type StatementLine = { date: string; description: string; reference: stri
 
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
 
-/** Accepts 2026-10-19, 19/10/2026, 19-10-2026, 19.10.2026, 19-Oct-2026 and 19 Oct 2026. Nigerian banks put the day first. */
+/**
+ * Accepts 2026-10-19, 19/10/2026, 19-10-2026, 19.10.2026, 19-Oct-2026 and 19 Oct 2026, plus Excel date serial numbers
+ * (46314) from .xlsx statements. Nigerian banks put the day first.
+ */
 export function parseStatementDate(value: string): string | null {
   const v = value.trim();
+  if (/^\d{5}(\.\d+)?$/.test(v)) {
+    // Days since 30 Dec 1899 (Excel's 1900 date system); a time of day is ignored.
+    const serial = Math.floor(Number(v));
+    if (serial < 20000 || serial > 80000) return null;
+    return new Date(Date.UTC(1899, 11, 30) + serial * 86_400_000).toISOString().slice(0, 10);
+  }
   let y: number, m: number, d: number;
   let match = v.match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (match) {
@@ -49,13 +58,28 @@ export function parseStatementAmount(value: string | undefined): number | null {
   return negative ? -n : n;
 }
 
-/**
- * Reads a bank statement CSV using the saved column mapping. Money in (credit) becomes a positive amount and money
- * out (debit) a negative one. Rows that can't be read are reported, not silently dropped.
- */
+/** Reads a bank statement CSV using the saved column mapping. */
 export function parseStatement(text: string, mapping: ImportMapping): { lines: StatementLine[]; errors: string[] } {
-  const rows = parseCsv(text);
+  return parseStatementRows(parseCsv(text), mapping);
+}
+
+/**
+ * Reads statement rows (from a CSV or the first sheet of an .xlsx file) using the saved column mapping. The header is
+ * the first row naming the date and description columns, so bank details printed above the table are skipped. Money
+ * in (credit) becomes a positive amount and money out (debit) a negative one. Rows that can't be read are reported,
+ * not silently dropped.
+ */
+export function parseStatementRows(allRows: string[][], mapping: ImportMapping): { lines: StatementLine[]; errors: string[] } {
   const errors: string[] = [];
+  const wanted = [mapping.date, mapping.description].map((h) => h.trim().toLowerCase());
+  const headerAt = Math.max(
+    0,
+    allRows.findIndex((r) => {
+      const cells = r.map((c) => c.trim().toLowerCase());
+      return wanted.every((w) => cells.includes(w));
+    }),
+  );
+  const rows = allRows.slice(headerAt);
   if (rows.length < 2) return { lines: [], errors: ["The file has no statement lines."] };
 
   const header = rows[0].map((h) => h.trim().toLowerCase());
@@ -73,7 +97,8 @@ export function parseStatement(text: string, mapping: ImportMapping): { lines: S
 
   const lines: StatementLine[] = [];
   rows.slice(1).forEach((row, i) => {
-    const rowNo = i + 2;
+    const rowNo = headerAt + i + 2;
+    if (row.every((c) => !c.trim())) return;
     const date = parseStatementDate(row[idx.date] ?? "");
     const debit = parseStatementAmount(row[idx.debit]);
     const credit = parseStatementAmount(row[idx.credit]);

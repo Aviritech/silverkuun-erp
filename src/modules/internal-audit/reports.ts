@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { dbFailure } from "@/lib/db-errors";
 import type { ReportDefinition, Row } from "@/lib/reports/types";
 import { MEMBER_STATUSES, type MemberStatus } from "@/modules/administration/constants";
+import { loadTargets, percent, type BranchTarget } from "@/modules/administration/targets";
 import {
   AUDITED_TABLES,
   EXCEPTION_CATEGORIES,
@@ -14,7 +15,7 @@ import {
 
 const n = (v: unknown) => Number(v ?? 0);
 
-async function branchNames(supabase: SupabaseClient): Promise<Map<string, { name: string; region_id: string }>> {
+export async function branchNames(supabase: SupabaseClient): Promise<Map<string, { name: string; region_id: string }>> {
   const { data, error } = await supabase.from("branches").select("id, name, region_id");
   if (error) throw dbFailure(error);
   return new Map(data.map((b) => [b.id, b]));
@@ -69,7 +70,19 @@ const branchOperations: ReportDefinition = {
       p_region_id: f.region,
     });
     if (error) throw dbFailure(error);
-    const rows = data as Row[];
+    const monthly = f.options.grain === "month";
+    const targets = monthly ? await loadTargets(supabase, f.from, f.to) : new Map<string, BranchTarget>();
+    const rows: Row[] = (data as Row[]).map((r) => {
+      if (!monthly) return r;
+      const t = targets.get(`${r.branch_id}:${r.period_start}`);
+      return {
+        ...r,
+        target_registrations: t?.registrations ?? null,
+        registrations_pct: percent(n(r.registrations), t?.registrations),
+        target_collections: t ? n(t.collections) : null,
+        collections_pct: percent(n(r.contributions_total), t ? n(t.collections) : null),
+      };
+    });
     const sumKeys = ["registrations", "approvals", "contributions_count", "contributions_total", "top_ups_total", "reversals_total", "unverified_count", "receipts_total", "payments_total"];
     const total: Row = { period_start: null, branch_name: "Total", _kind: "total" };
     for (const k of sumKeys) total[k] = Math.round(rows.reduce((s, r) => s + n(r[k]), 0) * 100) / 100;
@@ -79,9 +92,21 @@ const branchOperations: ReportDefinition = {
         { key: "branch_name", label: "Branch" },
         { key: "region_name", label: "Region" },
         { key: "registrations", label: "New files", kind: "number" },
+        ...(monthly
+          ? ([
+              { key: "target_registrations", label: "Target", kind: "number" },
+              { key: "registrations_pct", label: "Achieved" },
+            ] as const)
+          : []),
         { key: "approvals", label: "Approved", kind: "number" },
         { key: "contributions_count", label: "Payments", kind: "number" },
         { key: "contributions_total", label: "Collected (net)", kind: "money" },
+        ...(monthly
+          ? ([
+              { key: "target_collections", label: "Collections target", kind: "money" },
+              { key: "collections_pct", label: "Achieved" },
+            ] as const)
+          : []),
         { key: "top_ups_total", label: "Top-ups", kind: "money" },
         { key: "reversals_total", label: "Reversals", kind: "money" },
         { key: "unverified_count", label: "Unverified", kind: "number" },
@@ -93,7 +118,7 @@ const branchOperations: ReportDefinition = {
   },
 };
 
-const customerRegister: ReportDefinition = {
+export const customerRegister: ReportDefinition = {
   key: "customer-register",
   title: "Customer register",
   description: "Every member file with its KYC completeness, plans, contributions and changes after approval.",
@@ -119,11 +144,20 @@ const customerRegister: ReportDefinition = {
     },
   ],
   async run(supabase, f) {
-    const [{ data, error }, branches] = await Promise.all([
+    const [{ data, error }, branches, progress] = await Promise.all([
       supabase.rpc("customer_register", { p_branch_id: f.branch, p_region_id: f.region }),
       branchNames(supabase),
+      supabase.from("plan_progress").select("member_id, expected_to_date, outstanding").limit(20000),
     ]);
     if (error) throw dbFailure(error);
+    if (progress.error) throw dbFailure(progress.error);
+    const owed = new Map<string, { expected: number; outstanding: number }>();
+    for (const p of progress.data) {
+      const o = owed.get(p.member_id) ?? { expected: 0, outstanding: 0 };
+      o.expected += n(p.expected_to_date);
+      o.outstanding += n(p.outstanding);
+      owed.set(p.member_id, o);
+    }
     const list = (data as (Row & { status: MemberStatus; member_id: string; branch_id: string; missing_documents: string | null })[]).filter(
       (m) => (f.options.status === "all" || m.status === f.options.status) && (f.options.kyc === "all" || m.missing_documents),
     );
@@ -137,7 +171,9 @@ const customerRegister: ReportDefinition = {
         { key: "phone", label: "Phone" },
         { key: "missing_documents", label: "Missing KYC" },
         { key: "plan_count", label: "Plans", kind: "number" },
+        { key: "expected_to_date", label: "Expected to date", kind: "money" },
         { key: "total_contributed", label: "Contributed", kind: "money" },
+        { key: "outstanding", label: "Outstanding", kind: "money" },
         { key: "total_verified", label: "Verified", kind: "money" },
         { key: "unverified_count", label: "Unverified", kind: "number" },
         { key: "last_paid_on", label: "Last paid", kind: "date" },
@@ -149,6 +185,8 @@ const customerRegister: ReportDefinition = {
         branch: branches.get(m.branch_id)?.name ?? "",
         status_label: MEMBER_STATUSES[m.status].label,
         missing_documents: m.missing_documents?.replaceAll("_", " ") ?? "",
+        expected_to_date: Math.round((owed.get(m.member_id)?.expected ?? 0) * 100) / 100,
+        outstanding: Math.round((owed.get(m.member_id)?.outstanding ?? 0) * 100) / 100,
         created_at: String(m.created_at).slice(0, 10),
         _href: `/administration/members/${m.member_id}`,
       })),

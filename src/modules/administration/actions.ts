@@ -11,13 +11,16 @@ import { ALLOWED_UPLOAD_TYPES, MAX_UPLOAD_BYTES } from "./constants";
 import { administrationModule } from "./module";
 import {
   amendmentSchema,
+  approvalSchema,
   contributionSchema,
   documentSchema,
   fieldErrors,
+  issueSchema,
   memberSchema,
   planSchema,
   returnSchema,
   reversalSchema,
+  targetSchema,
 } from "./schemas";
 
 export type { ActionState };
@@ -144,10 +147,13 @@ export async function submitMember(memberId: string): Promise<ActionState> {
   return { ok: true };
 }
 
-export async function approveMember(memberId: string): Promise<ActionState> {
+export async function approveMember(memberId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
   await requireModule(administrationModule);
+  const parsed = approvalSchema.safeParse({ signature: formData.get("signature") ?? "" });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+
   const supabase = await createClient();
-  const { error } = await supabase.rpc("approve_member", { p_member_id: memberId });
+  const { error } = await supabase.rpc("approve_member", { p_member_id: memberId, p_signature: parsed.data.signature });
   if (error) return { error: friendlyDbError(error) };
   revalidatePath("/administration", "layout");
   return { ok: true };
@@ -247,4 +253,43 @@ export async function verifyContribution(memberId: string, contributionId: strin
   if (error) return { error: friendlyDbError(error) };
   revalidatePath(memberPath(memberId));
   return { ok: true };
+}
+
+export async function recordDocumentIssue(
+  memberId: string,
+  documentId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireModule(administrationModule);
+  const parsed = issueSchema.safeParse(formObject(formData, ["issued_on", "issue_channel", "issue_note"]));
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("record_document_issue", {
+    p_document_id: documentId,
+    p_issued_on: parsed.data.issued_on,
+    p_channel: parsed.data.issue_channel,
+    p_note: parsed.data.issue_note,
+  });
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath(memberPath(memberId));
+  return { ok: true };
+}
+
+export async function saveBranchTarget(_prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireModule(administrationModule);
+  const parsed = targetSchema.safeParse(formObject(formData, ["branch_id", "month", "registrations", "collections"]));
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+
+  const supabase = await createClient();
+  const { month, ...target } = parsed.data;
+  const { data, error } = await supabase
+    .from("branch_targets")
+    .upsert({ ...target, month: `${month}-01` }, { onConflict: "branch_id,month" })
+    .select("id");
+  if (error) return { error: friendlyDbError(error) };
+  if (!data?.length) return { error: "You can't set targets for this branch." };
+  revalidatePath("/administration/targets");
+  return { ok: true, message: "Target saved." };
 }

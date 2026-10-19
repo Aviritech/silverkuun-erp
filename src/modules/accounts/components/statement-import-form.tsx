@@ -13,7 +13,7 @@ const COLUMNS = [
   ["balance", "Balance column", false],
 ] as const;
 
-/** Uploads a bank statement CSV. Column names are remembered for the account after the first import. */
+/** Uploads a bank statement as Excel (.xlsx) or CSV. Column names are remembered for the account after the first import. */
 export function StatementImportForm({
   action,
   mapping,
@@ -31,8 +31,17 @@ export function StatementImportForm({
     <form ref={form} action={formAction} className="space-y-3">
       <FormError message={state.error} />
       {state.ok && state.message && <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{state.message}</p>}
-      <Field label="Statement file (CSV)" error={e.file} hint="From Excel: File → Save As → CSV. Lines already imported are skipped.">
-        <Input name="file" type="file" accept=".csv,text/csv,text/plain" required />
+      <Field
+        label="Statement file (Excel .xlsx or CSV)"
+        error={e.file}
+        hint="The first sheet is read; rows above the column names are skipped. Lines already imported are skipped."
+      >
+        <Input
+          name="file"
+          type="file"
+          accept=".xlsx,.csv,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+          required
+        />
       </Field>
       <details>
         <summary className="cursor-pointer text-sm text-zinc-700">Column names in your bank&apos;s file (saved for next time)</summary>

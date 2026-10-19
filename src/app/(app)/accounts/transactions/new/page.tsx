@@ -6,16 +6,22 @@ import { createClient } from "@/lib/supabase/server";
 import { saveTransaction } from "@/modules/accounts/actions";
 import { TransactionForm, type TransactionDefaults } from "@/modules/accounts/components/transaction-form";
 import { accountsModule } from "@/modules/accounts/module";
-import { listBankAccounts, listMemberOptions, listPostingRules } from "@/modules/accounts/queries";
+import { listBankAccounts, listMemberOptions, listPostingRules, loadDimensionChoices } from "@/modules/accounts/queries";
 
-export default async function NewTransactionPage({ searchParams }: { searchParams: Promise<{ direction?: string; line?: string }> }) {
+export default async function NewTransactionPage({ searchParams }: { searchParams: Promise<{ direction?: string; line?: string; bill?: string }> }) {
   const staff = await requireModule(accountsModule);
-  const { direction: d, line } = await searchParams;
-  const direction = d === "payment" ? "payment" : "receipt";
+  const { direction: d, line, bill } = await searchParams;
+  const direction = d === "payment" || bill ? "payment" : "receipt";
   const permission = direction === "receipt" ? "accounts.receipts.record" : "accounts.payments.request";
   if (!staff.permissions.has(permission)) notFound();
 
-  const [rules, allBanks, members, org] = await Promise.all([listPostingRules(), listBankAccounts(), listMemberOptions(), listOrg()]);
+  const [rules, allBanks, members, org, dimensions] = await Promise.all([
+    listPostingRules(),
+    listBankAccounts(),
+    listMemberOptions(),
+    listOrg(),
+    loadDimensionChoices(),
+  ]);
   const banks = allBanks.filter((b) => b.is_active && staff.permissions.hasForBranch(permission, { id: b.branch_id, region_id: org.branches.find((x) => x.id === b.branch_id)!.region_id }));
 
   // Opened from an unmatched bank statement line: prefill from the line.
@@ -40,6 +46,19 @@ export default async function NewTransactionPage({ searchParams }: { searchParam
     }
   }
 
+  // Opened from an approved supplier bill: prefill a supplier payment for what is still owed.
+  const openBill = bill ? dimensions.openBills.find((b) => b.id === bill) : undefined;
+  if (openBill) {
+    defaults = {
+      transaction_type: "supplier_payment",
+      supplier_id: openBill.supplier_id,
+      supplier_bill_id: openBill.id,
+      amount: openBill.outstanding,
+      reference: openBill.supplier_reference,
+      description: `Payment of ${openBill.bill_no} (${openBill.supplier_name} invoice ${openBill.supplier_reference})`,
+    };
+  }
+
   return (
     <div className="max-w-3xl">
       <PageHeader
@@ -62,6 +81,7 @@ export default async function NewTransactionPage({ searchParams }: { searchParam
           rules={rules.filter((r) => r.direction === direction && r.is_active)}
           banks={banks}
           members={members}
+          dimensions={dimensions}
           branchName={new Map(org.branches.map((b) => [b.id, b.name]))}
           defaults={defaults}
           withEvidence

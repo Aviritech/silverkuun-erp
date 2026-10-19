@@ -3,7 +3,16 @@
 import { useActionState, useState } from "react";
 import { Button, Field, FormError, Input, Select, Textarea } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
-import type { BankAccount, MemberOption, PostingRule } from "../queries";
+import { COMMON_CURRENCIES } from "../constants";
+import type { BankAccount, MemberOption, OpenBill, PostingRule, Supplier } from "../queries";
+
+export type DimensionChoices = {
+  departments: { code: string; name: string }[];
+  products: { code: string; name: string }[];
+  staff: { id: string; full_name: string }[];
+  suppliers: Pick<Supplier, "id" | "name" | "is_active">[];
+  openBills: OpenBill[];
+};
 
 export type TransactionDefaults = Partial<{
   transaction_type: string;
@@ -16,6 +25,14 @@ export type TransactionDefaults = Partial<{
   reference: string | null;
   description: string;
   statement_line_id: string | null;
+  department_code: string | null;
+  plan_type: string | null;
+  staff_id: string | null;
+  supplier_id: string | null;
+  supplier_bill_id: string | null;
+  currency: string;
+  foreign_amount: string | null;
+  fx_rate: string | null;
 }>;
 
 export function TransactionForm({
@@ -24,6 +41,7 @@ export function TransactionForm({
   rules,
   banks,
   members,
+  dimensions,
   branchName,
   defaults = {},
   withEvidence,
@@ -34,6 +52,7 @@ export function TransactionForm({
   rules: PostingRule[];
   banks: BankAccount[];
   members: MemberOption[];
+  dimensions: DimensionChoices;
   branchName: Map<string, string>;
   defaults?: TransactionDefaults;
   withEvidence: boolean;
@@ -42,11 +61,26 @@ export function TransactionForm({
   const [state, formAction, pending] = useActionState(action, {});
   const [type, setType] = useState(defaults.transaction_type ?? "");
   const [bankId, setBankId] = useState(defaults.bank_account_id ?? "");
+  const [amount, setAmount] = useState(defaults.amount ?? "");
+  const [supplierId, setSupplierId] = useState(defaults.supplier_id ?? "");
+  const [billId, setBillId] = useState(defaults.supplier_bill_id ?? "");
+  const [currency, setCurrency] = useState(defaults.currency ?? "NGN");
+  const [foreign, setForeign] = useState({ amount: defaults.foreign_amount ?? "", rate: defaults.fx_rate ?? "" });
   const rule = rules.find((r) => r.transaction_type === type);
   const bank = banks.find((b) => b.id === bankId);
   const e = state.fieldErrors ?? {};
   const today = new Date().toISOString().slice(0, 10);
   const memberChoices = bank ? members.filter((m) => m.branch_id === bank.branch_id) : members;
+  const isSupplierPayment = type === "supplier_payment";
+  const billChoices = dimensions.openBills.filter(
+    (b) => (!supplierId || b.supplier_id === supplierId) && (!bank || b.branch_id === bank.branch_id),
+  );
+  const setForeignValue = (key: "amount" | "rate", value: string) => {
+    const next = { ...foreign, [key]: value };
+    setForeign(next);
+    const product = Number(next.amount) * Number(next.rate);
+    if (next.amount && next.rate && Number.isFinite(product)) setAmount((Math.round(product * 100) / 100).toFixed(2));
+  };
 
   return (
     <form action={formAction} className="space-y-4">
@@ -81,8 +115,21 @@ export function TransactionForm({
         <Field label="Date" error={e.txn_date}>
           <Input name="txn_date" type="date" max={today} defaultValue={defaults.txn_date ?? today} required />
         </Field>
-        <Field label="Amount (₦)" error={e.amount}>
-          <Input name="amount" type="number" min="0.01" step="0.01" defaultValue={defaults.amount} required />
+        <Field
+          label="Amount (₦)"
+          error={e.amount}
+          hint={currency !== "NGN" ? `Worked out from the ${currency} amount and rate.` : undefined}
+        >
+          <Input
+            name="amount"
+            type="number"
+            min="0.01"
+            step="0.01"
+            value={amount}
+            onChange={(ev) => setAmount(ev.target.value)}
+            readOnly={currency !== "NGN"}
+            required
+          />
         </Field>
         {rule?.interest_account && (
           <Field label="Of which interest (₦)" error={e.interest_amount} hint="The rest is applied to the loan principal.">
@@ -104,6 +151,51 @@ export function TransactionForm({
             ))}
           </Select>
         </Field>
+        {direction === "payment" && (
+          <Field label={isSupplierPayment ? "Supplier" : "Supplier (optional)"} error={e.supplier_id}>
+            <Select
+              name="supplier_id"
+              value={supplierId}
+              required={isSupplierPayment}
+              onChange={(ev) => {
+                setSupplierId(ev.target.value);
+                setBillId("");
+              }}
+            >
+              <option value="">{isSupplierPayment ? "Choose" : "None"}</option>
+              {dimensions.suppliers
+                .filter((x) => x.is_active || x.id === supplierId)
+                .map((x) => (
+                  <option key={x.id} value={x.id}>
+                    {x.name}
+                  </option>
+                ))}
+            </Select>
+          </Field>
+        )}
+        {isSupplierPayment && (
+          <Field label="Bill being paid (optional)" error={e.supplier_bill_id} hint="Approved bills with money still owed.">
+            <Select
+              name="supplier_bill_id"
+              value={billId}
+              onChange={(ev) => {
+                setBillId(ev.target.value);
+                const bill = dimensions.openBills.find((b) => b.id === ev.target.value);
+                if (bill) {
+                  setSupplierId(bill.supplier_id);
+                  if (currency === "NGN") setAmount(bill.outstanding);
+                }
+              }}
+            >
+              <option value="">Not against a bill</option>
+              {billChoices.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.bill_no} · {b.supplier_reference} · owed ₦{Number(b.outstanding).toLocaleString("en-NG")}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
         <Field label={direction === "receipt" ? "Received from" : "Beneficiary"} error={e.counterparty}>
           <Input name="counterparty" defaultValue={defaults.counterparty ?? ""} />
         </Field>
@@ -111,6 +203,76 @@ export function TransactionForm({
           <Input name="reference" defaultValue={defaults.reference ?? ""} />
         </Field>
       </div>
+      <details className="rounded-md border border-zinc-200 px-3 py-2" open={Boolean(defaults.department_code || defaults.plan_type || defaults.staff_id || (defaults.currency && defaults.currency !== "NGN"))}>
+        <summary className="cursor-pointer text-sm font-medium">Reporting details and foreign currency</summary>
+        <div className="mt-3 grid gap-4 sm:grid-cols-3">
+          <Field label="Department" error={e.department_code}>
+            <Select name="department_code" defaultValue={defaults.department_code ?? ""}>
+              <option value="">Not set</option>
+              {dimensions.departments.map((d) => (
+                <option key={d.code} value={d.code}>
+                  {d.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Product" error={e.plan_type}>
+            <Select name="plan_type" defaultValue={defaults.plan_type ?? ""}>
+              <option value="">Not set</option>
+              {dimensions.products.map((p) => (
+                <option key={p.code} value={p.code}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Staff member" error={e.staff_id} hint="For salaries, allowances and staff advances.">
+            <Select name="staff_id" defaultValue={defaults.staff_id ?? ""}>
+              <option value="">Not set</option>
+              {dimensions.staff.map((x) => (
+                <option key={x.id} value={x.id}>
+                  {x.full_name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Currency" error={e.currency}>
+            <Select name="currency" value={currency} onChange={(ev) => setCurrency(ev.target.value)}>
+              {COMMON_CURRENCIES.map((c) => (
+                <option key={c} value={c}>
+                  {c === "NGN" ? "Naira (NGN)" : c}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {currency !== "NGN" && (
+            <>
+              <Field label={`Amount in ${currency}`} error={e.foreign_amount}>
+                <Input
+                  name="foreign_amount"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={foreign.amount}
+                  onChange={(ev) => setForeignValue("amount", ev.target.value)}
+                  required
+                />
+              </Field>
+              <Field label={`Rate (₦ per ${currency})`} error={e.fx_rate}>
+                <Input
+                  name="fx_rate"
+                  type="number"
+                  min="0.000001"
+                  step="0.000001"
+                  value={foreign.rate}
+                  onChange={(ev) => setForeignValue("rate", ev.target.value)}
+                  required
+                />
+              </Field>
+            </>
+          )}
+        </div>
+      </details>
       <Field label="Description" error={e.description}>
         <Textarea name="description" rows={2} defaultValue={defaults.description ?? ""} required />
       </Field>

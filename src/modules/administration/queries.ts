@@ -33,6 +33,8 @@ export type Member = {
   submitted_at: string | null;
   approved_by: string | null;
   approved_at: string | null;
+  /** PNG data URL drawn by the Branch Manager on approval. */
+  approval_signature: string | null;
 };
 
 export type MemberDocument = {
@@ -43,6 +45,10 @@ export type MemberDocument = {
   mime_type: string;
   size_bytes: number;
   uploaded_at: string;
+  issued_on: string | null;
+  issued_by: string | null;
+  issue_channel: string | null;
+  issue_note: string | null;
 };
 
 export type Plan = {
@@ -62,6 +68,17 @@ export type PlanTotals = {
   total_top_ups: string;
   unverified_count: number;
   last_paid_on: string | null;
+};
+
+/** Expected contributions to date against what was paid, from the plan_progress view. */
+export type PlanProgress = {
+  plan_id: string;
+  installments_due: number;
+  expected_to_date: string;
+  scheduled_paid: string;
+  outstanding: string;
+  last_paid_on: string | null;
+  days_to_maturity: number;
 };
 
 export type Contribution = {
@@ -102,14 +119,18 @@ export async function getMemberBundle(memberId: string) {
   if (error) throw dbFailure(error);
   if (!member) return null;
 
-  const [documents, plans, totals, contributions, plansCatalog] = await Promise.all([
+  const [documents, plans, totals, contributions, plansCatalog, progress] = await Promise.all([
     supabase.from("member_documents").select("*").eq("member_id", memberId).order("uploaded_at"),
     supabase.from("member_plans").select("*").eq("member_id", memberId).order("start_date"),
     supabase.from("member_plan_totals").select("*").eq("member_id", memberId),
     supabase.from("contributions").select("*").eq("member_id", memberId).order("paid_on").order("recorded_at"),
     supabase.from("plan_types").select("code, name").eq("is_active", true).order("sort_order"),
+    supabase
+      .from("plan_progress")
+      .select("plan_id, installments_due, expected_to_date, scheduled_paid, outstanding, last_paid_on, days_to_maturity")
+      .eq("member_id", memberId),
   ]);
-  for (const r of [documents, plans, totals, contributions, plansCatalog]) if (r.error) throw dbFailure(r.error);
+  for (const r of [documents, plans, totals, contributions, plansCatalog, progress]) if (r.error) throw dbFailure(r.error);
 
   const docs = (documents.data ?? []) as MemberDocument[];
   const signed = docs.length
@@ -117,7 +138,9 @@ export async function getMemberBundle(memberId: string) {
     : { data: [] };
   const urls = new Map((signed.data ?? []).map((s) => [s.path, s.signedUrl]));
 
-  const staffIds = [member.created_by, member.submitted_by, member.approved_by].filter(Boolean);
+  const staffIds = [
+    ...new Set([member.created_by, member.submitted_by, member.approved_by, ...docs.map((d) => d.issued_by)].filter(Boolean)),
+  ];
   const { data: staff } = staffIds.length
     ? await supabase.rpc("staff_display_names", { p_ids: staffIds })
     : { data: [] };
@@ -128,6 +151,7 @@ export async function getMemberBundle(memberId: string) {
     documents: docs.map((d) => ({ ...d, url: urls.get(d.storage_path) ?? null })),
     plans: (plans.data ?? []) as Plan[],
     totals: new Map(((totals.data ?? []) as PlanTotals[]).map((t) => [t.member_plan_id, t])),
+    progress: new Map(((progress.data ?? []) as PlanProgress[]).map((p) => [p.plan_id, p])),
     contributions: (contributions.data ?? []) as Contribution[],
     planTypes: (plansCatalog.data ?? []) as { code: string; name: string }[],
     staffName: (id: string | null) => (id ? (staffNames.get(id) ?? "Another staff member") : "—"),

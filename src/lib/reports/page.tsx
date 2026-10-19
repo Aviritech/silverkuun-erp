@@ -2,7 +2,7 @@ import "server-only";
 import { notFound } from "next/navigation";
 import { ReportView } from "@/components/report-view";
 import { requirePermission } from "@/lib/auth/session";
-import { listOrg } from "@/lib/org";
+import { listDimensions, listOrg } from "@/lib/org";
 import { createClient } from "@/lib/supabase/server";
 import { parseFilters } from "./filters";
 import { findReport } from "./registry";
@@ -23,6 +23,16 @@ export async function ReportPage({
   await requirePermission(report.permission);
   const filters = parseFilters(report, searchParams);
   const supabase = await createClient();
-  const [result, org] = await Promise.all([report.run(supabase, filters), listOrg()]);
-  return <ReportView report={report} filters={filters} result={result} branches={org.branches} regions={org.regions} />;
+  const [result, org, dimensions] = await Promise.all([report.run(supabase, filters), listOrg(), listDimensions()]);
+  return (
+    <ReportView
+      report={report}
+      filters={filters}
+      result={result}
+      branches={org.branches}
+      regions={org.regions}
+      departments={dimensions.departments}
+      products={dimensions.products}
+    />
+  );
 }

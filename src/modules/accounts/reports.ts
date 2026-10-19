@@ -24,6 +24,8 @@ async function balances(supabase: SupabaseClient, from: string, to: string, f: R
     p_to: to,
     p_branch_id: f.branch,
     p_region_id: f.region,
+    p_department: f.department,
+    p_plan_type: f.product,
   });
   if (error) throw dbFailure(error);
   return data as Balance[];
@@ -49,6 +51,15 @@ async function staffNames(supabase: SupabaseClient, ids: (string | null)[]): Pro
   return new Map(((data ?? []) as { id: string; full_name: string }[]).map((s) => [s.id, s.full_name]));
 }
 
+const ACCOUNT_GROUPS = [
+  { value: "all", label: "All accounts" },
+  { value: "asset", label: "Assets" },
+  { value: "liability", label: "Liabilities" },
+  { value: "equity", label: "Accumulated funds" },
+  { value: "income", label: "Income" },
+  { value: "expense", label: "Expenses" },
+];
+
 const trialBalance: ReportDefinition = {
   key: "trial-balance",
   title: "Trial balance",
@@ -57,12 +68,15 @@ const trialBalance: ReportDefinition = {
   permission: "accounts.read",
   dates: "period",
   branchFilter: true,
+  dimensionFilters: ["department", "product"],
+  options: [{ name: "group", label: "Accounts", choices: ACCOUNT_GROUPS }],
   async run(supabase, f) {
     const rows: Row[] = [];
     let dr = 0;
     let cr = 0;
     for (const b of await balances(supabase, f.from, f.to, f)) {
       if (!n(b.opening) && !n(b.debit) && !n(b.credit) && !n(b.closing)) continue;
+      if (f.options.group !== "all" && b.account_type !== f.options.group) continue;
       const closing = n(b.closing);
       dr += closing > 0 ? closing : 0;
       cr += closing < 0 ? -closing : 0;
@@ -89,7 +103,13 @@ const trialBalance: ReportDefinition = {
         { key: "closing_cr", label: "Closing Cr", kind: "money" },
       ],
       rows,
-      notes: [round(dr) === round(cr) ? "Debits equal credits." : `Out of balance by ${round(dr - cr)}.`],
+      notes: [
+        f.options.group !== "all"
+          ? "Showing one group of accounts, so the totals won't balance."
+          : round(dr) === round(cr)
+            ? "Debits equal credits."
+            : `Out of balance by ${round(dr - cr)}.`,
+      ],
     };
   },
 };
@@ -102,6 +122,7 @@ const profitAndLoss: ReportDefinition = {
   permission: "accounts.read",
   dates: "period",
   branchFilter: true,
+  dimensionFilters: ["department", "product"],
   async run(supabase, f) {
     const [prevFrom, prevTo] = previousPeriod(f.from, f.to);
     const [current, previous, ytd] = await Promise.all([
@@ -156,6 +177,7 @@ const balanceSheet: ReportDefinition = {
   permission: "accounts.read",
   dates: "asAt",
   branchFilter: true,
+  dimensionFilters: ["department", "product"],
   async run(supabase, f) {
     const list = await balances(supabase, EARLIEST, f.to, f);
     const rows: Row[] = [];
@@ -208,9 +230,17 @@ const cashFlow: ReportDefinition = {
   permission: "accounts.read",
   dates: "period",
   branchFilter: true,
+  dimensionFilters: ["department", "product"],
   async run(supabase, f) {
     const [{ data, error }, opening] = await Promise.all([
-      supabase.rpc("cash_flow", { p_from: f.from, p_to: f.to, p_branch_id: f.branch, p_region_id: f.region }),
+      supabase.rpc("cash_flow", {
+        p_from: f.from,
+        p_to: f.to,
+        p_branch_id: f.branch,
+        p_region_id: f.region,
+        p_department: f.department,
+        p_plan_type: f.product,
+      }),
       balances(supabase, f.from, f.to, f),
     ]);
     if (error) throw dbFailure(error);
@@ -247,14 +277,6 @@ const cashFlow: ReportDefinition = {
   },
 };
 
-const ACCOUNT_GROUPS = [
-  { value: "all", label: "All accounts" },
-  { value: "asset", label: "Assets" },
-  { value: "liability", label: "Liabilities" },
-  { value: "equity", label: "Accumulated funds" },
-  { value: "income", label: "Income" },
-  { value: "expense", label: "Expenses" },
-];
 
 type LedgerLine = {
   account_code: string;
@@ -273,6 +295,7 @@ const generalLedger: ReportDefinition = {
   permission: "accounts.read",
   dates: "period",
   branchFilter: true,
+  dimensionFilters: ["department", "product"],
   options: [{ name: "group", label: "Accounts", choices: ACCOUNT_GROUPS }],
   async run(supabase, f) {
     const accountFilter = f.options.account;
@@ -297,6 +320,8 @@ const generalLedger: ReportDefinition = {
       .in("account_code", list.map((b) => b.code))
       .limit(10000);
     if (branchIds) query = query.in("branch_id", branchIds);
+    if (f.department) query = query.eq("department_code", f.department);
+    if (f.product) query = query.eq("plan_type", f.product);
     const { data, error } = await query;
     if (error) throw dbFailure(error);
     const lines = (data as unknown as LedgerLine[]).sort(
@@ -383,6 +408,7 @@ const transactionRegister: ReportDefinition = {
   permission: "accounts.read",
   dates: "period",
   branchFilter: true,
+  dimensionFilters: ["department", "product"],
   options: [
     { name: "direction", label: "Type", choices: [{ value: "all", label: "Receipts and payments" }, { value: "receipt", label: "Receipts" }, { value: "payment", label: "Payments" }] },
     { name: "status", label: "Status", choices: STATUS_CHOICES },
@@ -398,6 +424,8 @@ const transactionRegister: ReportDefinition = {
     if (f.branch) query = query.eq("branch_id", f.branch);
     if (f.region) query = query.eq("branches.region_id", f.region);
     if (f.options.direction !== "all") query = query.eq("direction", f.options.direction);
+    if (f.department) query = query.eq("department_code", f.department);
+    if (f.product) query = query.eq("plan_type", f.product);
     if (f.options.status === "open") query = query.in("status", ["draft", "submitted", "returned", "approved"]);
     else if (f.options.status !== "all") query = query.eq("status", f.options.status);
     const { data, error } = await query;
@@ -449,6 +477,17 @@ const bankReconciliations: ReportDefinition = {
   permission: "accounts.read",
   dates: "period",
   branchFilter: true,
+  options: [
+    {
+      name: "status",
+      label: "Status",
+      choices: [
+        { value: "all", label: "Draft and completed" },
+        { value: "draft", label: "Draft" },
+        { value: "completed", label: "Completed" },
+      ],
+    },
+  ],
   async run(supabase, f) {
     let query = supabase
       .from("bank_reconciliations")
@@ -458,6 +497,7 @@ const bankReconciliations: ReportDefinition = {
       .order("period_end", { ascending: false });
     if (f.branch) query = query.eq("branch_id", f.branch);
     if (f.region) query = query.eq("branches.region_id", f.region);
+    if (f.options.status !== "all") query = query.eq("status", f.options.status);
     const { data, error } = await query;
     if (error) throw dbFailure(error);
     const list = data as (Record<string, string> & { bank_accounts: { name: string }; branches: unknown })[];
@@ -487,6 +527,121 @@ const bankReconciliations: ReportDefinition = {
   },
 };
 
+const AGING_BUCKETS = [
+  { key: "current", label: "Not yet due", from: -Infinity, to: 0 },
+  { key: "d30", label: "1–30 days", from: 1, to: 30 },
+  { key: "d60", label: "31–60 days", from: 31, to: 60 },
+  { key: "d90", label: "61–90 days", from: 61, to: 90 },
+  { key: "older", label: "Over 90 days", from: 91, to: Infinity },
+] as const;
+
+const payablesAging: ReportDefinition = {
+  key: "payables-aging",
+  title: "Payables aging",
+  description: "What is owed to each supplier on approved bills, by how many days past the due date.",
+  basePath: "/accounts",
+  permission: "accounts.read",
+  dates: "asAt",
+  branchFilter: true,
+  options: [
+    {
+      name: "view",
+      label: "Show",
+      choices: [
+        { value: "supplier", label: "Totals by supplier" },
+        { value: "bill", label: "Each bill" },
+      ],
+    },
+  ],
+  async run(supabase, f) {
+    let query = supabase
+      .from("supplier_bill_balances")
+      .select("id, bill_no, supplier_id, supplier_name, branch_id, bill_date, due_date, supplier_reference, amount, branches!inner(region_id)")
+      .eq("status", "posted")
+      .lte("bill_date", f.to)
+      .limit(10000);
+    if (f.branch) query = query.eq("branch_id", f.branch);
+    if (f.region) query = query.eq("branches.region_id", f.region);
+    const { data, error } = await query;
+    if (error) throw dbFailure(error);
+    type B = { id: string; bill_no: string; supplier_id: string; supplier_name: string; bill_date: string; due_date: string; supplier_reference: string; amount: string };
+    const bills = data as unknown as B[];
+
+    // Paid as at the report date: posted supplier payments dated on or before it.
+    const paid = new Map<string, number>();
+    if (bills.length) {
+      const { data: payments, error: paymentsError } = await supabase
+        .from("finance_transactions")
+        .select("supplier_bill_id, amount")
+        .eq("status", "posted")
+        .lte("txn_date", f.to)
+        .in("supplier_bill_id", bills.map((b) => b.id));
+      if (paymentsError) throw dbFailure(paymentsError);
+      for (const p of payments) paid.set(p.supplier_bill_id, (paid.get(p.supplier_bill_id) ?? 0) + n(p.amount));
+    }
+
+    const asAt = Date.parse(`${f.to}T00:00:00Z`);
+    const open = bills
+      .map((b) => {
+        const outstanding = round(n(b.amount) - (paid.get(b.id) ?? 0));
+        const daysOverdue = Math.round((asAt - Date.parse(`${b.due_date}T00:00:00Z`)) / 86_400_000);
+        const bucket = AGING_BUCKETS.find((x) => daysOverdue >= x.from && daysOverdue <= x.to)!.key;
+        return { ...b, outstanding, daysOverdue, bucket };
+      })
+      .filter((b) => b.outstanding > 0);
+
+    const total: Row = { name: "Total", _kind: "total", outstanding: 0 };
+    for (const x of AGING_BUCKETS) total[x.key] = 0;
+    const add = (row: Row, b: (typeof open)[number]) => {
+      row[b.bucket] = round(n(row[b.bucket]) + b.outstanding);
+      row.outstanding = round(n(row.outstanding) + b.outstanding);
+    };
+    let rows: Row[];
+    if (f.options.view === "bill") {
+      rows = open
+        .sort((a, b) => a.supplier_name.localeCompare(b.supplier_name) || a.due_date.localeCompare(b.due_date))
+        .map((b) => {
+          const row: Row = {
+            name: `${b.supplier_name} · ${b.bill_no} (${b.supplier_reference})`,
+            due_date: b.due_date,
+            days: b.daysOverdue > 0 ? b.daysOverdue : null,
+            outstanding: 0,
+            _href: `/accounts/bills/${b.id}`,
+          };
+          add(row, b);
+          add(total, b);
+          return row;
+        });
+    } else {
+      const bySupplier = new Map<string, Row>();
+      for (const b of open) {
+        const row = bySupplier.get(b.supplier_id) ?? { name: b.supplier_name, outstanding: 0, _href: `/accounts/bills?supplier=${b.supplier_id}&status=unpaid` };
+        add(row, b);
+        add(total, b);
+        bySupplier.set(b.supplier_id, row);
+      }
+      rows = [...bySupplier.values()].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    }
+    return {
+      columns: [
+        { key: "name", label: f.options.view === "bill" ? "Supplier and bill" : "Supplier" },
+        ...(f.options.view === "bill"
+          ? ([
+              { key: "due_date", label: "Due", kind: "date" },
+              { key: "days", label: "Days overdue", kind: "number" },
+            ] as const)
+          : []),
+        ...AGING_BUCKETS.map((x) => ({ key: x.key, label: x.label, kind: "money" as const })),
+        { key: "outstanding", label: "Total owed", kind: "money" },
+      ],
+      rows: [...rows, total],
+      notes: [
+        "Receivables aging needs invoices raised to customers, which the Society doesn't issue today; member loan arrears arrive with the Credit department's workflow.",
+      ],
+    };
+  },
+};
+
 export const accountsReports: ReportDefinition[] = [
   profitAndLoss,
   balanceSheet,
@@ -495,5 +650,6 @@ export const accountsReports: ReportDefinition[] = [
   generalLedger,
   memberBalances,
   transactionRegister,
+  payablesAging,
   bankReconciliations,
 ];

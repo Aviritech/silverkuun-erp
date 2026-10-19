@@ -2,6 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { beforeAll, describe, expect, it } from "vitest";
 import { asUser, createTestDatabase } from "./harness";
 
+const SIG = "data:image/png;base64,iVBORw0KGgo=";
 const OFFICER = "00000000-0000-0000-0000-0000000000a1";
 const OFFICER_2 = "00000000-0000-0000-0000-0000000000a2";
 const MANAGER = "00000000-0000-0000-0000-0000000000b1";
@@ -67,7 +68,7 @@ async function approvedMember(): Promise<string> {
   const id = await createDraft();
   await uploadDocs(id);
   await commitAs(OFFICER, () => db.query("select submit_member($1)", [id]));
-  await commitAs(MANAGER, () => db.query("select approve_member($1)", [id]));
+  await commitAs(MANAGER, () => db.query("select approve_member($1, $2)", [id, SIG]));
   return id;
 }
 
@@ -158,11 +159,11 @@ describe("approval workflow", () => {
 
     const edit = await asUser(db, OFFICER, (tx) => tx.query("update members set phone = '0809' where id = $1", [id]));
     expect(edit.affectedRows).toBe(0);
-    await expect(commitAs(OFFICER, () => db.query("select approve_member($1)", [id]))).rejects.toThrow(/not found/);
-    await expect(commitAs(MANAGER_ABUJA, () => db.query("select approve_member($1)", [id]))).rejects.toThrow(/not found/);
+    await expect(commitAs(OFFICER, () => db.query("select approve_member($1, $2)", [id, SIG]))).rejects.toThrow(/not found/);
+    await expect(commitAs(MANAGER_ABUJA, () => db.query("select approve_member($1, $2)", [id, SIG]))).rejects.toThrow(/not found/);
 
     const approved = await commitAs(MANAGER, () =>
-      db.query<{ membership_no: string }>("select (approve_member($1)).membership_no", [id]),
+      db.query<{ membership_no: string }>("select (approve_member($1, $2)).membership_no", [id, SIG]),
     );
     expect(approved.rows[0].membership_no).toMatch(/^KUN-LAG-\d{6}$/);
     expect(await status(id)).toBe("approved");
@@ -191,7 +192,7 @@ describe("approval workflow", () => {
     const id = await createDraft(lagos, MANAGER);
     await uploadDocs(id);
     await commitAs(MANAGER, () => db.query("select submit_member($1)", [id]));
-    await expect(commitAs(MANAGER, () => db.query("select approve_member($1)", [id]))).rejects.toThrow(/someone else/);
+    await expect(commitAs(MANAGER, () => db.query("select approve_member($1, $2)", [id, SIG]))).rejects.toThrow(/someone else/);
     await db.query("delete from staff_roles where staff_id = $1 and role_code = 'admin_officer'", [MANAGER]);
   });
 

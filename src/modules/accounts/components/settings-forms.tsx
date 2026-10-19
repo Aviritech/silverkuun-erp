@@ -1,6 +1,6 @@
 "use client";
 
-import { Field, Input, Select } from "@/components/ui";
+import { Field, Input, Select, Textarea } from "@/components/ui";
 import { InlineForm } from "@/components/inline-form";
 import type { ActionState } from "@/lib/action-state";
 import { ACCOUNT_TYPES, CASH_FLOW_CLASSES } from "../constants";
@@ -103,7 +103,7 @@ export function BankAccountForm({ action, branches, cashAccounts }: { action: Ac
 
 export function PostingRuleForm({ action, rule, accounts }: { action: Action; rule: PostingRule; accounts: LedgerAccount[] }) {
   return (
-    <InlineForm action={action} openLabel="Change" submitLabel="Save rule" variant="secondary">
+    <InlineForm action={action} openLabel="Propose change" submitLabel="Propose change" variant="secondary">
       {(e) => (
         <div className="grid gap-3 sm:grid-cols-4">
           {rule.direction === "payment" ? (
@@ -120,13 +120,36 @@ export function PostingRuleForm({ action, rule, accounts }: { action: Action; ru
               </Field>
             </>
           )}
+          <Field label="Member" error={e.requires_member}>
+            <Select name="requires_member" defaultValue={String(rule.requires_member)}>
+              <option value="true">Required</option>
+              <option value="false">Optional</option>
+            </Select>
+          </Field>
           <Field label="In use" error={e.is_active}>
             <Select name="is_active" defaultValue={String(rule.is_active)}>
               <option value="true">Yes</option>
               <option value="false">No</option>
             </Select>
           </Field>
+          <div className="sm:col-span-4">
+            <Field label="Why change it?" error={e.reason} hint="Someone else with configuration rights approves it before it applies.">
+              <Textarea name="reason" rows={2} required />
+            </Field>
+          </div>
         </div>
+      )}
+    </InlineForm>
+  );
+}
+
+export function RejectChangeForm({ action }: { action: Action }) {
+  return (
+    <InlineForm action={action} openLabel="Reject" submitLabel="Reject change" variant="danger">
+      {(e) => (
+        <Field label="Why is it rejected?" error={e.note}>
+          <Textarea name="note" rows={2} required />
+        </Field>
       )}
     </InlineForm>
   );

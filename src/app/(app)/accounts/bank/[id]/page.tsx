@@ -21,7 +21,7 @@ import { MatchPanel } from "@/modules/accounts/components/match-panel";
 import { ReasonForm } from "@/modules/accounts/components/reason-form";
 import { ReconciliationForm } from "@/modules/accounts/components/reconciliation-form";
 import { StatementImportForm } from "@/modules/accounts/components/statement-import-form";
-import { STATEMENT_LINE_STATUSES } from "@/modules/accounts/constants";
+import { STATEMENT_LINE_STATUSES, SUGGESTION_CONFIDENCE } from "@/modules/accounts/constants";
 import { accountsModule } from "@/modules/accounts/module";
 import { staffNameLookup, type BankAccount } from "@/modules/accounts/queries";
 
@@ -36,6 +36,7 @@ type StatementLine = {
   match_id: string | null;
   suggested_type: string | null;
   suggestion_reason: string | null;
+  suggestion_confidence: keyof typeof SUGGESTION_CONFIDENCE | null;
   exclusion_reason: string | null;
   row_no: number;
 };
@@ -163,8 +164,13 @@ export default async function BankAccountPage({ params, searchParams }: { params
                         {l.description}
                         {l.reference && <span className="block font-mono text-xs text-zinc-500">{l.reference}</span>}
                         {l.status === "unmatched" && l.suggested_type && (
-                          <span className="block text-xs text-sky-800">
+                          <span className="mt-0.5 flex flex-wrap items-center gap-1 text-xs text-sky-800">
                             Suggested: {ruleName.get(l.suggested_type)} ({l.suggestion_reason})
+                            {l.suggestion_confidence && (
+                              <Badge tone={SUGGESTION_CONFIDENCE[l.suggestion_confidence].tone}>
+                                {SUGGESTION_CONFIDENCE[l.suggestion_confidence].label}
+                              </Badge>
+                            )}
                           </span>
                         )}
                         {l.exclusion_reason && <span className="block text-xs text-zinc-500">Set aside: {l.exclusion_reason}</span>}

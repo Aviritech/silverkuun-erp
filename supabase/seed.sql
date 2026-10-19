@@ -88,8 +88,10 @@ select public.submit_member(id)
 from public.members where id in ('50000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000002', '50000000-0000-0000-0000-000000000003');
 
 select pg_temp.act_as('manager.lagos@kuun.test');
-select public.approve_member('50000000-0000-0000-0000-000000000001');
-select public.approve_member('50000000-0000-0000-0000-000000000002');
+-- A placeholder drawn signature, standing in for what the Branch Manager signs on screen.
+create temporary table seed_signature as select 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAPAAAABGCAYAAADyxhn6AAACr0lEQVR42u3dSW7kMAxAUR8jQN//nOoLNNCxLNoc3uLvgnJc0pdIaqjr5+fPBaAmvgSAwAAIDIDAAIEBEBgAgQEQGCAwAAIDIDBAYAAEBkBgAAQGCAyAwAAIDIDAAIHLs/6BTgECF5WXxCBwcXlX83fU6QncXuAlugCBa+W9UwQmMYFbde5uBa01IMJQgBwq8P8avKPA17AIg8BNCzVrgMBrgMDSgyYC323I3zZ05Q4xMcIYL/GEPG8RuHWEsfteLeTvLPDOCF21QScPUDsitpnBu1eSTzQugfNXnZ8M0gROHCbuNE61BhVh7P9NeYm7CXxiG2GGxozM23c/N9P3cbJvXATOOdtUeM7T/CwqRcg0Qz0ZcHaX2RaBa0v1VWPeDe8iooxVVOA7M2ybKj2B6wm8DswaTwuB6+C7nW6H3f/95HLUa/3mVGd7u3N3GzDuzh5PO8uOqFECryQCRzwvvE9XEWoNFDg6rN35zIhZKtOseHI9+e7zCJyo4r0SP+vJZ0bNiCfz+6eFqadFs+jBKUTgKTlpVKX2q7XcL2ap3z47Y5uf3Bk2VuCM+287rD2/WRXOvC574nTba1Vva7KxlWE7v87sjqp4MCQyPTi2jETg541j73W+bY1PZ9cTOfLrAq9m4fOp3VEV3u+rrY2ZTwedyM3Do4tM+VD22Smi0NP1dFDX88enjy6WEdj53FkXCEy5JPDznVoZjvi5IcMdXN0v0Asb0DLsIJrSwSfcUdVp9s14rDLsMMOdtVK3RLpkDskF3llumXDRercQ8yLwHIFH3JAQVMmckCfi4/PAJ4pU0zp4519DJFjBA/3p1skIXDYqeQMCC8PKVTIXCCwMIw+BCUwgAoHABCYQgQlMHhC4jsA6AAgMgMAACAwQGACBARAYAIEBAgMgMAACA+P5C0FOeCPvj+R4AAAAAElFTkSuQmCC'::text as png;
+select public.approve_member('50000000-0000-0000-0000-000000000001', (select png from seed_signature));
+select public.approve_member('50000000-0000-0000-0000-000000000002', (select png from seed_signature));
 
 -- Plans and contributions.
 select pg_temp.act_as('officer.lagos@kuun.test');
@@ -169,6 +171,40 @@ select public.import_bank_statement(
   )
 );
 select public.auto_match_bank_lines('40000000-0000-0000-0000-000000000001');
+
+-- A one-off plan maturing soon, so the maturities list has something to show.
+select pg_temp.act_as('officer.lagos@kuun.test');
+insert into public.member_plans (id, member_id, branch_id, plan_type, contribution_amount, contribution_frequency, start_date, maturity_date) values
+  ('60000000-0000-0000-0000-000000000003', '50000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'platinum', 250000, 'one_off', current_date - 350, current_date + 15);
+insert into public.contributions (id, member_plan_id, member_id, branch_id, kind, amount, paid_on, payment_method, reference) values
+  ('70000000-0000-0000-0000-000000000005', '60000000-0000-0000-0000-000000000003', '50000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'scheduled', 250000, current_date - 350, 'bank_transfer', 'TRF-CHI-FD1');
+
+-- This month's branch targets, set by the Head of Administration.
+select pg_temp.act_as('head.admin@kuun.test');
+insert into public.branch_targets (branch_id, month, registrations, collections) values
+  ('20000000-0000-0000-0000-000000000001', date_trunc('month', current_date)::date, 8, 400000),
+  ('20000000-0000-0000-0000-000000000002', date_trunc('month', current_date)::date, 5, 250000);
+
+-- Suppliers, and a Lagos diesel bill approved by the Financial Controller and not yet paid.
+select pg_temp.act_as('accountant.lagos@kuun.test');
+insert into public.suppliers (id, name, contact_person, phone, bank_name, account_number) values
+  ('a0000000-0000-0000-0000-000000000001', 'Marina Properties Ltd', 'Bola Ade', '08011112222', 'Access Bank', '0690000011'),
+  ('a0000000-0000-0000-0000-000000000002', 'PowerGen Diesel Supplies', 'Emeka Nwosu', '08033334444', 'First Bank', '3012345678');
+insert into public.supplier_bills (id, bill_no, supplier_id, branch_id, department_code, bill_date, due_date, supplier_reference,
+  expense_account, amount, description) values
+  ('a1000000-0000-0000-0000-000000000001', 'pending', 'a0000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001',
+   'administration', current_date - 20, current_date - 5, 'PG-4471', '5300', 85000, 'Diesel for the Lagos office generator');
+insert into public.finance_attachments (supplier_bill_id, branch_id, kind, file_name, storage_path, mime_type, size_bytes)
+values ('a1000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'supporting', 'powergen-invoice.pdf',
+        '20000000-0000-0000-0000-000000000001/bills/a1000000-0000-0000-0000-000000000001/seed-invoice.pdf', 'application/pdf', 1024);
+select public.submit_supplier_bill('a1000000-0000-0000-0000-000000000001');
+
+-- A posting rule change proposed by the accountant, waiting for the Financial Controller.
+insert into public.posting_rule_changes (transaction_type, debit_account, requires_member, is_active, reason)
+values ('bank_charges', '5800', false, true, 'Report bank charges under other operating expenses until they have their own budget line');
+
+select pg_temp.act_as('controller@kuun.test');
+select public.approve_supplier_bill('a1000000-0000-0000-0000-000000000001');
 
 select set_config('request.jwt.claim.sub', '', false);
 

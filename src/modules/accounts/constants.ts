@@ -38,3 +38,25 @@ export const ATTACHMENT_KINDS = { supporting: "Supporting evidence", payment_pro
 export const ALLOWED_EVIDENCE_TYPES = ["application/pdf", "image/jpeg", "image/png"] as const;
 export const MAX_EVIDENCE_BYTES = 10 * 1024 * 1024;
 export const MAX_STATEMENT_BYTES = 5 * 1024 * 1024;
+
+export const BILL_STATUSES = {
+  draft: { label: "Draft", tone: "gray" },
+  submitted: { label: "Awaiting approval", tone: "amber" },
+  returned: { label: "Returned", tone: "red" },
+  rejected: { label: "Rejected", tone: "red" },
+  posted: { label: "Approved and posted", tone: "green" },
+} as const;
+export type BillStatus = keyof typeof BILL_STATUSES;
+
+export const SUGGESTION_CONFIDENCE = {
+  high: { label: "High confidence", tone: "green" },
+  medium: { label: "Medium confidence", tone: "amber" },
+  low: { label: "Low confidence", tone: "gray" },
+} as const;
+
+/** Supplier payables control account; approved bills credit it and supplier payments debit it. */
+export const SUPPLIER_PAYABLES_ACCOUNT = "2210";
+export const ROI_EXPENSE_ACCOUNT = "5100";
+export const ROI_PAYABLE_ACCOUNT = "2140";
+
+export const COMMON_CURRENCIES = ["NGN", "USD", "GBP", "EUR"] as const;

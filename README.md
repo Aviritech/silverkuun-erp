@@ -72,12 +72,17 @@ npx supabase db reset       # or start over: rebuilds the database and reloads t
 
 ## Departments
 
-- **Administration**: member files, KYC documents, plans and contributions, with branch manager approval.
+- **Administration**: member files, KYC documents, plans and contributions, with the Branch Manager's drawn signature on
+  approval; expected against paid per plan; maturities; issued letters and statements; monthly branch targets; and
+  reports (contribution schedule, maturities, issued documents, member register).
 - **Accounts**: receipts and payment requests with evidence and maker-checker approval, posting to a double-entry
-  ledger through configurable posting rules; verified Administration contributions flow in to be posted; manual
-  journals with reversal; bank statement import (CSV), auto-matching and reconciliation sign-off; financial reports
-  (profit and loss, financial position, cash flow, trial balance, general ledger, member balances) with CSV download
-  and print-to-PDF.
+  ledger through posting rules that change only when a second person approves; department, product, staff, supplier
+  and currency on each transaction; suppliers and supplier bills (Dr expense, Cr payables) paid against the bill;
+  verified Administration contributions flow in to be posted; manual journals with reversal and an ROI accrual screen;
+  bank statement import (Excel or CSV) with suggestions that learn from earlier postings, auto-matching and
+  reconciliation sign-off; financial reports (profit and loss, financial position, cash flow, trial balance, general
+  ledger, member balances, register, payables aging, bank reconciliations).
+- Every report downloads as Excel (.xlsx), PDF or CSV.
 - **Internal Audit**: read-only dashboard, exception checks (incomplete KYC, stale approvals, large transactions,
   segregation breaches, unmatched bank lines, changes after approval, deletions), customer register, branch
   operations reports, the audit trail, and a per-record history showing every change with before and after values.

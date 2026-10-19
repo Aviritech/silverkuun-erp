@@ -6,6 +6,7 @@ import {
   addPlan,
   approveMember,
   recordContribution,
+  recordDocumentIssue,
   removeDocument,
   returnMember,
   reverseContribution,
@@ -15,12 +16,15 @@ import {
 } from "@/modules/administration/actions";
 import { ActionButton } from "@/components/action-button";
 import { DocumentUpload } from "@/modules/administration/components/document-upload";
-import { ContributionForm, PlanForm, ReturnForm, ReversalForm } from "@/modules/administration/components/forms";
+import { ApprovalForm } from "@/modules/administration/components/approval-form";
+import { ContributionForm, IssueForm, PlanForm, ReturnForm, ReversalForm } from "@/modules/administration/components/forms";
 import {
   CONTRIBUTION_KINDS,
   DOCUMENT_TYPES,
   FREQUENCIES,
   ID_TYPES,
+  ISSUE_CHANNELS,
+  ISSUED_DOCUMENT_TYPES,
   MEMBER_STATUSES,
   PAYMENT_METHODS,
   REQUIRED_DOCUMENTS,
@@ -42,7 +46,7 @@ export default async function MemberPage({ params }: { params: Promise<{ id: str
   const { id } = await params;
   const bundle = await getMemberBundle(id);
   if (!bundle) notFound();
-  const { member, documents, plans, totals, contributions, planTypes, staffName } = bundle;
+  const { member, documents, plans, totals, progress, contributions, planTypes, staffName } = bundle;
 
   const branch = (await listBranches()).find((b) => b.id === member.branch_id)!;
   const can = (permission: string) => staff.permissions.hasForBranch(permission, branch);
@@ -108,13 +112,8 @@ export default async function MemberPage({ params }: { params: Promise<{ id: str
       {member.status === "pending_approval" && (
         <Card title="Branch Manager review">
           {canDecide ? (
-            <div className="flex flex-wrap items-start gap-3">
-              <ActionButton
-                action={approveMember.bind(null, member.id)}
-                label="Approve and sign"
-                pendingLabel="Approving…"
-                confirm="Approve this member? A membership number will be issued."
-              />
+            <div className="flex flex-wrap items-start gap-6">
+              <ApprovalForm action={approveMember.bind(null, member.id)} />
               <ReturnForm action={returnMember.bind(null, member.id)} />
             </div>
           ) : (
@@ -146,7 +145,11 @@ export default async function MemberPage({ params }: { params: Promise<{ id: str
             {staffName(member.created_by)}, {formatDate(member.created_at)}
           </Detail>
           <Detail label="Approved by">
-            {member.approved_by ? `${staffName(member.approved_by)}, ${formatDate(member.approved_at)}` : null}
+            {member.approved_by ? `${staffName(member.approved_by)}, ${formatDateTime(member.approved_at)}` : null}
+            {member.approval_signature && (
+              // eslint-disable-next-line @next/next/no-img-element -- a stored data URL, not a remote image
+              <img src={member.approval_signature} alt="Branch Manager's signature" className="mt-1 h-12 w-auto" />
+            )}
           </Detail>
         </dl>
       </Card>
@@ -164,8 +167,22 @@ export default async function MemberPage({ params }: { params: Promise<{ id: str
                   <span className="ml-2 text-zinc-500">
                     {d.file_name} · {formatDate(d.uploaded_at)}
                   </span>
+                  {d.issued_on ? (
+                    <div className="text-xs text-zinc-600">
+                      Issued {formatDate(d.issued_on)} ·{" "}
+                      {ISSUE_CHANNELS[d.issue_channel as keyof typeof ISSUE_CHANNELS] ?? d.issue_channel} · by{" "}
+                      {staffName(d.issued_by)}
+                      {d.issue_note && ` · ${d.issue_note}`}
+                    </div>
+                  ) : (
+                    ISSUED_DOCUMENT_TYPES.includes(d.document_type) &&
+                    member.status === "approved" && <div className="text-xs text-amber-700">Not issued yet</div>
+                  )}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  {!d.issued_on && ISSUED_DOCUMENT_TYPES.includes(d.document_type) && member.status === "approved" && canManage && (
+                    <IssueForm action={recordDocumentIssue.bind(null, member.id, d.id)} />
+                  )}
                   {d.url && (
                     <a href={d.url} target="_blank" rel="noreferrer" className="underline-offset-4 hover:underline">
                       View
@@ -184,7 +201,14 @@ export default async function MemberPage({ params }: { params: Promise<{ id: str
             ))}
           </ul>
         )}
-        {canManage && member.status !== "pending_approval" && <DocumentUpload action={uploadDocument.bind(null, member.id)} />}
+        {canManage && member.status !== "pending_approval" && (
+          <DocumentUpload
+            action={uploadDocument.bind(null, member.id)}
+            types={(Object.keys(DOCUMENT_TYPES) as (keyof typeof DOCUMENT_TYPES)[]).filter(
+              (t) => member.status === "approved" || !ISSUED_DOCUMENT_TYPES.includes(t) || t === "signed_agreement_letter",
+            )}
+          />
+        )}
       </Card>
 
       {/* Plans and contributions */}
@@ -199,6 +223,7 @@ export default async function MemberPage({ params }: { params: Promise<{ id: str
             <div className="space-y-6">
               {plans.map((plan) => {
                 const t = totals.get(plan.id);
+                const p = progress.get(plan.id);
                 const rows = contributions.filter((c) => c.member_plan_id === plan.id);
                 return (
                   <div key={plan.id} className="rounded-lg border border-zinc-200">
@@ -212,10 +237,21 @@ export default async function MemberPage({ params }: { params: Promise<{ id: str
                           {formatDate(plan.start_date)} to {formatDate(plan.maturity_date)} · {plan.status}
                         </p>
                       </div>
-                      <dl className="flex gap-6 text-right">
+                      <dl className="grid grid-cols-3 gap-x-6 gap-y-2 text-right">
                         <Detail label="Total contributed">{formatMoney(t?.total_contributed)}</Detail>
                         <Detail label="Of which top-ups">{formatMoney(t?.total_top_ups)}</Detail>
                         <Detail label="Verified">{formatMoney(t?.total_verified)}</Detail>
+                        <Detail label={`Expected to date (${p?.installments_due ?? 0} due)`}>
+                          {formatMoney(p?.expected_to_date)}
+                        </Detail>
+                        <Detail label="Outstanding">
+                          <span className={Number(p?.outstanding ?? 0) > 0 ? "font-medium text-red-700" : undefined}>
+                            {formatMoney(p?.outstanding)}
+                          </span>
+                        </Detail>
+                        <Detail label="Matures">
+                          {p && p.days_to_maturity >= 0 ? `in ${p.days_to_maturity} days` : "Matured"}
+                        </Detail>
                       </dl>
                     </div>
                     {rows.length > 0 && (

@@ -1,31 +1,31 @@
 import { filtersToQuery } from "@/lib/reports/filters";
+import { describeScope } from "@/lib/reports/scope";
 import type { ReportDefinition, ReportFilters, ReportResult } from "@/lib/reports/types";
-import type { BranchRef, RegionRef } from "@/lib/org";
+import type { BranchRef, CodeRef, RegionRef } from "@/lib/org";
 import { DataTable } from "./data-table";
 import { PrintButton } from "./print-button";
 import { ButtonLink, Input, PageHeader, Select } from "./ui";
 
-/** A report page: filters, the table, and export to Excel (CSV) or PDF (print). */
+/** A report page: filters, the table, and downloads as Excel, PDF or CSV. */
 export function ReportView({
   report,
   filters,
   result,
   branches,
   regions,
+  departments,
+  products,
 }: {
   report: ReportDefinition;
   filters: ReportFilters;
   result: ReportResult;
   branches: BranchRef[];
   regions: RegionRef[];
+  departments: CodeRef[];
+  products: CodeRef[];
 }) {
-  const scope = [
-    report.dates === "period" ? `${filters.from} to ${filters.to}` : report.dates === "asAt" ? `As at ${filters.to}` : null,
-    filters.branch ? branches.find((b) => b.id === filters.branch)?.name : null,
-    filters.region ? regions.find((r) => r.id === filters.region)?.name : null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  const scope = describeScope(report, filters, { branches, regions, departments, products });
+  const download = (format: string) => `/reports/${report.key}/export?${filtersToQuery(filters)}&format=${format}`;
 
   return (
     <div className="max-w-6xl">
@@ -38,10 +38,16 @@ export function ReportView({
           </>
         }
         actions={
-          <div className="no-print flex gap-2">
-            <ButtonLink href={`/reports/${report.key}/export?${filtersToQuery(filters)}`} variant="secondary" prefetch={false}>
-              Download Excel (CSV)
+          <div className="no-print flex flex-wrap items-center gap-2">
+            <ButtonLink href={download("xlsx")} variant="secondary" prefetch={false}>
+              Download Excel
             </ButtonLink>
+            <ButtonLink href={download("pdf")} variant="secondary" prefetch={false}>
+              Download PDF
+            </ButtonLink>
+            <a href={download("csv")} className="text-sm underline">
+              CSV
+            </a>
             <PrintButton />
           </div>
         }
@@ -90,6 +96,32 @@ export function ReportView({
               </Select>
             </label>
           </>
+        )}
+        {report.dimensionFilters?.includes("department") && (
+          <label className="w-44 text-sm">
+            Department
+            <Select name="department" defaultValue={filters.department ?? ""}>
+              <option value="">All departments</option>
+              {departments.map((d) => (
+                <option key={d.code} value={d.code}>
+                  {d.name}
+                </option>
+              ))}
+            </Select>
+          </label>
+        )}
+        {report.dimensionFilters?.includes("product") && (
+          <label className="w-44 text-sm">
+            Product
+            <Select name="product" defaultValue={filters.product ?? ""}>
+              <option value="">All products</option>
+              {products.map((p) => (
+                <option key={p.code} value={p.code}>
+                  {p.name}
+                </option>
+              ))}
+            </Select>
+          </label>
         )}
         {report.options?.map((o) => (
           <label key={o.name} className="w-48 text-sm">

@@ -2,6 +2,7 @@ import type { PGlite } from "@electric-sql/pglite";
 import { beforeAll, describe, expect, it } from "vitest";
 import { asUser, createTestDatabase } from "./harness";
 
+const SIG = "data:image/png;base64,iVBORw0KGgo=";
 const OFFICER = "00000000-0000-0000-0000-0000000000a1";
 const MANAGER = "00000000-0000-0000-0000-0000000000b1";
 const LAGOS_ACCOUNTANT = "00000000-0000-0000-0000-0000000000e1";
@@ -63,7 +64,7 @@ async function approvedMember(): Promise<string> {
     );
   }
   await commitAs(OFFICER, () => db.query("select submit_member($1)", [id]));
-  await commitAs(MANAGER, () => db.query("select approve_member($1)", [id]));
+  await commitAs(MANAGER, () => db.query("select approve_member($1, $2)", [id, SIG]));
   return id;
 }
 

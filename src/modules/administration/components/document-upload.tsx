@@ -3,9 +3,16 @@
 import { useActionState, useEffect, useRef } from "react";
 import { Button, Field, FormError, Input, Select } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
-import { DOCUMENT_TYPES } from "../constants";
+import { DOCUMENT_TYPES, type DocumentType } from "../constants";
 
-export function DocumentUpload({ action }: { action: (prev: ActionState, formData: FormData) => Promise<ActionState> }) {
+export function DocumentUpload({
+  action,
+  types,
+}: {
+  action: (prev: ActionState, formData: FormData) => Promise<ActionState>;
+  /** The document types offered; letters and statements only make sense once a member is approved. */
+  types: DocumentType[];
+}) {
   const [state, formAction, pending] = useActionState(action, {});
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => {
@@ -17,9 +24,9 @@ export function DocumentUpload({ action }: { action: (prev: ActionState, formDat
       <Field label="Document" error={state.fieldErrors?.document_type}>
         <Select name="document_type" required defaultValue="">
           <option value="">Choose</option>
-          {Object.entries(DOCUMENT_TYPES).map(([value, label]) => (
+          {types.map((value) => (
             <option key={value} value={value}>
-              {label}
+              {DOCUMENT_TYPES[value]}
             </option>
           ))}
         </Select>

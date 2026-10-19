@@ -1,6 +1,7 @@
 import type { ReportDefinition, ReportFilters } from "./types";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const CODE = /^[a-z][a-z0-9_]{0,40}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export function today(): string {
@@ -31,6 +32,8 @@ export function parseFilters(report: ReportDefinition, params: Record<string, st
     to,
     branch: UUID.test(get("branch")) ? get("branch") : null,
     region: UUID.test(get("region")) ? get("region") : null,
+    department: report.dimensionFilters?.includes("department") && CODE.test(get("department")) ? get("department") : null,
+    product: report.dimensionFilters?.includes("product") && CODE.test(get("product")) ? get("product") : null,
     options,
   };
 }
@@ -39,5 +42,7 @@ export function filtersToQuery(filters: ReportFilters): string {
   const q = new URLSearchParams({ from: filters.from, to: filters.to, ...filters.options });
   if (filters.branch) q.set("branch", filters.branch);
   if (filters.region) q.set("region", filters.region);
+  if (filters.department) q.set("department", filters.department);
+  if (filters.product) q.set("product", filters.product);
   return q.toString();
 }

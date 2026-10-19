@@ -32,7 +32,7 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
   const { id } = await params;
   const bundle = await getTransactionBundle(id);
   if (!bundle) notFound();
-  const { txn, rule, bank, attachments, lines, staffName, memberName } = bundle;
+  const { txn, rule, bank, attachments, lines, staffName, memberName, department, product, supplier, bill } = bundle;
   const [org, accounts] = await Promise.all([listOrg(), lines.length ? listLedgerAccounts() : Promise.resolve([])]);
   const branch = org.branches.find((b) => b.id === txn.branch_id)!;
   const accountName = new Map(accounts.map((a) => [a.code, a.name]));
@@ -81,6 +81,11 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
           <Detail label="Amount">
             <span className="text-base font-semibold">{formatMoney(txn.amount)}</span>
             {Number(txn.interest_amount) > 0 && <span className="block text-xs text-zinc-500">of which interest {formatMoney(txn.interest_amount)}</span>}
+            {txn.currency !== "NGN" && (
+              <span className="block text-xs text-zinc-500">
+                {txn.currency} {Number(txn.foreign_amount).toLocaleString("en-NG", { minimumFractionDigits: 2 })} at ₦{txn.fx_rate}
+              </span>
+            )}
           </Detail>
           <Detail label="Date">{formatDate(txn.txn_date)}</Detail>
           <Detail label={txn.direction === "receipt" ? "Paid into" : "Paid from"}>
@@ -89,6 +94,23 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
           <Detail label="Member">{memberName}</Detail>
           <Detail label={txn.direction === "receipt" ? "Received from" : "Beneficiary"}>{txn.counterparty}</Detail>
           <Detail label="Reference">{txn.reference}</Detail>
+          {supplier && (
+            <Detail label="Supplier">
+              {supplier}
+              {bill && (
+                <Link href={`/accounts/bills/${bill.id}`} className="ml-1 text-xs underline">
+                  {bill.bill_no}
+                </Link>
+              )}
+            </Detail>
+          )}
+          {(department || product || txn.staff_id) && (
+            <Detail label="Reporting">
+              {[department && `${department} department`, product && `${product} product`, txn.staff_id && `Staff: ${staffName(txn.staff_id)}`]
+                .filter(Boolean)
+                .join(" · ")}
+            </Detail>
+          )}
           <div className="sm:col-span-3">
             <Detail label="Description">{txn.description}</Detail>
           </div>

@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DOCUMENT_TYPES, FREQUENCIES, ID_TYPES, PAYMENT_METHODS } from "./constants";
+import { DOCUMENT_TYPES, FREQUENCIES, ID_TYPES, ISSUE_CHANNELS, MAX_SIGNATURE_LENGTH, PAYMENT_METHODS } from "./constants";
 
 const optionalText = z
   .string()
@@ -35,6 +35,26 @@ export const amendmentSchema = z.object({
 
 export const documentSchema = z.object({
   document_type: z.enum(Object.keys(DOCUMENT_TYPES) as [keyof typeof DOCUMENT_TYPES], "Choose a document type"),
+});
+
+export const approvalSchema = z.object({
+  signature: z
+    .string()
+    .max(MAX_SIGNATURE_LENGTH, "The signature is too large; clear it and sign again")
+    .regex(/^data:image\/png;base64,[A-Za-z0-9+/]+=*$/, "Sign in the box before approving"),
+});
+
+export const issueSchema = z.object({
+  issued_on: isoDate.refine((d) => d <= new Date().toISOString().slice(0, 10), "The issue date can't be in the future"),
+  issue_channel: z.enum(Object.keys(ISSUE_CHANNELS) as [keyof typeof ISSUE_CHANNELS], "Choose how it was sent"),
+  issue_note: optionalText,
+});
+
+export const targetSchema = z.object({
+  branch_id: z.guid("Choose a branch"),
+  month: z.string().regex(/^\d{4}-\d{2}$/, "Choose a month"),
+  registrations: z.coerce.number("Enter a number").int("Use a whole number").min(0, "Can't be negative"),
+  collections: z.coerce.number("Enter an amount").min(0, "Can't be negative").multipleOf(0.01, "Use at most two decimal places"),
 });
 
 export const returnSchema = z.object({
