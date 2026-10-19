@@ -7,7 +7,14 @@ import { createClient } from "@/lib/supabase/server";
 import { saveTransaction } from "@/modules/accounts/actions";
 import { TransactionForm } from "@/modules/accounts/components/transaction-form";
 import { accountsModule } from "@/modules/accounts/module";
-import { listBankAccounts, listMemberOptions, listPostingRules, loadDimensionChoices, type FinanceTransaction } from "@/modules/accounts/queries";
+import {
+  listBankAccounts,
+  listLoanOptions,
+  listMemberOptions,
+  listPostingRules,
+  loadDimensionChoices,
+  type FinanceTransaction,
+} from "@/modules/accounts/queries";
 
 export default async function EditTransactionPage({ params }: { params: Promise<{ id: string }> }) {
   const staff = await requireModule(accountsModule);
@@ -18,12 +25,13 @@ export default async function EditTransactionPage({ params }: { params: Promise<
   const txn = data as FinanceTransaction | null;
   if (!txn || txn.created_by !== staff.id || !["draft", "returned"].includes(txn.status)) notFound();
 
-  const [rules, banks, members, org, dimensions] = await Promise.all([
+  const [rules, banks, members, org, dimensions, loans] = await Promise.all([
     listPostingRules(),
     listBankAccounts(),
     listMemberOptions(),
     listOrg(),
     loadDimensionChoices(),
+    listLoanOptions(),
   ]);
   return (
     <div className="max-w-3xl">
@@ -35,6 +43,7 @@ export default async function EditTransactionPage({ params }: { params: Promise<
           rules={rules.filter((r) => r.direction === txn.direction && (r.is_active || r.transaction_type === txn.transaction_type))}
           banks={banks.filter((b) => b.is_active && (txn.contribution_id || txn.statement_line_id ? b.id === txn.bank_account_id : true))}
           members={members}
+          loans={loans}
           dimensions={dimensions}
           branchName={new Map(org.branches.map((b) => [b.id, b.name]))}
           defaults={{ ...txn, interest_amount: Number(txn.interest_amount) ? txn.interest_amount : "" }}

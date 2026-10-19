@@ -4,7 +4,7 @@ import { useActionState, useState } from "react";
 import { Button, Field, FormError, Input, Select, Textarea } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 import { COMMON_CURRENCIES } from "../constants";
-import type { BankAccount, MemberOption, OpenBill, PostingRule, Supplier } from "../queries";
+import type { BankAccount, LoanOption, MemberOption, OpenBill, PostingRule, Supplier } from "../queries";
 
 export type DimensionChoices = {
   departments: { code: string; name: string }[];
@@ -30,6 +30,7 @@ export type TransactionDefaults = Partial<{
   staff_id: string | null;
   supplier_id: string | null;
   supplier_bill_id: string | null;
+  loan_id: string | null;
   currency: string;
   foreign_amount: string | null;
   fx_rate: string | null;
@@ -41,6 +42,7 @@ export function TransactionForm({
   rules,
   banks,
   members,
+  loans = [],
   dimensions,
   branchName,
   defaults = {},
@@ -52,6 +54,8 @@ export function TransactionForm({
   rules: PostingRule[];
   banks: BankAccount[];
   members: MemberOption[];
+  /** Approved and active loans, for loan disbursements and repayments. */
+  loans?: LoanOption[];
   dimensions: DimensionChoices;
   branchName: Map<string, string>;
   defaults?: TransactionDefaults;
@@ -64,6 +68,7 @@ export function TransactionForm({
   const [amount, setAmount] = useState(defaults.amount ?? "");
   const [supplierId, setSupplierId] = useState(defaults.supplier_id ?? "");
   const [billId, setBillId] = useState(defaults.supplier_bill_id ?? "");
+  const [loanId, setLoanId] = useState(defaults.loan_id ?? "");
   const [currency, setCurrency] = useState(defaults.currency ?? "NGN");
   const [foreign, setForeign] = useState({ amount: defaults.foreign_amount ?? "", rate: defaults.fx_rate ?? "" });
   const rule = rules.find((r) => r.transaction_type === type);
@@ -72,6 +77,9 @@ export function TransactionForm({
   const today = new Date().toISOString().slice(0, 10);
   const memberChoices = bank ? members.filter((m) => m.branch_id === bank.branch_id) : members;
   const isSupplierPayment = type === "supplier_payment";
+  const loanStatus = type === "loan_repayment" ? "active" : type === "loan_disbursement" ? "approved" : null;
+  const loanChoices = loans.filter((l) => l.status === loanStatus && (!bank || l.branch_id === bank.branch_id));
+  const loan = loanStatus ? loans.find((l) => l.id === loanId) : undefined;
   const billChoices = dimensions.openBills.filter(
     (b) => (!supplierId || b.supplier_id === supplierId) && (!bank || b.branch_id === bank.branch_id),
   );
@@ -131,26 +139,63 @@ export function TransactionForm({
             required
           />
         </Field>
-        {rule?.interest_account && (
+        {loanStatus && (
+          <Field
+            label={loanStatus === "active" ? "Loan being repaid" : "Loan being paid out"}
+            error={e.loan_id}
+            hint={
+              loan
+                ? loanStatus === "active"
+                  ? `${loan.member_name} · owes ₦${loan.outstanding.toLocaleString("en-NG")}${loan.overdue ? `, ₦${loan.overdue.toLocaleString("en-NG")} overdue` : ""}`
+                  : `${loan.member_name} · approved ₦${Number(loan.approved_amount).toLocaleString("en-NG")}`
+                : loanStatus === "active"
+                  ? "Active loans in the account's branch, from Credit."
+                  : "Approved loans waiting to be paid out."
+            }
+          >
+            <Select
+              name="loan_id"
+              required
+              value={loanId}
+              onChange={(ev) => {
+                setLoanId(ev.target.value);
+                const chosen = loans.find((l) => l.id === ev.target.value);
+                if (chosen && loanStatus === "approved") setAmount(chosen.approved_amount);
+              }}
+            >
+              <option value="">Choose</option>
+              {loanChoices.map((l) => (
+                <option key={l.id} value={l.id}>
+                  {l.loan_no} · {l.member_name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        {rule?.interest_account && !loanStatus && (
           <Field label="Of which interest (₦)" error={e.interest_amount} hint="The rest is applied to the loan principal.">
             <Input name="interest_amount" type="number" min="0" step="0.01" defaultValue={defaults.interest_amount ?? ""} />
           </Field>
         )}
-        <Field
-          label={rule?.requires_member ? "Member" : "Member (optional)"}
-          error={e.member_id}
-          hint={bank ? "Approved members of the account's branch." : "Choose the account first to narrow this list."}
-        >
-          <Select name="member_id" defaultValue={defaults.member_id ?? ""} required={rule?.requires_member}>
-            <option value="">{rule?.requires_member ? "Choose" : "None"}</option>
-            {memberChoices.map((m) => (
-              <option key={m.id} value={m.id}>
-                {m.name}
-                {m.membership_no ? ` (${m.membership_no})` : ""}
-              </option>
-            ))}
-          </Select>
-        </Field>
+        {loanStatus ? (
+          <input type="hidden" name="member_id" value={loan?.member_id ?? ""} />
+        ) : (
+          <Field
+            label={rule?.requires_member ? "Member" : "Member (optional)"}
+            error={e.member_id}
+            hint={bank ? "Approved members of the account's branch." : "Choose the account first to narrow this list."}
+          >
+            <Select name="member_id" defaultValue={defaults.member_id ?? ""} required={rule?.requires_member}>
+              <option value="">{rule?.requires_member ? "Choose" : "None"}</option>
+              {memberChoices.map((m) => (
+                <option key={m.id} value={m.id}>
+                  {m.name}
+                  {m.membership_no ? ` (${m.membership_no})` : ""}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
         {direction === "payment" && (
           <Field label={isSupplierPayment ? "Supplier" : "Supplier (optional)"} error={e.supplier_id}>
             <Select
@@ -284,6 +329,12 @@ export function TransactionForm({
         >
           <Input name="file" type="file" accept="application/pdf,image/jpeg,image/png" />
         </Field>
+      )}
+      {type === "loan_repayment" && (
+        <p className="rounded-md bg-sky-50 px-3 py-2 text-xs text-sky-900">
+          The split between interest and principal is worked out from the loan&apos;s schedule when this posts: the oldest instalment first,
+          interest before principal.
+        </p>
       )}
       {rule && (
         <p className="rounded-md bg-zinc-50 px-3 py-2 text-xs text-zinc-600">

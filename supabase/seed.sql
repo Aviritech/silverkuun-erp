@@ -20,7 +20,11 @@ insert into seed_staff values
   ('30000000-0000-0000-0000-000000000006', 'accountant.lagos@kuun.test', 'Lola Accountant', 'accounts', 'regional_accountant', '20000000-0000-0000-0000-000000000001'),
   ('30000000-0000-0000-0000-000000000007', 'receipts.abuja@kuun.test', 'Rita Receipts', 'accounts', 'receipts_accountant', '20000000-0000-0000-0000-000000000002'),
   ('30000000-0000-0000-0000-000000000008', 'payments.abuja@kuun.test', 'Pius Payments', 'accounts', 'payments_accountant', '20000000-0000-0000-0000-000000000002'),
-  ('30000000-0000-0000-0000-000000000009', 'controller@kuun.test', 'Fola Controller', 'accounts', 'financial_controller', null);
+  ('30000000-0000-0000-0000-000000000009', 'controller@kuun.test', 'Fola Controller', 'accounts', 'financial_controller', null),
+  ('30000000-0000-0000-0000-000000000010', 'credit.lagos@kuun.test', 'Kemi Account Officer', 'credit', 'credit_officer', '20000000-0000-0000-0000-000000000001'),
+  ('30000000-0000-0000-0000-000000000011', 'credit.abuja@kuun.test', 'Bello Account Officer', 'credit', 'credit_officer', '20000000-0000-0000-0000-000000000002'),
+  ('30000000-0000-0000-0000-000000000012', 'analyst@kuun.test', 'Ngozi Analyst', 'credit', 'credit_analyst', null),
+  ('30000000-0000-0000-0000-000000000013', 'head.credit@kuun.test', 'Uche Head of Credit', 'credit', 'credit_manager', null);
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -206,13 +210,144 @@ values ('bank_charges', '5800', false, true, 'Report bank charges under other op
 select pg_temp.act_as('controller@kuun.test');
 select public.approve_supplier_bill('a1000000-0000-0000-0000-000000000001');
 
+-- ---------------------------------------------------------------------------
+-- Credit: loans at every stage, raised by the Lagos account officer, appraised by the analyst, decided by the
+-- Head of Credit, and paid out and repaid through Accounts.
+-- ---------------------------------------------------------------------------
+
+create function pg_temp.new_loan(p_id uuid, p_member uuid, p_product text, p_amount numeric, p_tenor int, p_method text, p_rate numeric,
+  p_category text, p_purpose text) returns void language sql as $$
+  insert into public.loans (id, branch_id, member_id, product_code, phone, address, customer_category, employer_name, occupation,
+    monthly_income, amount_requested, purpose, tenor_months, repayment_frequency, interest_rate, rate_basis, interest_method, repayment_mode)
+  select p_id, m.branch_id, m.id, p_product, m.phone, m.address, p_category,
+         case when p_category = 'salary_earner' then 'Lagos State Ministry of Education' else 'Okeke Building Supplies' end,
+         case when p_category = 'salary_earner' then 'Teacher' else 'Building materials trader' end,
+         case when p_category = 'salary_earner' then 420000 else 900000 end,
+         p_amount, p_purpose, p_tenor, 'monthly', p_rate, 'per_month', p_method,
+         case when p_category = 'salary_earner' then 'salary_deduction' else 'bank_transfer' end
+  from public.members m where m.id = p_member;
+  insert into public.loan_documents (loan_id, branch_id, document_type, file_name, storage_path, mime_type, size_bytes)
+  select p_id, l.branch_id, 'application_form', 'application-form.pdf', l.branch_id || '/' || l.id || '/seed-form.pdf', 'application/pdf', 1024
+  from public.loans l where l.id = p_id;
+  insert into public.loan_guarantors (loan_id, branch_id, full_name, phone, address, relationship, occupation, monthly_income)
+  select p_id, l.branch_id, 'Bayo Adewale', '08035550101', '7 Awolowo Road, Ikoyi', 'Colleague', 'Civil servant', 380000
+  from public.loans l where l.id = p_id;
+$$;
+
+create function pg_temp.approve_loan(p_id uuid, p_amount numeric) returns void language sql as $$
+  select public.submit_loan(p_id) from (select pg_temp.act_as('credit.lagos@kuun.test')) a;
+  select public.appraise_loan(p_id, 'clear', 'CRC Credit Bureau', '702', 'low', 'approve', p_amount,
+    'Steady income, no adverse bureau records, repayment within a third of monthly income.')
+  from (select pg_temp.act_as('analyst@kuun.test')) a;
+  select public.decide_loan(p_id, true, p_amount, null) from (select pg_temp.act_as('head.credit@kuun.test')) a;
+$$;
+
+-- Accounts pays the loan out: the accountant requests it, the controller approves, the accountant pays with proof.
+create function pg_temp.disburse_loan(p_loan uuid, p_txn uuid, p_days_ago int) returns void language sql as $$
+  select pg_temp.act_as('accountant.lagos@kuun.test');
+  insert into public.finance_transactions (id, direction, transaction_type, txn_date, amount, bank_account_id, member_id, loan_id,
+    counterparty, reference, description, branch_id)
+  select p_txn, 'payment', 'loan_disbursement', current_date - p_days_ago, l.approved_amount, '40000000-0000-0000-0000-000000000001',
+         l.member_id, l.id, 'Loan customer', 'DSB-' || l.loan_no, 'Disbursement of loan ' || l.loan_no, l.branch_id
+  from public.loans l where l.id = p_loan;
+  select public.submit_finance_transaction(p_txn);
+  select pg_temp.act_as('controller@kuun.test');
+  select public.approve_finance_transaction(p_txn);
+  select pg_temp.act_as('accountant.lagos@kuun.test');
+  insert into public.finance_attachments (transaction_id, branch_id, kind, file_name, storage_path, mime_type, size_bytes)
+  select p_txn, branch_id, 'payment_proof', 'transfer-receipt.pdf', branch_id || '/' || p_txn || '/seed-proof.pdf', 'application/pdf', 1024
+  from public.finance_transactions where id = p_txn;
+  select public.pay_finance_transaction(p_txn);
+$$;
+
+-- A repayment receipted by the accountant and confirmed by the controller. A null amount pays off everything owed.
+create function pg_temp.repay_loan(p_loan uuid, p_txn uuid, p_amount numeric, p_days_ago int) returns void language sql as $$
+  select pg_temp.act_as('accountant.lagos@kuun.test');
+  insert into public.finance_transactions (id, direction, transaction_type, txn_date, amount, bank_account_id, member_id, loan_id,
+    reference, description, branch_id)
+  select p_txn, 'receipt', 'loan_repayment', current_date - p_days_ago,
+         coalesce(p_amount, (select b.outstanding_principal + b.outstanding_interest from public.loan_book b where b.id = l.id)),
+         '40000000-0000-0000-0000-000000000001', l.member_id, l.id, 'RPY-' || right(p_txn::text, 4), 'Repayment on loan ' || l.loan_no, l.branch_id
+  from public.loans l where l.id = p_loan;
+  insert into public.finance_attachments (transaction_id, branch_id, kind, file_name, storage_path, mime_type, size_bytes)
+  select p_txn, branch_id, 'supporting', 'teller.pdf', branch_id || '/' || p_txn || '/seed-teller.pdf', 'application/pdf', 1024
+  from public.finance_transactions where id = p_txn;
+  select public.submit_finance_transaction(p_txn);
+  select pg_temp.act_as('controller@kuun.test');
+  select public.approve_finance_transaction(p_txn);
+$$;
+
+select pg_temp.act_as('credit.lagos@kuun.test');
+select pg_temp.new_loan('b0000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', 'personal', 300000, 6, 'flat', 2.5,
+  'salary_earner', 'School fees for the new term');
+select pg_temp.new_loan('b0000000-0000-0000-0000-000000000002', '50000000-0000-0000-0000-000000000002', 'business', 1000000, 12, 'reducing_balance', 3,
+  'business_owner', 'Restock cement and roofing sheets ahead of the dry season');
+insert into public.loan_collaterals (loan_id, branch_id, collateral_type, description, estimated_value, valuation_date, valued_by)
+values ('b0000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'vehicle', '2016 Toyota Hilux, LAG-482-KJ',
+        6500000, current_date - 110, 'Ade & Partners Valuers');
+select pg_temp.new_loan('b0000000-0000-0000-0000-000000000003', '50000000-0000-0000-0000-000000000001', 'salary_advance', 100000, 3, 'flat', 5,
+  'salary_earner', 'Medical bills');
+select pg_temp.new_loan('b0000000-0000-0000-0000-000000000004', '50000000-0000-0000-0000-000000000002', 'personal', 200000, 6, 'flat', 2.5,
+  'business_owner', 'Rent for the shop');
+select pg_temp.new_loan('b0000000-0000-0000-0000-000000000005', '50000000-0000-0000-0000-000000000001', 'asset', 450000, 10, 'flat', 2.5,
+  'salary_earner', 'A laptop and printer for evening tutoring');
+insert into public.loan_documents (loan_id, branch_id, document_type, file_name, storage_path, mime_type, size_bytes)
+values ('b0000000-0000-0000-0000-000000000005', '20000000-0000-0000-0000-000000000001', 'proforma_invoice', 'slot-proforma.pdf',
+        '20000000-0000-0000-0000-000000000001/b0000000-0000-0000-0000-000000000005/seed-proforma.pdf', 'application/pdf', 1024);
+select pg_temp.new_loan('b0000000-0000-0000-0000-000000000006', '50000000-0000-0000-0000-000000000002', 'personal', 150000, 4, 'flat', 2.5,
+  'business_owner', 'Generator repairs');
+select pg_temp.new_loan('b0000000-0000-0000-0000-000000000007', '50000000-0000-0000-0000-000000000001', 'business', 400000, 6, 'reducing_balance', 3,
+  'self_employed', 'Equipment for a home bakery');
+
+-- Active and on time for one instalment, then late: paid out 75 days ago, one repayment made.
+select pg_temp.approve_loan('b0000000-0000-0000-0000-000000000001', 300000);
+select pg_temp.disburse_loan('b0000000-0000-0000-0000-000000000001', '91000000-0000-0000-0000-000000000001', 75);
+select pg_temp.repay_loan('b0000000-0000-0000-0000-000000000001', '91000000-0000-0000-0000-000000000002', 57500, 44);
+
+-- Active and more than 30 days behind: paid out 100 days ago, one repayment made.
+select pg_temp.approve_loan('b0000000-0000-0000-0000-000000000002', 1000000);
+select pg_temp.disburse_loan('b0000000-0000-0000-0000-000000000002', '91000000-0000-0000-0000-000000000003', 100);
+select pg_temp.repay_loan('b0000000-0000-0000-0000-000000000002', '91000000-0000-0000-0000-000000000004', 100462.09, 68);
+
+-- Repaid in full.
+select pg_temp.approve_loan('b0000000-0000-0000-0000-000000000003', 100000);
+select pg_temp.disburse_loan('b0000000-0000-0000-0000-000000000003', '91000000-0000-0000-0000-000000000005', 120);
+select pg_temp.repay_loan('b0000000-0000-0000-0000-000000000003', '91000000-0000-0000-0000-000000000006', 38333.33, 90);
+select pg_temp.repay_loan('b0000000-0000-0000-0000-000000000003', '91000000-0000-0000-0000-000000000007', 38333.33, 60);
+select pg_temp.repay_loan('b0000000-0000-0000-0000-000000000003', '91000000-0000-0000-0000-000000000008', null, 31);
+
+-- Approved by the Head of Credit and waiting for Accounts to pay it out.
+select pg_temp.approve_loan('b0000000-0000-0000-0000-000000000004', 180000);
+
+-- Appraised and waiting for the Head of Credit.
+select pg_temp.act_as('credit.lagos@kuun.test');
+select public.submit_loan('b0000000-0000-0000-0000-000000000005');
+select pg_temp.act_as('analyst@kuun.test');
+select public.appraise_loan('b0000000-0000-0000-0000-000000000005', 'no_record', 'FirstCentral', null, 'medium', 'approve', 400000,
+  'No credit history, but salary covers the instalment well. Recommend a slightly smaller amount.');
+
+-- Submitted and waiting for the analyst.
+select pg_temp.act_as('credit.lagos@kuun.test');
+select public.submit_loan('b0000000-0000-0000-0000-000000000006');
+
+-- The Lagos officer reminded Ada about her overdue instalment.
+insert into public.loan_reminders (loan_id, branch_id, kind, channel, amount, note)
+values ('b0000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'overdue', 'call', 57500, 'Promised to pay at month end');
+
 select set_config('request.jwt.claim.sub', '', false);
 
 -- Age a few demo records so the Internal Audit exception checks have something to show on a fresh database.
--- Triggers are off for these three updates only, so the audit trail keeps the original history.
+-- Triggers are off for these updates only, so the audit trail keeps the original history.
 set session_replication_role = replica;
 update public.members set created_at = now() - interval '10 days', submitted_at = now() - interval '9 days' where id = '50000000-0000-0000-0000-000000000003';
 update public.finance_transactions set created_at = now() - interval '4 days', submitted_at = now() - interval '4 days' where id = '90000000-0000-0000-0000-000000000003';
 update public.bank_statement_lines set line_date = current_date - 18
 where bank_account_id = '40000000-0000-0000-0000-000000000001' and reference = 'DEP-55120';
+-- Loans were raised before they were paid out; the stale application has waited more than a week.
+update public.loans
+   set created_at = disbursed_on - interval '6 days', submitted_at = disbursed_on - interval '5 days',
+       appraised_at = disbursed_on - interval '3 days', approved_at = disbursed_on - interval '2 days', decided_at = disbursed_on - interval '2 days'
+ where disbursed_on is not null;
+update public.loans set created_at = now() - interval '10 days', submitted_at = now() - interval '9 days'
+ where id = 'b0000000-0000-0000-0000-000000000006';
 set session_replication_role = origin;

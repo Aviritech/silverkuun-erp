@@ -179,16 +179,10 @@ describe("receipts", () => {
     expect(balance.rows[0].savings).toBe("50000.00");
   });
 
-  it("splits a loan repayment between principal and interest income", async () => {
-    const txn = await draft(LAGOS_ACCOUNTANT, { direction: "receipt", type: "loan_repayment", amount: 11000, interest: 1000, member: memberId });
-    await attach(LAGOS_ACCOUNTANT, txn);
-    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [txn.id]));
-    await commitAs(LAGOS_ACCOUNTANT_2, () => db.query("select approve_finance_transaction($1)", [txn.id]));
-    expect(await journalLines((await txnRow(txn.id)).journal_entry_id!)).toEqual([
-      { account_code: "1131", debit: "11000.00", credit: "0.00" },
-      { account_code: "1210", debit: "0.00", credit: "10000.00" },
-      { account_code: "4100", debit: "0.00", credit: "1000.00" },
-    ]);
+  it("takes loan repayments only against a loan from the Credit department", async () => {
+    await expect(
+      draft(LAGOS_ACCOUNTANT, { direction: "receipt", type: "loan_repayment", amount: 11000, member: memberId }),
+    ).rejects.toThrow(/choose the loan this repayment is for/);
   });
 
   it("requires a member for member savings", async () => {

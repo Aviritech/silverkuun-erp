@@ -6,21 +6,22 @@ import { createClient } from "@/lib/supabase/server";
 import { saveTransaction } from "@/modules/accounts/actions";
 import { TransactionForm, type TransactionDefaults } from "@/modules/accounts/components/transaction-form";
 import { accountsModule } from "@/modules/accounts/module";
-import { listBankAccounts, listMemberOptions, listPostingRules, loadDimensionChoices } from "@/modules/accounts/queries";
+import { listBankAccounts, listLoanOptions, listMemberOptions, listPostingRules, loadDimensionChoices } from "@/modules/accounts/queries";
 
-export default async function NewTransactionPage({ searchParams }: { searchParams: Promise<{ direction?: string; line?: string; bill?: string }> }) {
+export default async function NewTransactionPage({ searchParams }: { searchParams: Promise<{ direction?: string; line?: string; bill?: string; loan?: string }> }) {
   const staff = await requireModule(accountsModule);
-  const { direction: d, line, bill } = await searchParams;
+  const { direction: d, line, bill, loan } = await searchParams;
   const direction = d === "payment" || bill ? "payment" : "receipt";
   const permission = direction === "receipt" ? "accounts.receipts.record" : "accounts.payments.request";
   if (!staff.permissions.has(permission)) notFound();
 
-  const [rules, allBanks, members, org, dimensions] = await Promise.all([
+  const [rules, allBanks, members, org, dimensions, loans] = await Promise.all([
     listPostingRules(),
     listBankAccounts(),
     listMemberOptions(),
     listOrg(),
     loadDimensionChoices(),
+    listLoanOptions(),
   ]);
   const banks = allBanks.filter((b) => b.is_active && staff.permissions.hasForBranch(permission, { id: b.branch_id, region_id: org.branches.find((x) => x.id === b.branch_id)!.region_id }));
 
@@ -59,6 +60,20 @@ export default async function NewTransactionPage({ searchParams }: { searchParam
     };
   }
 
+  // Opened from a loan in Credit or the disbursement queue: prefill a repayment or the payout.
+  const forLoan = loan ? loans.find((l) => l.id === loan) : undefined;
+  if (forLoan) {
+    const repaying = forLoan.status === "active";
+    defaults = {
+      transaction_type: repaying ? "loan_repayment" : "loan_disbursement",
+      loan_id: forLoan.id,
+      member_id: forLoan.member_id,
+      counterparty: forLoan.member_name,
+      amount: repaying ? (forLoan.overdue ? String(forLoan.overdue) : "") : forLoan.approved_amount,
+      description: repaying ? `Repayment on loan ${forLoan.loan_no}` : `Disbursement of loan ${forLoan.loan_no} to ${forLoan.member_name}`,
+    };
+  }
+
   return (
     <div className="max-w-3xl">
       <PageHeader
@@ -81,6 +96,7 @@ export default async function NewTransactionPage({ searchParams }: { searchParam
           rules={rules.filter((r) => r.direction === direction && r.is_active)}
           banks={banks}
           members={members}
+          loans={loans}
           dimensions={dimensions}
           branchName={new Map(org.branches.map((b) => [b.id, b.name]))}
           defaults={defaults}

@@ -32,7 +32,7 @@ export type ReportDefinition = {
   title: string;
   description: string;
   /** The department module the report lives under, for links back. */
-  basePath: "/accounts" | "/internal-audit" | "/administration";
+  basePath: "/accounts" | "/internal-audit" | "/administration" | "/credit";
   /** Needed to run or export the report. */
   permission: string;
   /** "period" shows from/to; "asAt" shows a single date (uses `to`). */
@@ -41,5 +41,7 @@ export type ReportDefinition = {
   /** Which of the department and savings product filters the report offers. */
   dimensionFilters?: readonly ("department" | "product")[];
   options?: ReportOption[];
+  /** Extra choices read from the database (such as account officers), added after the static options. */
+  loadOptions?: (supabase: SupabaseClient) => Promise<ReportOption[]>;
   run: (supabase: SupabaseClient, filters: ReportFilters) => Promise<ReportResult>;
 };

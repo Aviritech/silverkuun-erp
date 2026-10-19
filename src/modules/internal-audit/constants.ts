@@ -11,6 +11,9 @@ export const EXCEPTION_CATEGORIES = {
   stale_finance_approval: "Finance approval overdue",
   unbalanced_journal: "Unbalanced journal",
   deletion: "Record deleted",
+  overdue_loan: "Overdue loan",
+  stale_loan_application: "Loan application waiting",
+  loan_not_disbursed: "Approved loan not paid out",
 } as const;
 export type ExceptionCategory = keyof typeof EXCEPTION_CATEGORIES;
 
@@ -34,6 +37,9 @@ export function recordHref(recordType: string, recordId: string | null): string 
     case "finance_transaction":
     case "finance_transactions":
       return `/accounts/transactions/${recordId}`;
+    case "loan":
+    case "loans":
+      return `/credit/loans/${recordId}`;
     case "journal_entry":
     case "journal_entries":
       return `/accounts/journals/${recordId}`;
@@ -56,6 +62,15 @@ export const AUDITED_TABLES: Record<string, string> = {
   bank_statement_lines: "Statement lines",
   bank_matches: "Bank matches",
   bank_reconciliations: "Bank reconciliations",
+  loans: "Loans",
+  loan_guarantors: "Loan guarantors",
+  loan_collaterals: "Loan collateral",
+  loan_documents: "Loan documents",
+  loan_installments: "Loan schedules",
+  loan_repayments: "Loan repayments",
+  loan_restructures: "Loan restructures",
+  loan_reminders: "Loan reminders",
+  loan_products: "Loan products",
   ledger_accounts: "Chart of accounts",
   posting_rules: "Posting rules",
   staff: "Staff",

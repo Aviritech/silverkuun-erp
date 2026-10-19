@@ -636,7 +636,7 @@ const payablesAging: ReportDefinition = {
       ],
       rows: [...rows, total],
       notes: [
-        "Receivables aging needs invoices raised to customers, which the Society doesn't issue today; member loan arrears arrive with the Credit department's workflow.",
+        "Receivables aging needs invoices raised to customers, which the Society doesn't issue today. Member loan arrears are in the loan portfolio report.",
       ],
     };
   },

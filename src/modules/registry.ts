@@ -1,11 +1,12 @@
 import type { PermissionSet } from "@/lib/auth/permissions";
 import { accountsModule } from "./accounts/module";
 import { administrationModule } from "./administration/module";
+import { creditModule } from "./credit/module";
 import { internalAuditModule } from "./internal-audit/module";
 import type { DepartmentModule } from "./types";
 
 /** Every department module. Add new departments here. */
-export const modules: readonly DepartmentModule[] = [administrationModule, accountsModule, internalAuditModule];
+export const modules: readonly DepartmentModule[] = [administrationModule, accountsModule, creditModule, internalAuditModule];
 
 /** The modules a staff member can open, with nav links they are not allowed to use removed. */
 export function visibleModules(perms: PermissionSet, all: readonly DepartmentModule[] = modules): DepartmentModule[] {

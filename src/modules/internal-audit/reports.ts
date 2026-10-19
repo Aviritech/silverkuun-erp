@@ -45,7 +45,7 @@ export async function loadExceptions(supabase: SupabaseClient): Promise<AuditExc
 const branchOperations: ReportDefinition = {
   key: "branch-operations",
   title: "Branch operations",
-  description: "Registrations, approvals, collections and posted cash movements by branch, in daily, weekly or monthly periods.",
+  description: "Registrations, approvals, collections, loans disbursed and repaid, and posted cash movements by branch, in daily, weekly or monthly periods.",
   basePath: "/internal-audit",
   permission: "module.internal_audit",
   dates: "period",
@@ -83,7 +83,20 @@ const branchOperations: ReportDefinition = {
         collections_pct: percent(n(r.contributions_total), t ? n(t.collections) : null),
       };
     });
-    const sumKeys = ["registrations", "approvals", "contributions_count", "contributions_total", "top_ups_total", "reversals_total", "unverified_count", "receipts_total", "payments_total"];
+    const sumKeys = [
+      "registrations",
+      "approvals",
+      "contributions_count",
+      "contributions_total",
+      "top_ups_total",
+      "reversals_total",
+      "unverified_count",
+      "receipts_total",
+      "payments_total",
+      "loans_disbursed",
+      "loans_disbursed_total",
+      "loan_repayments_total",
+    ];
     const total: Row = { period_start: null, branch_name: "Total", _kind: "total" };
     for (const k of sumKeys) total[k] = Math.round(rows.reduce((s, r) => s + n(r[k]), 0) * 100) / 100;
     return {
@@ -112,6 +125,9 @@ const branchOperations: ReportDefinition = {
         { key: "unverified_count", label: "Unverified", kind: "number" },
         { key: "receipts_total", label: "Receipts posted", kind: "money" },
         { key: "payments_total", label: "Payments posted", kind: "money" },
+        { key: "loans_disbursed", label: "Loans disbursed", kind: "number" },
+        { key: "loans_disbursed_total", label: "Amount disbursed", kind: "money" },
+        { key: "loan_repayments_total", label: "Loan repayments", kind: "money" },
       ],
       rows: [...rows, total],
     };
@@ -246,7 +262,7 @@ const exceptions: ReportDefinition = {
       ],
       rows,
       notes: [
-        `Large transactions are those of ₦${LARGE_TRANSACTION_NAIRA.toLocaleString("en-NG")} or more. Overdue loan reports arrive with the Credit department's workflow.`,
+        `Large transactions are those of ₦${LARGE_TRANSACTION_NAIRA.toLocaleString("en-NG")} or more. Loans more than 30 days overdue are medium and more than 90 days high.`,
       ],
     };
   },

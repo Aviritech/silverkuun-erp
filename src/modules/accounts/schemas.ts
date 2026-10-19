@@ -40,6 +40,7 @@ export const transactionSchema = z
     staff_id: optionalId,
     supplier_id: optionalId,
     supplier_bill_id: optionalId,
+    loan_id: optionalId,
     currency: z
       .string()
       .trim()
@@ -49,7 +50,11 @@ export const transactionSchema = z
     foreign_amount: optionalPositive,
     fx_rate: optionalPositive,
   })
-  .refine((v) => v.interest_amount < v.amount, { path: ["interest_amount"], message: "Interest must be less than the total amount" })
+  .refine((v) => v.interest_amount <= v.amount, { path: ["interest_amount"], message: "Interest can't be more than the total amount" })
+  .refine((v) => !["loan_repayment", "loan_disbursement"].includes(v.transaction_type) || v.loan_id, {
+    path: ["loan_id"],
+    message: "Choose the loan",
+  })
   .refine((v) => v.transaction_type !== "supplier_payment" || v.supplier_id, { path: ["supplier_id"], message: "Choose the supplier being paid" })
   .refine((v) => v.currency === "NGN" || v.foreign_amount, { path: ["foreign_amount"], message: "Enter the amount in the foreign currency" })
   .refine((v) => v.currency === "NGN" || v.fx_rate, { path: ["fx_rate"], message: "Enter the exchange rate used" })

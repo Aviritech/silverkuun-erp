@@ -19,6 +19,8 @@ type BranchRow = {
   unverified_count: number;
   receipts_total: string;
   payments_total: string;
+  loans_disbursed_total: string;
+  loan_repayments_total: string;
 };
 
 export default async function InternalAuditPage() {
@@ -130,7 +132,9 @@ export default async function InternalAuditPage() {
                 <th className="py-1 pr-3 text-right font-medium">Collected</th>
                 <th className="py-1 pr-3 text-right font-medium">Unverified</th>
                 <th className="py-1 pr-3 text-right font-medium">Receipts posted</th>
-                <th className="py-1 text-right font-medium">Payments posted</th>
+                <th className="py-1 pr-3 text-right font-medium">Payments posted</th>
+                <th className="py-1 pr-3 text-right font-medium">Loans disbursed</th>
+                <th className="py-1 text-right font-medium">Loan repayments</th>
               </tr>
             </thead>
             <tbody>
@@ -142,7 +146,9 @@ export default async function InternalAuditPage() {
                   <td className="py-1.5 pr-3 text-right tabular-nums">{formatMoney(b.contributions_total)}</td>
                   <td className="py-1.5 pr-3 text-right tabular-nums">{b.unverified_count}</td>
                   <td className="py-1.5 pr-3 text-right tabular-nums">{formatMoney(b.receipts_total)}</td>
-                  <td className="py-1.5 text-right tabular-nums">{formatMoney(b.payments_total)}</td>
+                  <td className="py-1.5 pr-3 text-right tabular-nums">{formatMoney(b.payments_total)}</td>
+                  <td className="py-1.5 pr-3 text-right tabular-nums">{formatMoney(b.loans_disbursed_total)}</td>
+                  <td className="py-1.5 text-right tabular-nums">{formatMoney(b.loan_repayments_total)}</td>
                 </tr>
               ))}
             </tbody>
@@ -154,6 +160,11 @@ export default async function InternalAuditPage() {
         {staff.permissions.has("accounts.read") && (
           <Link href="/accounts/reports" className="underline">
             Financial reports
+          </Link>
+        )}
+        {staff.permissions.has("credit.read") && (
+          <Link href="/credit/reports" className="underline">
+            Loan reports
           </Link>
         )}
         {staff.permissions.has("audit.trail.read") && (

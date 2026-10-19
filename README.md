@@ -69,6 +69,10 @@ npx supabase db reset       # or start over: rebuilds the database and reloads t
 | receipts.abuja@kuun.test | Receipts Accountant | Abuja |
 | payments.abuja@kuun.test | Payments Accountant | Abuja |
 | controller@kuun.test | Financial Controller (approves, posts journals, settings) | Whole organisation |
+| credit.lagos@kuun.test | Account Officer (raises applications, reminders, restructure requests) | Lagos |
+| credit.abuja@kuun.test | Account Officer | Abuja |
+| analyst@kuun.test | Credit Analyst (bureau check, risk rating, recommendation) | Whole organisation |
+| head.credit@kuun.test | Head of Credit (approves loans and restructures, loan products) | Whole organisation |
 
 ## Departments
 
@@ -82,9 +86,21 @@ npx supabase db reset       # or start over: rebuilds the database and reloads t
   bank statement import (Excel or CSV) with suggestions that learn from earlier postings, auto-matching and
   reconciliation sign-off; financial reports (profit and loss, financial position, cash flow, trial balance, general
   ledger, member balances, register, payables aging, bank reconciliations).
+- **Credit**: loan applications (customer, employment or business, amount, purpose, tenor and frequency, rate and
+  method, repayment mode, guarantors, collateral with valuation, documents and proforma invoice) that move from the
+  account officer to a credit analyst's appraisal (bureau check, risk rating, recommendation) to the Head of Credit's
+  decision, each step by a different person; loan products with limits and requirements; approved loans are paid out
+  by Accounts through a normal payment request, which activates the loan and fixes its repayment schedule (flat or
+  reducing balance; weekly, monthly, quarterly or at the end); repayments are receipted by Accounts against the loan
+  and the database splits them into interest and principal, oldest instalment first; arrears, missed repayments and
+  days past due; reminders for upcoming and overdue instalments; restructures approved by a second person; a dashboard
+  filterable by branch, officer, product, customer category and period; and reports (portfolio and PAR with suggested
+  provision, overdue loans, applications, approvals and disbursements, repayments against what fell due, officer
+  performance, repayments falling due). Seven demo loans cover every stage.
 - Every report downloads as Excel (.xlsx), PDF or CSV.
 - **Internal Audit**: read-only dashboard, exception checks (incomplete KYC, stale approvals, large transactions,
-  segregation breaches, unmatched bank lines, changes after approval, deletions), customer register, branch
+  segregation breaches, unmatched bank lines, changes after approval, deletions, overdue loans, stale loan applications,
+  approved loans not paid out), read-only access to the loan book, customer register, branch
   operations reports, the audit trail, and a per-record history showing every change with before and after values.
 
 On a real Supabase project, create the first system administrator by adding a user in Supabase Auth, then running in

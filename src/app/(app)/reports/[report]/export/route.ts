@@ -6,7 +6,7 @@ import { formatDateTime } from "@/lib/format";
 import { listDimensions, listOrg } from "@/lib/org";
 import { toCsv } from "@/lib/reports/csv";
 import { parseFilters } from "@/lib/reports/filters";
-import { findReport } from "@/lib/reports/registry";
+import { findReport, withLoadedOptions } from "@/lib/reports/registry";
 import { describeScope } from "@/lib/reports/scope";
 import { createClient } from "@/lib/supabase/server";
 
@@ -19,16 +19,18 @@ const FORMATS = {
 /** Downloads a report as Excel (.xlsx), PDF or CSV. Row level security still decides which rows are included. */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ report: string }> }) {
   const { report: key } = await params;
-  const report = findReport(key);
+  const found = findReport(key);
   const staff = await getCurrentStaff();
-  if (!report || !staff.permissions.has(report.permission)) return new NextResponse("Not found", { status: 404 });
+  if (!found || !staff.permissions.has(found.permission)) return new NextResponse("Not found", { status: 404 });
 
   const search = request.nextUrl.searchParams;
   const format = (search.get("format") ?? "csv") as keyof typeof FORMATS;
   if (!(format in FORMATS)) return new NextResponse("Unknown format", { status: 400 });
 
+  const supabase = await createClient();
+  const report = await withLoadedOptions(found, supabase);
   const filters = parseFilters(report, Object.fromEntries(search));
-  const [result, org, dimensions] = await Promise.all([report.run(await createClient(), filters), listOrg(), listDimensions()]);
+  const [result, org, dimensions] = await Promise.all([report.run(supabase, filters), listOrg(), listDimensions()]);
   const scope = describeScope(report, filters, { ...org, ...dimensions });
   const name = `${report.key}-${report.dates === "period" ? `${filters.from}-to-${filters.to}` : filters.to}.${format}`;
 

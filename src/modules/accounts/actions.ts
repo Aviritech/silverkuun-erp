@@ -86,6 +86,7 @@ const TRANSACTION_FIELDS = [
   "staff_id",
   "supplier_id",
   "supplier_bill_id",
+  "loan_id",
   "currency",
   "foreign_amount",
   "fx_rate",

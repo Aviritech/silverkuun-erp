@@ -5,6 +5,7 @@ import { Badge, ButtonLink, Card, EmptyState, PageHeader } from "@/components/ui
 import { requireModule } from "@/lib/auth/session";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import { listOrg } from "@/lib/org";
+import { createClient } from "@/lib/supabase/server";
 import {
   approveTransaction,
   declineTransaction,
@@ -33,7 +34,12 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
   const bundle = await getTransactionBundle(id);
   if (!bundle) notFound();
   const { txn, rule, bank, attachments, lines, staffName, memberName, department, product, supplier, bill } = bundle;
-  const [org, accounts] = await Promise.all([listOrg(), lines.length ? listLedgerAccounts() : Promise.resolve([])]);
+  const supabase = await createClient();
+  const [org, accounts, loan] = await Promise.all([
+    listOrg(),
+    lines.length ? listLedgerAccounts() : Promise.resolve([]),
+    txn.loan_id ? supabase.from("loans").select("id, loan_no").eq("id", txn.loan_id).maybeSingle().then((r) => r.data) : Promise.resolve(null),
+  ]);
   const branch = org.branches.find((b) => b.id === txn.branch_id)!;
   const accountName = new Map(accounts.map((a) => [a.code, a.name]));
   const can = (p: string) => staff.permissions.hasForBranch(p, branch);
@@ -46,7 +52,8 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
   const canPay = txn.direction === "payment" && txn.status === "approved" && can("accounts.payments.pay") && txn.approved_by !== staff.id;
   const status = FINANCE_STATUSES[txn.status];
   const supporting = attachments.filter((a) => a.kind === "supporting");
-  const needsEvidence = !txn.contribution_id && !txn.statement_line_id && supporting.length === 0;
+  const needsEvidence =
+    !txn.contribution_id && !txn.statement_line_id && !(txn.transaction_type === "loan_disbursement" && txn.loan_id) && supporting.length === 0;
 
   return (
     <div className="max-w-5xl space-y-6">
@@ -94,6 +101,20 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
           <Detail label="Member">{memberName}</Detail>
           <Detail label={txn.direction === "receipt" ? "Received from" : "Beneficiary"}>{txn.counterparty}</Detail>
           <Detail label="Reference">{txn.reference}</Detail>
+          {loan && (
+            <Detail label="Loan">
+              {staff.permissions.has("credit.read") ? (
+                <Link href={`/credit/loans/${loan.id}`} className="font-mono text-xs underline">
+                  {loan.loan_no}
+                </Link>
+              ) : (
+                <span className="font-mono text-xs">{loan.loan_no}</span>
+              )}
+              {txn.transaction_type === "loan_repayment" && txn.status !== "posted" && (
+                <span className="block text-xs text-zinc-500">The interest and principal split is set from the schedule when it posts.</span>
+              )}
+            </Detail>
+          )}
           {supplier && (
             <Detail label="Supplier">
               {supplier}

@@ -72,6 +72,7 @@ export type FinanceTransaction = {
   staff_id: string | null;
   supplier_id: string | null;
   supplier_bill_id: string | null;
+  loan_id: string | null;
   currency: string;
   foreign_amount: string | null;
   fx_rate: string | null;
@@ -135,6 +136,39 @@ export async function listLedgerAccounts(): Promise<LedgerAccount[]> {
 }
 
 /** Approved members the signed-in staff member can see, for linking receipts and payments. */
+/** A loan Accounts can pay out or take a repayment against. */
+export type LoanOption = {
+  id: string;
+  loan_no: string;
+  branch_id: string;
+  member_id: string;
+  member_name: string;
+  status: "approved" | "active";
+  approved_amount: string;
+  outstanding: number;
+  overdue: number;
+};
+
+/** Active loans (for repayments) and approved loans waiting to be paid out (for disbursements). */
+export async function listLoanOptions(): Promise<LoanOption[]> {
+  const supabase = await createClient();
+  const data = await rows<
+    { id: string; loan_no: string; branch_id: string; member_id: string; member_name: string; status: "approved" | "active"; approved_amount: string; outstanding_principal: string; outstanding_interest: string; overdue_amount: string }[]
+  >(
+    supabase
+      .from("loan_book")
+      .select("id, loan_no, branch_id, member_id, member_name, status, approved_amount, outstanding_principal, outstanding_interest, overdue_amount")
+      .in("status", ["approved", "active"])
+      .order("loan_no")
+      .limit(1000),
+  );
+  return data.map((l) => ({
+    ...l,
+    outstanding: Number(l.outstanding_principal) + Number(l.outstanding_interest),
+    overdue: Number(l.overdue_amount),
+  }));
+}
+
 export async function listMemberOptions(): Promise<MemberOption[]> {
   const supabase = await createClient();
   const data = await rows<{ id: string; first_name: string; middle_name: string | null; last_name: string; membership_no: string | null; branch_id: string }[]>(

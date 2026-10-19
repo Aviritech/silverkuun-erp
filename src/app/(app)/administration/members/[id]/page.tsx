@@ -1,7 +1,10 @@
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Badge, ButtonLink, Card, EmptyState, PageHeader } from "@/components/ui";
 import { requireModule } from "@/lib/auth/session";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
+import { createClient } from "@/lib/supabase/server";
+import { LOAN_STATUSES, type LoanStatus } from "@/modules/credit/constants";
 import {
   addPlan,
   approveMember,
@@ -59,6 +62,26 @@ export default async function MemberPage({ params }: { params: Promise<{ id: str
   const status = MEMBER_STATUSES[member.status];
   const planName = new Map(planTypes.map((p) => [p.code, p.name]));
   const reversed = new Set(contributions.filter((c) => c.reverses_id).map((c) => c.reverses_id));
+  const seesLoans = can("credit.read");
+  type MemberLoan = {
+    id: string;
+    loan_no: string;
+    status: LoanStatus;
+    product_name: string;
+    amount_requested: string;
+    approved_amount: string | null;
+    outstanding_principal: string;
+    outstanding_interest: string;
+    days_past_due: number;
+  };
+  const loanQuery = seesLoans
+    ? await (await createClient())
+        .from("loan_book")
+        .select("id, loan_no, status, product_name, amount_requested, approved_amount, outstanding_principal, outstanding_interest, days_past_due")
+        .eq("member_id", member.id)
+        .order("created_at", { ascending: false })
+    : null;
+  const loans = (loanQuery?.data ?? []) as MemberLoan[];
 
   return (
     <div className="max-w-5xl space-y-6">
@@ -324,6 +347,43 @@ export default async function MemberPage({ params }: { params: Promise<{ id: str
                 );
               })}
             </div>
+          )}
+        </Card>
+      )}
+
+      {seesLoans && member.status === "approved" && (
+        <Card
+          title="Loans"
+          actions={
+            can("credit.manage") && (
+              <ButtonLink href={`/credit/loans/new?member=${member.id}`} variant="secondary">
+                New loan application
+              </ButtonLink>
+            )
+          }
+        >
+          {loans.length === 0 ? (
+            <EmptyState>No loans yet.</EmptyState>
+          ) : (
+            <ul className="divide-y divide-zinc-100 text-sm">
+              {loans.map((l) => (
+                <li key={l.id} className="flex items-center justify-between gap-4 py-2">
+                  <span>
+                    <Link href={`/credit/loans/${l.id}`} className="font-mono text-xs underline">
+                      {l.loan_no}
+                    </Link>{" "}
+                    · {l.product_name} · {formatMoney(l.approved_amount ?? l.amount_requested)}
+                    {l.status === "active" && (
+                      <span className="block text-xs text-zinc-500">
+                        Owes {formatMoney(Number(l.outstanding_principal) + Number(l.outstanding_interest))}
+                        {l.days_past_due > 0 && <span className="text-red-700"> · {l.days_past_due} days overdue</span>}
+                      </span>
+                    )}
+                  </span>
+                  <Badge tone={LOAN_STATUSES[l.status].tone}>{LOAN_STATUSES[l.status].label}</Badge>
+                </li>
+              ))}
+            </ul>
           )}
         </Card>
       )}

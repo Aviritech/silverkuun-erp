@@ -18,13 +18,14 @@ export default async function AccountsPage() {
       return r.count ?? 0;
     });
 
-  const [toApprove, toPay, returned, draftJournals, awaitingPosting, unmatched, banks, balances, totals, org] = await Promise.all([
+  const [toApprove, toPay, returned, draftJournals, awaitingPosting, unmatched, toDisburse, banks, balances, totals, org] = await Promise.all([
     count(supabase.from("finance_transactions").select("id", { count: "exact", head: true }).eq("status", "submitted")),
     count(supabase.from("finance_transactions").select("id", { count: "exact", head: true }).eq("status", "approved")),
     count(supabase.from("finance_transactions").select("id", { count: "exact", head: true }).eq("status", "returned").eq("created_by", staff.id)),
     count(supabase.from("journal_entries").select("id", { count: "exact", head: true }).eq("status", "draft")),
     count(supabase.from("contributions_awaiting_posting").select("id", { count: "exact", head: true })),
     count(supabase.from("bank_statement_lines").select("id", { count: "exact", head: true }).eq("status", "unmatched")),
+    count(supabase.from("loans_awaiting_disbursement").select("id", { count: "exact", head: true })),
     listBankAccounts(),
     supabase.from("bank_account_balances").select("bank_account_id, ledger_balance"),
     supabase.rpc("account_balances", { p_from: startOfYear(), p_to: today() }),
@@ -45,6 +46,7 @@ export default async function AccountsPage() {
     { label: "Approved, waiting to be paid", value: toPay, href: "/accounts/transactions?status=approved", show: staff.permissions.has("accounts.payments.pay") },
     { label: "Returned to you", value: returned, href: "/accounts/transactions?status=returned", show: true },
     { label: "Contributions to post", value: awaitingPosting, href: "/accounts/contributions", show: staff.permissions.has("accounts.receipts.record") },
+    { label: "Loans to pay out", value: toDisburse, href: "/accounts/loans", show: staff.permissions.has("accounts.payments.request") },
     { label: "Draft journals", value: draftJournals, href: "/accounts/journals?status=draft", show: true },
     { label: "Unmatched bank lines", value: unmatched, href: "/accounts/bank", show: true },
   ].filter((q) => q.show);
