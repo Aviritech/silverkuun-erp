@@ -45,8 +45,18 @@ npx supabase db push         # apply migrations to the linked Supabase project
 npm run dev
 ```
 
-For local testing, `npx supabase start` (or `npx supabase db reset`) loads `supabase/seed.sql`: two branches and one
-test account per role, all with the password `Password123!`.
+For local testing, `npx supabase start` (or `npx supabase db reset`) loads `supabase/seed.sql`: two branches, one
+test account per role, and demo records in every department (members at each stage, contributions, a posted opening
+journal, a paid payment, a payment waiting for approval, and an imported bank statement). Every account uses the
+password `Password123!`.
+
+**After pulling new code, apply new migrations** before running the app, or pages fail with "This database is
+missing part of the ERP's schema":
+
+```bash
+npx supabase migration up   # applies new migrations and keeps your local data
+npx supabase db reset       # or start over: rebuilds the database and reloads the demo data
+```
 
 | Email | Role | Scope |
 | --- | --- | --- |
@@ -54,7 +64,23 @@ test account per role, all with the password `Password123!`.
 | officer.lagos@kuun.test | Administrative Officer | Lagos |
 | manager.lagos@kuun.test | Branch Manager | Lagos |
 | head.admin@kuun.test | Head of Administration | Whole organisation |
-| auditor@kuun.test | Internal Auditor | Whole organisation |
+| auditor@kuun.test | Internal Auditor (read-only; also reads Accounts) | Whole organisation |
+| accountant.lagos@kuun.test | Regional Accountant (records, requests, approves, pays, reconciles) | Lagos |
+| receipts.abuja@kuun.test | Receipts Accountant | Abuja |
+| payments.abuja@kuun.test | Payments Accountant | Abuja |
+| controller@kuun.test | Financial Controller (approves, posts journals, settings) | Whole organisation |
+
+## Departments
+
+- **Administration**: member files, KYC documents, plans and contributions, with branch manager approval.
+- **Accounts**: receipts and payment requests with evidence and maker-checker approval, posting to a double-entry
+  ledger through configurable posting rules; verified Administration contributions flow in to be posted; manual
+  journals with reversal; bank statement import (CSV), auto-matching and reconciliation sign-off; financial reports
+  (profit and loss, financial position, cash flow, trial balance, general ledger, member balances) with CSV download
+  and print-to-PDF.
+- **Internal Audit**: read-only dashboard, exception checks (incomplete KYC, stale approvals, large transactions,
+  segregation breaches, unmatched bank lines, changes after approval, deletions), customer register, branch
+  operations reports, the audit trail, and a per-record history showing every change with before and after values.
 
 On a real Supabase project, create the first system administrator by adding a user in Supabase Auth, then running in
 the SQL editor:

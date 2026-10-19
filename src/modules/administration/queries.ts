@@ -2,6 +2,7 @@ import "server-only";
 import type { PermissionSet } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import type { DocumentType, MemberStatus } from "./constants";
+import { dbFailure } from "@/lib/db-errors";
 
 export type Branch = { id: string; code: string; name: string; region_id: string };
 
@@ -86,7 +87,7 @@ export function fullName(m: Pick<Member, "title" | "first_name" | "middle_name" 
 export async function listBranches(): Promise<Branch[]> {
   const supabase = await createClient();
   const { data, error } = await supabase.from("branches").select("id, code, name, region_id").eq("is_active", true).order("name");
-  if (error) throw error;
+  if (error) throw dbFailure(error);
   return data;
 }
 
@@ -98,7 +99,7 @@ export async function branchesWith(permissions: PermissionSet, permission: strin
 export async function getMemberBundle(memberId: string) {
   const supabase = await createClient();
   const { data: member, error } = await supabase.from("members").select("*").eq("id", memberId).maybeSingle();
-  if (error) throw error;
+  if (error) throw dbFailure(error);
   if (!member) return null;
 
   const [documents, plans, totals, contributions, plansCatalog] = await Promise.all([
@@ -108,7 +109,7 @@ export async function getMemberBundle(memberId: string) {
     supabase.from("contributions").select("*").eq("member_id", memberId).order("paid_on").order("recorded_at"),
     supabase.from("plan_types").select("code, name").eq("is_active", true).order("sort_order"),
   ]);
-  for (const r of [documents, plans, totals, contributions, plansCatalog]) if (r.error) throw r.error;
+  for (const r of [documents, plans, totals, contributions, plansCatalog]) if (r.error) throw dbFailure(r.error);
 
   const docs = (documents.data ?? []) as MemberDocument[];
   const signed = docs.length
@@ -139,5 +140,6 @@ export async function memberCounts(): Promise<Record<MemberStatus, number>> {
   const results = await Promise.all(
     statuses.map((s) => supabase.from("members").select("id", { count: "exact", head: true }).eq("status", s)),
   );
+  for (const r of results) if (r.error) throw dbFailure(r.error);
   return Object.fromEntries(statuses.map((s, i) => [s, results[i].count ?? 0])) as Record<MemberStatus, number>;
 }

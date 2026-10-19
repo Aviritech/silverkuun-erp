@@ -1,0 +1,65 @@
+export const EXCEPTION_CATEGORIES = {
+  incomplete_kyc: "Incomplete KYC",
+  stale_approval: "Member file waiting for approval",
+  unverified_payment: "Unverified contribution",
+  adjustment: "Adjustment or reversal",
+  approved_record_changed: "Approved record changed",
+  large_transaction: "Large transaction",
+  segregation_breach: "Same person prepared and approved",
+  unmatched_bank_line: "Unmatched bank line",
+  unidentified_receipt: "Unidentified deposit not cleared",
+  stale_finance_approval: "Finance approval overdue",
+  unbalanced_journal: "Unbalanced journal",
+  deletion: "Record deleted",
+} as const;
+export type ExceptionCategory = keyof typeof EXCEPTION_CATEGORIES;
+
+export const SEVERITIES = {
+  high: { label: "High", tone: "red" },
+  medium: { label: "Medium", tone: "amber" },
+  low: { label: "Low", tone: "gray" },
+} as const;
+export type Severity = keyof typeof SEVERITIES;
+
+/** Contributions or finance transactions at or above this amount are flagged for review. */
+export const LARGE_TRANSACTION_NAIRA = 1_000_000;
+
+/** Where to open a record an exception or audit entry points at. */
+export function recordHref(recordType: string, recordId: string | null): string | undefined {
+  if (!recordId) return undefined;
+  switch (recordType) {
+    case "member":
+    case "members":
+      return `/administration/members/${recordId}`;
+    case "finance_transaction":
+    case "finance_transactions":
+      return `/accounts/transactions/${recordId}`;
+    case "journal_entry":
+    case "journal_entries":
+      return `/accounts/journals/${recordId}`;
+    default:
+      return `/internal-audit/trace/${recordId}`;
+  }
+}
+
+export const AUDITED_TABLES: Record<string, string> = {
+  members: "Members",
+  member_documents: "Member documents",
+  member_plans: "Member plans",
+  contributions: "Contributions",
+  finance_transactions: "Receipts and payments",
+  finance_attachments: "Finance evidence",
+  journal_entries: "Journal entries",
+  journal_lines: "Journal lines",
+  bank_accounts: "Bank accounts",
+  bank_statement_imports: "Statement imports",
+  bank_statement_lines: "Statement lines",
+  bank_matches: "Bank matches",
+  bank_reconciliations: "Bank reconciliations",
+  ledger_accounts: "Chart of accounts",
+  posting_rules: "Posting rules",
+  staff: "Staff",
+  staff_roles: "Staff roles",
+  branches: "Branches",
+  regions: "Regions",
+};

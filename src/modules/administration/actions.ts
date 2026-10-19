@@ -3,6 +3,7 @@
 import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import type { ActionState } from "@/lib/action-state";
 import { requireModule } from "@/lib/auth/session";
 import { friendlyDbError } from "@/lib/db-errors";
 import { createClient } from "@/lib/supabase/server";
@@ -19,8 +20,7 @@ import {
   reversalSchema,
 } from "./schemas";
 
-/** What every form action returns. Row level security and the database functions make the final decision. */
-export type ActionState = { error?: string; fieldErrors?: Record<string, string>; ok?: boolean };
+export type { ActionState };
 
 const MEMBER_FIELDS = [
   "branch_id",

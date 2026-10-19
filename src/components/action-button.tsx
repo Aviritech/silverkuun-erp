@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { Button } from "@/components/ui";
-import type { ActionState } from "../actions";
+import type { ActionState } from "@/lib/action-state";
 
 /** A button that runs a server action, asks for confirmation if needed, and shows any error beside it. */
 export function ActionButton({

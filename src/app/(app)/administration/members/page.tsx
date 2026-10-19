@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 import { MEMBER_STATUSES, type MemberStatus } from "@/modules/administration/constants";
 import { administrationModule } from "@/modules/administration/module";
 import { fullName, listBranches, type Member } from "@/modules/administration/queries";
+import { dbFailure } from "@/lib/db-errors";
 
 const PAGE_SIZE = 50;
 
@@ -27,7 +28,7 @@ export default async function MembersPage({ searchParams }: { searchParams: Prom
     );
   }
   const [{ data, error }, branches] = await Promise.all([query, listBranches()]);
-  if (error) throw error;
+  if (error) throw dbFailure(error);
   const branchName = new Map(branches.map((b) => [b.id, b.name]));
   const members = data as Member[];
 

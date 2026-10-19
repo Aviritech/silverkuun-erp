@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { Button, Field, FormError, Input, Select } from "@/components/ui";
-import type { ActionState } from "../actions";
+import type { ActionState } from "@/lib/action-state";
 import { DOCUMENT_TYPES } from "../constants";
 
 export function DocumentUpload({ action }: { action: (prev: ActionState, formData: FormData) => Promise<ActionState> }) {

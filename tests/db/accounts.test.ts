@@ -1,0 +1,482 @@
+import type { PGlite } from "@electric-sql/pglite";
+import { beforeAll, describe, expect, it } from "vitest";
+import { asUser, createTestDatabase } from "./harness";
+
+const OFFICER = "00000000-0000-0000-0000-0000000000a1";
+const MANAGER = "00000000-0000-0000-0000-0000000000b1";
+const LAGOS_ACCOUNTANT = "00000000-0000-0000-0000-0000000000e1";
+const LAGOS_ACCOUNTANT_2 = "00000000-0000-0000-0000-0000000000e2";
+const ABUJA_RECEIPTS = "00000000-0000-0000-0000-0000000000e3";
+const CONTROLLER = "00000000-0000-0000-0000-0000000000f1";
+const AUDITOR = "00000000-0000-0000-0000-0000000000d1";
+
+let db: PGlite;
+let lagos: string;
+let abuja: string;
+let lagosBank: string;
+let abujaBank: string;
+let memberId: string;
+let ninCounter = 30000000000;
+let refCounter = 1;
+
+async function addStaff(id: string, department: string, role: string, branchId: string | null) {
+  await db.query("insert into auth.users (id, email) values ($1, $2)", [id, `${id}@kuun.test`]);
+  await db.query("insert into staff (id, full_name, email, department_code) values ($1::uuid, $1::text, $2, $3)", [
+    id,
+    `${id}@kuun.test`,
+    department,
+  ]);
+  await db.query("insert into staff_roles (staff_id, role_code, branch_id) values ($1, $2, $3)", [id, role, branchId]);
+}
+
+/** Runs as the given staff member and commits, so later steps see the result. */
+async function commitAs<T>(userId: string, fn: () => Promise<T>): Promise<T> {
+  await db.exec(`begin; set local role authenticated; set local request.jwt.claim.sub = '${userId}';`);
+  try {
+    const result = await fn();
+    await db.exec("commit");
+    return result;
+  } catch (error) {
+    await db.exec("rollback");
+    throw error;
+  }
+}
+
+async function approvedMember(): Promise<string> {
+  const nin = String(ninCounter++);
+  const id = (
+    await commitAs(OFFICER, () =>
+      db.query<{ id: string }>(
+        `insert into members (branch_id, first_name, last_name, phone, address, nin, id_type, id_number)
+         values ($1, 'Ada', 'Obi', '08030000000', '1 Marina, Lagos', $2, 'national_id', 'A123') returning id`,
+        [lagos, nin],
+      ),
+    )
+  ).rows[0].id;
+  for (const t of ["kyc_form", "nin_slip", "means_of_id", "utility_bill"]) {
+    await commitAs(OFFICER, () =>
+      db.query(
+        `insert into member_documents (member_id, branch_id, document_type, file_name, storage_path, mime_type, size_bytes)
+         values ($1, $2, $3, 'f.pdf', $4, 'application/pdf', 1000)`,
+        [id, lagos, t, `${lagos}/${id}/${t}-${Math.random()}.pdf`],
+      ),
+    );
+  }
+  await commitAs(OFFICER, () => db.query("select submit_member($1)", [id]));
+  await commitAs(MANAGER, () => db.query("select approve_member($1)", [id]));
+  return id;
+}
+
+type Txn = { id: string; status: string; branch_id: string; journal_entry_id: string | null };
+
+async function draft(
+  by: string,
+  fields: { direction: "receipt" | "payment"; type: string; amount: number; bank?: string; member?: string | null; interest?: number },
+): Promise<Txn> {
+  const res = await commitAs(by, () =>
+    db.query<Txn>(
+      `insert into finance_transactions (direction, transaction_type, txn_date, amount, interest_amount, bank_account_id, member_id,
+         reference, description, branch_id)
+       values ($1, $2, current_date, $3, $4, $5, $6, $7, 'Test', $8) returning id, status, branch_id, journal_entry_id`,
+      [
+        fields.direction,
+        fields.type,
+        fields.amount,
+        fields.interest ?? 0,
+        fields.bank ?? lagosBank,
+        fields.member ?? null,
+        `REF-${refCounter++}`,
+        lagos,
+      ],
+    ),
+  );
+  return res.rows[0];
+}
+
+async function attach(by: string, txn: Txn, kind = "supporting") {
+  await commitAs(by, () =>
+    db.query(
+      `insert into finance_attachments (transaction_id, branch_id, kind, file_name, storage_path, mime_type, size_bytes)
+       values ($1, $2, $3, 'e.pdf', $4, 'application/pdf', 100)`,
+      [txn.id, txn.branch_id, kind, `${txn.branch_id}/${txn.id}/${Math.random()}.pdf`],
+    ),
+  );
+}
+
+async function journalLines(entryId: string) {
+  return (
+    await db.query<{ account_code: string; debit: string; credit: string }>(
+      "select account_code, debit, credit from journal_lines where entry_id = $1 order by line_no",
+      [entryId],
+    )
+  ).rows;
+}
+
+async function txnRow(id: string) {
+  return (await db.query<Txn>("select id, status, branch_id, journal_entry_id from finance_transactions where id = $1", [id])).rows[0];
+}
+
+beforeAll(async () => {
+  db = await createTestDatabase();
+  const r1 = await db.query<{ id: string }>("insert into regions (code, name) values ('SW', 'South West') returning id");
+  const r2 = await db.query<{ id: string }>("insert into regions (code, name) values ('NC', 'North Central') returning id");
+  lagos = (await db.query<{ id: string }>("insert into branches (region_id, code, name) values ($1, 'LAG', 'Lagos') returning id", [r1.rows[0].id])).rows[0].id;
+  abuja = (await db.query<{ id: string }>("insert into branches (region_id, code, name) values ($1, 'ABJ', 'Abuja') returning id", [r2.rows[0].id])).rows[0].id;
+
+  await addStaff(OFFICER, "administration", "admin_officer", lagos);
+  await addStaff(MANAGER, "branch_operations", "branch_manager", lagos);
+  await addStaff(LAGOS_ACCOUNTANT, "accounts", "regional_accountant", lagos);
+  await addStaff(LAGOS_ACCOUNTANT_2, "accounts", "regional_accountant", lagos);
+  await addStaff(ABUJA_RECEIPTS, "accounts", "receipts_accountant", abuja);
+  await addStaff(CONTROLLER, "accounts", "financial_controller", null);
+  await addStaff(AUDITOR, "internal_audit", "internal_auditor", null);
+
+  await db.exec(`
+    insert into ledger_accounts (code, name, account_type, parent_code, cash_flow_class) values
+      ('1131', 'Lagos bank', 'asset', '1130', 'cash'), ('1132', 'Abuja bank', 'asset', '1130', 'cash');
+  `);
+  lagosBank = (
+    await db.query<{ id: string }>(
+      "insert into bank_accounts (branch_id, name, ledger_account_code) values ($1, 'Lagos', '1131') returning id",
+      [lagos],
+    )
+  ).rows[0].id;
+  abujaBank = (
+    await db.query<{ id: string }>(
+      "insert into bank_accounts (branch_id, name, ledger_account_code) values ($1, 'Abuja', '1132') returning id",
+      [abuja],
+    )
+  ).rows[0].id;
+  memberId = await approvedMember();
+});
+
+describe("receipts", () => {
+  it("needs evidence, then posts a balanced journal to the member's savings when someone else approves", async () => {
+    const txn = await draft(LAGOS_ACCOUNTANT, { direction: "receipt", type: "member_savings", amount: 50000, member: memberId });
+    expect(txn.status).toBe("draft");
+
+    await expect(commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [txn.id]))).rejects.toThrow(
+      /supporting evidence/,
+    );
+    await attach(LAGOS_ACCOUNTANT, txn);
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [txn.id]));
+
+    await expect(commitAs(LAGOS_ACCOUNTANT, () => db.query("select approve_finance_transaction($1)", [txn.id]))).rejects.toThrow(
+      /someone else must approve/,
+    );
+    await commitAs(CONTROLLER, () => db.query("select approve_finance_transaction($1)", [txn.id]));
+
+    const posted = await txnRow(txn.id);
+    expect(posted.status).toBe("posted");
+    expect(await journalLines(posted.journal_entry_id!)).toEqual([
+      { account_code: "1131", debit: "50000.00", credit: "0.00" },
+      { account_code: "2110", debit: "0.00", credit: "50000.00" },
+    ]);
+    const balance = await asUser(db, CONTROLLER, (tx) =>
+      tx.query<{ savings: string }>("select savings from member_balances(current_date) where member_id = $1", [memberId]),
+    );
+    expect(balance.rows[0].savings).toBe("50000.00");
+  });
+
+  it("splits a loan repayment between principal and interest income", async () => {
+    const txn = await draft(LAGOS_ACCOUNTANT, { direction: "receipt", type: "loan_repayment", amount: 11000, interest: 1000, member: memberId });
+    await attach(LAGOS_ACCOUNTANT, txn);
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [txn.id]));
+    await commitAs(LAGOS_ACCOUNTANT_2, () => db.query("select approve_finance_transaction($1)", [txn.id]));
+    expect(await journalLines((await txnRow(txn.id)).journal_entry_id!)).toEqual([
+      { account_code: "1131", debit: "11000.00", credit: "0.00" },
+      { account_code: "1210", debit: "0.00", credit: "10000.00" },
+      { account_code: "4100", debit: "0.00", credit: "1000.00" },
+    ]);
+  });
+
+  it("requires a member for member savings", async () => {
+    await expect(draft(LAGOS_ACCOUNTANT, { direction: "receipt", type: "member_savings", amount: 10 })).rejects.toThrow(/choose the member/);
+  });
+
+  it("refuses a reference already used on the same bank account", async () => {
+    await commitAs(LAGOS_ACCOUNTANT, () =>
+      db.query(
+        `insert into finance_transactions (direction, transaction_type, txn_date, amount, bank_account_id, reference, description, branch_id)
+         values ('receipt', 'fee_income', current_date, 10, $1, 'DUP-1', 'x', $2)`,
+        [lagosBank, lagos],
+      ),
+    );
+    await expect(
+      commitAs(LAGOS_ACCOUNTANT, () =>
+        db.query(
+          `insert into finance_transactions (direction, transaction_type, txn_date, amount, bank_account_id, reference, description, branch_id)
+           values ('receipt', 'fee_income', current_date, 10, $1, 'dup-1', 'x', $2)`,
+          [lagosBank, lagos],
+        ),
+      ),
+    ).rejects.toThrow(/duplicate key/);
+  });
+
+  it("keeps branches apart: an Abuja accountant can't record or see Lagos receipts", async () => {
+    await expect(draft(ABUJA_RECEIPTS, { direction: "receipt", type: "fee_income", amount: 10, bank: lagosBank })).rejects.toThrow(
+      /row-level security/,
+    );
+    const rows = await asUser(db, ABUJA_RECEIPTS, (tx) => tx.query("select id from finance_transactions where branch_id = $1", [lagos]));
+    expect(rows.rows).toHaveLength(0);
+    const own = await draft(ABUJA_RECEIPTS, { direction: "receipt", type: "fee_income", amount: 10, bank: abujaBank });
+    expect(own.branch_id).toBe(abuja);
+  });
+
+  it("only takes verified Administration contributions, for the same amount and member", async () => {
+    const plan = await commitAs(OFFICER, () =>
+      db.query<{ id: string }>(
+        `insert into member_plans (member_id, branch_id, plan_type, contribution_amount, contribution_frequency, start_date, maturity_date)
+         values ($1, $2, 'gold', 5000, 'monthly', current_date, current_date + 365) returning id`,
+        [memberId, lagos],
+      ),
+    );
+    const contribution = await commitAs(OFFICER, () =>
+      db.query<{ id: string }>(
+        `insert into contributions (member_plan_id, member_id, branch_id, kind, amount, paid_on, payment_method)
+         values ($1, $2, $3, 'scheduled', 5000, current_date, 'cash') returning id`,
+        [plan.rows[0].id, memberId, lagos],
+      ),
+    );
+    const insert = () =>
+      commitAs(LAGOS_ACCOUNTANT, () =>
+        db.query(
+          `insert into finance_transactions (direction, transaction_type, txn_date, amount, bank_account_id, member_id, description,
+             contribution_id, branch_id)
+           values ('receipt', 'member_savings', current_date, 5000, $1, $2, 'Contribution', $3, $4)`,
+          [lagosBank, memberId, contribution.rows[0].id, lagos],
+        ),
+      );
+    await expect(insert()).rejects.toThrow(/verified by Administration/);
+    await commitAs(MANAGER, () => db.query("select verify_contribution($1)", [contribution.rows[0].id]));
+    const before = await asUser(db, LAGOS_ACCOUNTANT, (tx) => tx.query("select id from contributions_awaiting_posting"));
+    expect(before.rows).toHaveLength(1);
+    await insert();
+    const after = await asUser(db, LAGOS_ACCOUNTANT, (tx) => tx.query("select id from contributions_awaiting_posting"));
+    expect(after.rows).toHaveLength(0);
+  });
+});
+
+describe("payments", () => {
+  it("can't be paid by the approver or without proof, and posts expense against the bank once paid", async () => {
+    const txn = await draft(LAGOS_ACCOUNTANT, { direction: "payment", type: "admin_expense", amount: 2500 });
+    await attach(LAGOS_ACCOUNTANT, txn);
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [txn.id]));
+    await commitAs(LAGOS_ACCOUNTANT_2, () => db.query("select approve_finance_transaction($1)", [txn.id]));
+    expect((await txnRow(txn.id)).status).toBe("approved");
+
+    await expect(commitAs(LAGOS_ACCOUNTANT, () => db.query("select pay_finance_transaction($1)", [txn.id]))).rejects.toThrow(
+      /proof of payment/,
+    );
+    await attach(LAGOS_ACCOUNTANT_2, txn, "payment_proof");
+    await expect(commitAs(LAGOS_ACCOUNTANT_2, () => db.query("select pay_finance_transaction($1)", [txn.id]))).rejects.toThrow(
+      /you approved this payment/,
+    );
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select pay_finance_transaction($1)", [txn.id]));
+    expect(await journalLines((await txnRow(txn.id)).journal_entry_id!)).toEqual([
+      { account_code: "5300", debit: "2500.00", credit: "0.00" },
+      { account_code: "1131", debit: "0.00", credit: "2500.00" },
+    ]);
+  });
+
+  it("can be returned with a reason and edited again by its owner only", async () => {
+    const txn = await draft(LAGOS_ACCOUNTANT, { direction: "payment", type: "other_expense", amount: 100 });
+    await attach(LAGOS_ACCOUNTANT, txn);
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [txn.id]));
+    const whileSubmitted = await asUser(db, LAGOS_ACCOUNTANT, (tx) =>
+      tx.query("update finance_transactions set amount = 1 where id = $1", [txn.id]),
+    );
+    expect(whileSubmitted.affectedRows).toBe(0);
+    await commitAs(CONTROLLER, () => db.query("select decline_finance_transaction($1, 'returned', 'Wrong amount')", [txn.id]));
+    const other = await asUser(db, LAGOS_ACCOUNTANT_2, (tx) =>
+      tx.query("update finance_transactions set amount = 90 where id = $1", [txn.id]),
+    );
+    expect(other.affectedRows).toBe(0);
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("update finance_transactions set amount = 90 where id = $1", [txn.id]));
+    await expect(
+      commitAs(LAGOS_ACCOUNTANT, () => db.query("update finance_transactions set status = 'posted' where id = $1", [txn.id])),
+    ).rejects.toThrow(/approval workflow/);
+  });
+});
+
+describe("journals", () => {
+  async function manualEntry(lines: [string, number, number][], by = LAGOS_ACCOUNTANT): Promise<string> {
+    const entry = await commitAs(by, () =>
+      db.query<{ id: string }>(
+        "insert into journal_entries (branch_id, entry_date, description) values ($1, current_date, 'Manual') returning id",
+        [lagos],
+      ),
+    );
+    const id = entry.rows[0].id;
+    for (const [i, [account, debit, credit]] of lines.entries()) {
+      await commitAs(by, () =>
+        db.query("insert into journal_lines (entry_id, line_no, branch_id, account_code, debit, credit) values ($1, $2, $3, $4, $5, $6)", [
+          id,
+          i,
+          lagos,
+          account,
+          debit,
+          credit,
+        ]),
+      );
+    }
+    return id;
+  }
+
+  it("won't post an unbalanced entry, or let the preparer post their own", async () => {
+    const unbalanced = await manualEntry([
+      ["5800", 100, 0],
+      ["1131", 0, 90],
+    ]);
+    await expect(commitAs(CONTROLLER, () => db.query("select post_journal_entry($1)", [unbalanced]))).rejects.toThrow(/must equal credits/);
+
+    const balanced = await manualEntry([
+      ["5800", 100, 0],
+      ["1131", 0, 100],
+    ]);
+    await expect(commitAs(LAGOS_ACCOUNTANT, () => db.query("select post_journal_entry($1)", [balanced]))).rejects.toThrow();
+    await commitAs(CONTROLLER, () => db.query("select post_journal_entry($1)", [balanced]));
+  });
+
+  it("refuses postings to group headings", async () => {
+    await expect(manualEntry([["1100", 100, 0]])).rejects.toThrow(/group heading/);
+  });
+
+  it("locks posted entries and corrects them by reversal, marking the transaction reversed", async () => {
+    const txn = await draft(LAGOS_ACCOUNTANT, { direction: "receipt", type: "other_income", amount: 700 });
+    await attach(LAGOS_ACCOUNTANT, txn);
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [txn.id]));
+    await commitAs(CONTROLLER, () => db.query("select approve_finance_transaction($1)", [txn.id]));
+    const entryId = (await txnRow(txn.id)).journal_entry_id!;
+
+    const deleted = await asUser(db, CONTROLLER, (tx) => tx.query("delete from journal_entries where id = $1", [entryId]));
+    expect(deleted.affectedRows).toBe(0);
+    await expect(db.query("delete from journal_entries where id = $1", [entryId])).rejects.toThrow(/never deleted/);
+    const lineUpdate = await asUser(db, CONTROLLER, (tx) => tx.query("update journal_lines set debit = 1 where entry_id = $1", [entryId]));
+    expect(lineUpdate.affectedRows).toBe(0);
+
+    await commitAs(CONTROLLER, () => db.query("select reverse_journal_entry($1, 'Posted to the wrong account')", [entryId]));
+    expect((await txnRow(txn.id)).status).toBe("reversed");
+    const net = await db.query<{ net: string }>(
+      `select sum(l.debit - l.credit)::text as net from journal_lines l join journal_entries e on e.id = l.entry_id
+       where e.id = $1 or e.reverses_entry_id = $1 group by l.account_code limit 1`,
+      [entryId],
+    );
+    expect(Number(net.rows[0].net)).toBe(0);
+    await expect(commitAs(CONTROLLER, () => db.query("select reverse_journal_entry($1, 'again')", [entryId]))).rejects.toThrow(
+      /already been reversed/,
+    );
+  });
+
+  it("keeps the trial balance balanced", async () => {
+    const tb = await asUser(db, CONTROLLER, (tx) =>
+      tx.query<{ debit: string; credit: string }>("select sum(debit)::text as debit, sum(credit)::text as credit from account_balances('2000-01-01', current_date)"),
+    );
+    expect(tb.rows[0].debit).toBe(tb.rows[0].credit);
+  });
+});
+
+describe("bank reconciliation", () => {
+  it("imports a statement once, skips duplicate lines, auto-matches safe pairs and reconciles to zero", async () => {
+    const txn = await draft(LAGOS_ACCOUNTANT, { direction: "receipt", type: "fee_income", amount: 4321 });
+    await attach(LAGOS_ACCOUNTANT, txn);
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [txn.id]));
+    await commitAs(CONTROLLER, () => db.query("select approve_finance_transaction($1)", [txn.id]));
+
+    const lines = JSON.stringify([
+      { date: new Date().toISOString().slice(0, 10), description: "FEE RECEIVED", reference: "X1", amount: 4321, balance: 4321 },
+      { date: new Date().toISOString().slice(0, 10), description: "SMS ALERT CHARGES", reference: null, amount: -50, balance: 4271 },
+    ]);
+    const imported = await commitAs(LAGOS_ACCOUNTANT, () =>
+      db.query<{ line_count: number }>("select * from import_bank_statement($1, 's.csv', null, 'sha-1', $2::jsonb)", [lagosBank, lines]),
+    );
+    expect(imported.rows[0].line_count).toBe(2);
+
+    await expect(
+      commitAs(LAGOS_ACCOUNTANT, () => db.query("select import_bank_statement($1, 's.csv', null, 'sha-1', $2::jsonb)", [lagosBank, lines])),
+    ).rejects.toThrow(/already been imported/);
+    const again = await commitAs(LAGOS_ACCOUNTANT, () =>
+      db.query<{ line_count: number; duplicate_count: number }>(
+        "select * from import_bank_statement($1, 's2.csv', null, 'sha-2', $2::jsonb)",
+        [lagosBank, lines],
+      ),
+    );
+    expect(again.rows[0]).toMatchObject({ line_count: 0, duplicate_count: 2 });
+
+    const charge = await db.query<{ suggested_type: string }>("select suggested_type from bank_statement_lines where amount = -50");
+    expect(charge.rows[0].suggested_type).toBe("bank_charges");
+
+    const matched = await commitAs(LAGOS_ACCOUNTANT, () => db.query<{ n: number }>("select auto_match_bank_lines($1) as n", [lagosBank]));
+    expect(matched.rows[0].n).toBe(1);
+
+    // The bank charge isn't in the books yet: posting it from the statement line matches it automatically.
+    const chargeLine = await db.query<{ id: string }>("select id from bank_statement_lines where amount = -50");
+    const fee = await commitAs(LAGOS_ACCOUNTANT, () =>
+      db.query<{ id: string }>(
+        `insert into finance_transactions (direction, transaction_type, txn_date, amount, bank_account_id, description, statement_line_id, branch_id)
+         values ('payment', 'bank_charges', current_date, 50, $1, 'SMS alerts', $2, $3) returning id`,
+        [lagosBank, chargeLine.rows[0].id, lagos],
+      ),
+    );
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [fee.rows[0].id]));
+    await commitAs(CONTROLLER, () => db.query("select approve_finance_transaction($1)", [fee.rows[0].id]));
+    await attach(LAGOS_ACCOUNTANT_2, { ...(await txnRow(fee.rows[0].id)) }, "payment_proof");
+    await commitAs(LAGOS_ACCOUNTANT_2, () => db.query("select pay_finance_transaction($1)", [fee.rows[0].id]));
+    const line = await db.query<{ status: string }>("select status from bank_statement_lines where id = $1", [chargeLine.rows[0].id]);
+    expect(line.rows[0].status).toBe("matched");
+  });
+
+  it("won't complete a reconciliation with an unexplained difference, or by its preparer", async () => {
+    const rec = await commitAs(LAGOS_ACCOUNTANT, () =>
+      db.query<{ id: string; difference: string }>(
+        "select * from prepare_bank_reconciliation($1, current_date, 999999)",
+        [lagosBank],
+      ),
+    );
+    expect(Number(rec.rows[0].difference)).not.toBe(0);
+    await expect(commitAs(LAGOS_ACCOUNTANT_2, () => db.query("select complete_bank_reconciliation($1)", [rec.rows[0].id]))).rejects.toThrow(
+      /document the reconciling items/,
+    );
+    await expect(commitAs(LAGOS_ACCOUNTANT, () => db.query("select complete_bank_reconciliation($1)", [rec.rows[0].id]))).rejects.toThrow(
+      /someone else must review/,
+    );
+  });
+});
+
+describe("internal audit access", () => {
+  it("lets the auditor read the books but not change them", async () => {
+    const rows = await asUser(db, AUDITOR, (tx) => tx.query("select id from finance_transactions"));
+    expect(rows.rows.length).toBeGreaterThan(0);
+    await expect(draft(AUDITOR, { direction: "receipt", type: "fee_income", amount: 1 })).rejects.toThrow(/row-level security/);
+    const rule = await asUser(db, AUDITOR, (tx) => tx.query("update posting_rules set credit_account = '4400' where transaction_type = 'fee_income'"));
+    expect(rule.affectedRows).toBe(0);
+  });
+
+  it("flags incomplete KYC and reversals as exceptions for the auditor", async () => {
+    await commitAs(OFFICER, () =>
+      db.query(
+        `insert into members (branch_id, first_name, last_name, phone, address, nin, id_type, id_number, created_at)
+         values ($1, 'No', 'Docs', '08030000000', 'Ikeja', $2, 'national_id', 'Z1', now() - interval '30 days')`,
+        [lagos, String(ninCounter++)],
+      ),
+    );
+    const found = await asUser(db, AUDITOR, (tx) => tx.query<{ category: string }>("select distinct category from audit_exceptions()"));
+    const categories = found.rows.map((r) => r.category);
+    expect(categories).toContain("incomplete_kyc");
+    expect(categories).toContain("adjustment");
+  });
+
+  it("summarises branch activity and the customer register within the caller's branches", async () => {
+    const ops = await asUser(db, AUDITOR, (tx) =>
+      tx.query<{ receipts_total: string }>(
+        "select sum(receipts_total) as receipts_total from branch_operations(current_date - 30, current_date, 'month') where branch_id = $1",
+        [lagos],
+      ),
+    );
+    expect(Number(ops.rows[0].receipts_total)).toBeGreaterThan(0);
+    const register = await asUser(db, AUDITOR, (tx) => tx.query("select member_id from customer_register()"));
+    expect(register.rows.length).toBeGreaterThan(1);
+    const abujaView = await asUser(db, ABUJA_RECEIPTS, (tx) => tx.query("select member_id from customer_register()"));
+    expect(abujaView.rows).toHaveLength(0);
+  });
+});

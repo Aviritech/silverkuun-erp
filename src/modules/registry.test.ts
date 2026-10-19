@@ -12,7 +12,7 @@ describe("visibleModules", () => {
 
   it("hides nav links that need a permission the staff member lacks", () => {
     const visible = visibleModules(new PermissionSet([grant("module.internal_audit")]));
-    expect(visible[0].nav.map((n) => n.label)).toEqual(["Overview"]);
+    expect(visible[0].nav.map((n) => n.label)).toEqual(["Dashboard", "Exceptions", "Customer register", "Branch reports"]);
   });
 
   it("gives every module a unique department, path and permission", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { friendlyDbError } from "./db-errors";
+import { dbFailure, friendlyDbError } from "./db-errors";
 
 describe("friendlyDbError", () => {
   it("passes through messages our database raises for staff", () => {
@@ -23,5 +23,19 @@ describe("friendlyDbError", () => {
     expect(friendlyDbError({ code: "42501", message: 'new row violates row-level security policy for table "members"' })).toBe(
       "You don't have permission to do that.",
     );
+  });
+});
+
+describe("dbFailure", () => {
+  it("returns a real Error, so the error page shows a message instead of a raw object", () => {
+    const e = dbFailure({ code: "23514", message: "boom" });
+    expect(e).toBeInstanceOf(Error);
+    expect(e.message).toBe("Database error 23514: boom");
+  });
+
+  it("tells the developer to apply migrations when a table is missing", () => {
+    const e = dbFailure({ code: "PGRST205", message: "Could not find the table 'public.members' in the schema cache" });
+    expect(e.message).toMatch(/public\.members/);
+    expect(e.message).toMatch(/supabase migration up/);
   });
 });

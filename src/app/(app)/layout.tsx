@@ -9,7 +9,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
-      <aside className="border-b border-zinc-200 bg-white md:w-60 md:border-b-0 md:border-r">
+      <aside className="no-print border-b border-zinc-200 bg-white md:w-60 md:border-b-0 md:border-r">
         <div className="p-4">
           <Link href="/" className="font-semibold">
             Silverkuun ERP
@@ -33,7 +33,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         </nav>
       </aside>
       <div className="flex-1">
-        <header className="flex items-center justify-end gap-4 border-b border-zinc-200 bg-white px-6 py-3 text-sm">
+        <header className="no-print flex items-center justify-end gap-4 border-b border-zinc-200 bg-white px-6 py-3 text-sm">
           <span className="text-zinc-600">{staff.fullName}</span>
           <form action={signOut}>
             <button type="submit" className="text-zinc-900 underline-offset-4 hover:underline">

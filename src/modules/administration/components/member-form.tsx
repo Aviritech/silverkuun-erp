@@ -2,7 +2,7 @@
 
 import { useActionState } from "react";
 import { Button, Field, FormError, Input, Select, Textarea } from "@/components/ui";
-import type { ActionState } from "../actions";
+import type { ActionState } from "@/lib/action-state";
 import { ID_TYPES } from "../constants";
 import type { Branch, Member } from "../queries";
 

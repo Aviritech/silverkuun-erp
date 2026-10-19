@@ -13,7 +13,7 @@ import {
   uploadDocument,
   verifyContribution,
 } from "@/modules/administration/actions";
-import { ActionButton } from "@/modules/administration/components/action-button";
+import { ActionButton } from "@/components/action-button";
 import { DocumentUpload } from "@/modules/administration/components/document-upload";
 import { ContributionForm, PlanForm, ReturnForm, ReversalForm } from "@/modules/administration/components/forms";
 import {

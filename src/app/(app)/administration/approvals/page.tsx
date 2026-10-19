@@ -5,6 +5,7 @@ import { formatDateTime } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { administrationModule } from "@/modules/administration/module";
 import { fullName, listBranches, type Member } from "@/modules/administration/queries";
+import { dbFailure } from "@/lib/db-errors";
 
 export default async function ApprovalsPage() {
   await requireModule(administrationModule);
@@ -18,7 +19,7 @@ export default async function ApprovalsPage() {
       .order("submitted_at"),
     listBranches(),
   ]);
-  if (error) throw error;
+  if (error) throw dbFailure(error);
   const approvable = new Set(branches.filter((b) => staff.permissions.hasForBranch("members.approve", b)).map((b) => b.id));
   const branchName = new Map(branches.map((b) => [b.id, b.name]));
   const files = (data as Member[]).filter((m) => approvable.has(m.branch_id));

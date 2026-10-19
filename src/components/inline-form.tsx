@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState, type ReactNode } from "react";
 import { Button, FormError } from "@/components/ui";
-import type { ActionState } from "../actions";
+import type { ActionState } from "@/lib/action-state";
 
 /**
  * A form hidden behind a button: opens on click, closes after a successful save.
