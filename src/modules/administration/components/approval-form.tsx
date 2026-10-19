@@ -1,6 +1,7 @@
 "use client";
 
 import { useActionState, useEffect, useRef, useState } from "react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button, FormError } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 
@@ -15,6 +16,9 @@ export function ApprovalForm({ action }: { action: Action }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const drawing = useRef(false);
   const [signature, setSignature] = useState("");
+  const form = useRef<HTMLFormElement>(null);
+  const confirmed = useRef(false);
+  const [asking, setAsking] = useState(false);
 
   useEffect(() => {
     const ctx = canvas.current?.getContext("2d");
@@ -67,8 +71,15 @@ export function ApprovalForm({ action }: { action: Action }) {
     <form
       action={formAction}
       className="space-y-2"
+      ref={form}
       onSubmit={(e) => {
-        if (!window.confirm("Approve this member? A membership number will be issued and your signature recorded.")) e.preventDefault();
+        // Ask in a modal first; once confirmed, the form is submitted again and goes through.
+        if (confirmed.current) {
+          confirmed.current = false;
+          return;
+        }
+        e.preventDefault();
+        setAsking(true);
       }}
     >
       <p className="text-xs text-zinc-500">Sign in the box to approve</p>
@@ -93,6 +104,17 @@ export function ApprovalForm({ action }: { action: Action }) {
           Clear
         </Button>
       </div>
+      <ConfirmDialog
+        open={asking}
+        message="Approve this member? A membership number will be issued and your signature recorded."
+        confirmLabel="Approve and sign"
+        onConfirm={() => {
+          setAsking(false);
+          confirmed.current = true;
+          form.current?.requestSubmit();
+        }}
+        onCancel={() => setAsking(false)}
+      />
     </form>
   );
 }

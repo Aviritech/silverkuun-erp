@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 import { Button } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 
@@ -26,6 +27,16 @@ export function ActionButton({
 }) {
   const [pending, start] = useTransition();
   const [error, setError] = useState<string>();
+  const [asking, setAsking] = useState(false);
+
+  function run() {
+    setAsking(false);
+    setError(undefined);
+    start(async () => {
+      const result = await action();
+      if (result.error) setError(result.error);
+    });
+  }
 
   return (
     <span className="inline-flex flex-col gap-1">
@@ -34,18 +45,21 @@ export function ActionButton({
         variant={variant}
         disabled={disabled || pending}
         title={title}
-        onClick={() => {
-          if (confirm && !window.confirm(confirm)) return;
-          setError(undefined);
-          start(async () => {
-            const result = await action();
-            if (result.error) setError(result.error);
-          });
-        }}
+        onClick={() => (confirm ? setAsking(true) : run())}
       >
         {pending ? (pendingLabel ?? "Working…") : label}
       </Button>
       {error && <span className="max-w-xs text-xs text-red-700">{error}</span>}
+      {confirm && (
+        <ConfirmDialog
+          open={asking}
+          message={confirm}
+          confirmLabel={label}
+          tone={variant === "danger" ? "danger" : "primary"}
+          onConfirm={run}
+          onCancel={() => setAsking(false)}
+        />
+      )}
     </span>
   );
 }
