@@ -54,7 +54,7 @@ export default async function TargetsPage({ searchParams }: { searchParams: Prom
           />
         </div>
         {settable.length === 0 && (
-          <p className="mt-3 text-xs text-zinc-500">Targets are set by the Head of Administration.</p>
+          <p className="mt-3 text-xs text-zinc-500">Targets are set by the Head of Operations.</p>
         )}
       </Card>
     </div>

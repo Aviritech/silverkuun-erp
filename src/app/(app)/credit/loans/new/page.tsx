@@ -58,7 +58,7 @@ export default async function NewLoanPage({ searchParams }: { searchParams: Prom
       </Card>
       {choices.length === 0 && (
         <p className="mt-4 text-sm text-zinc-600">
-          There are no approved members in your branches yet. Loans are raised for members whose files Administration has had approved.
+          There are no approved members in your branches yet. Loans are raised for members whose files Operations has had approved.
         </p>
       )}
     </div>

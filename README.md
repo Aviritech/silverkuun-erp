@@ -61,9 +61,9 @@ npx supabase db reset       # or start over: rebuilds the database and reloads t
 | Email | Role | Scope |
 | --- | --- | --- |
 | sysadmin@kuun.test | System Administrator | Whole organisation |
-| officer.lagos@kuun.test | Administrative Officer | Lagos |
+| officer.lagos@kuun.test | Operations Officer | Lagos |
 | manager.lagos@kuun.test | Branch Manager | Lagos |
-| head.admin@kuun.test | Head of Administration | Whole organisation |
+| head.admin@kuun.test | Head of Operations | Whole organisation |
 | auditor@kuun.test | Internal Auditor (read-only; also reads Accounts) | Whole organisation |
 | accountant.lagos@kuun.test | Regional Accountant (records, requests, approves, pays, reconciles) | Lagos |
 | receipts.abuja@kuun.test | Receipts Accountant | Abuja |
@@ -79,13 +79,13 @@ npx supabase db reset       # or start over: rebuilds the database and reloads t
 
 ## Departments
 
-- **Administration**: member files, KYC documents, plans and contributions, with the Branch Manager's drawn signature on
+- **Operations** (formerly Administration): member files, KYC documents, plans and contributions, with the Branch Manager's drawn signature on
   approval; expected against paid per plan; maturities; issued letters and statements; monthly branch targets; and
   reports (contribution schedule, maturities, issued documents, member register).
 - **Accounts**: receipts and payment requests with evidence and maker-checker approval, posting to a double-entry
   ledger through posting rules that change only when a second person approves; department, product, staff, supplier
   and currency on each transaction; suppliers and supplier bills (Dr expense, Cr payables) paid against the bill;
-  verified Administration contributions flow in to be posted; manual journals with reversal and an ROI accrual screen;
+  verified Operations contributions flow in to be posted; manual journals with reversal and an ROI accrual screen;
   bank statement import (Excel or CSV) with suggestions that learn from earlier postings, auto-matching and
   reconciliation sign-off; financial reports (profit and loss, financial position, cash flow, trial balance, general
   ledger, member balances, register, payables aging, bank reconciliations).
@@ -100,7 +100,7 @@ npx supabase db reset       # or start over: rebuilds the database and reloads t
   filterable by branch, officer, product, customer category and period; and reports (portfolio and PAR with suggested
   provision, overdue loans, applications, approvals and disbursements, repayments against what fell due, officer
   performance, repayments falling due). Seven demo loans cover every stage.
-- **Human Resources**:
+- **HR/Admin** (formerly Human Resources):
   - *Employee records* for everyone on the staff, whether or not they use the ERP: personal details, identification,
     emergency contact, bank, pension and tax details, dependents, qualifications (with expiry dates for
     certifications), passport photo and documents; contracts, where a new contract ends the one before; confirmation
@@ -141,7 +141,7 @@ npx supabase db reset       # or start over: rebuilds the database and reloads t
 
 On a real Supabase project, create the first system administrator by adding a user in Supabase Auth, then running in
 the SQL editor (after that, everything is done in the app: System Administration for logins, roles and branches, and
-Human Resources for employees):
+HR/Admin for employees):
 
 ```sql
 insert into public.regions (code, name) values ('HQ', 'Head Office');

@@ -40,7 +40,7 @@ export default async function CertificatePage({ params }: { params: Promise<{ en
 
         <div className="mt-16 flex flex-wrap items-end justify-between gap-8 text-left text-sm">
           <div>
-            <div className="w-56 border-t border-zinc-400 pt-1 text-zinc-600">Head of Human Resources</div>
+            <div className="w-56 border-t border-zinc-400 pt-1 text-zinc-600">Head of HR/Admin</div>
           </div>
           <div className="text-right text-xs text-zinc-500">
             Issued {formatDate(enrolment.completed_at)}

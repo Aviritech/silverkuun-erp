@@ -40,8 +40,8 @@ export default async function ContributionsAwaitingPage() {
   return (
     <div className="max-w-6xl">
       <PageHeader
-        title="Contributions from Administration"
-        description="Payments Administration has recorded and the Branch Manager has verified. Say which account the money went into; someone else then confirms it and it posts to the member's savings."
+        title="Contributions from Operations"
+        description="Payments Operations has recorded and the Branch Manager has verified. Say which account the money went into; someone else then confirms it and it posts to the member's savings."
       />
       <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white">
         {list.length === 0 ? (

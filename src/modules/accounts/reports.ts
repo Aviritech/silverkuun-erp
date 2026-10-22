@@ -391,7 +391,7 @@ const memberBalances: ReportDefinition = {
         { key: "interest_paid", label: "Interest paid", kind: "money" },
       ],
       rows: [...list.map((r) => ({ ...r }) as Row), total],
-      notes: ["Contribution history and plan terms are on each member's file in Administration."],
+      notes: ["Contribution history and plan terms are on each member's file in Operations."],
     };
   },
 };

@@ -13,7 +13,7 @@ export default async function AdministrationPage() {
   return (
     <div className="max-w-4xl">
       <PageHeader
-        title="Administration"
+        title="Operations"
         description="Member files across the branches you work in."
         actions={canCreate && <ButtonLink href="/administration/members/new">New member</ButtonLink>}
       />

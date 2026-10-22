@@ -282,7 +282,7 @@ describe("ERP logins", () => {
     const status = await commitAs(OFFICER, () =>
       db.query<{ is_active: boolean; must_change_password: boolean; roles: string[] }>("select * from employee_login_status($1)", [e.id]),
     );
-    expect(status.rows[0]).toEqual({ is_active: true, must_change_password: true, roles: ["Administrative Officer"] });
+    expect(status.rows[0]).toEqual({ is_active: true, must_change_password: true, roles: ["Operations Officer"] });
     const hidden = await commitAs(OUTSIDER, () => db.query("select * from employee_login_status($1)", [e.id]));
     expect(hidden.rows).toHaveLength(0);
 

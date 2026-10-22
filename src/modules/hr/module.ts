@@ -2,7 +2,7 @@ import type { DepartmentModule } from "../types";
 
 export const hrModule: DepartmentModule = {
   department: "hr",
-  name: "Human Resources",
+  name: "HR/Admin",
   description: "Employee records, leave, payroll, performance, training and commission.",
   basePath: "/hr",
   permission: "module.hr",

@@ -2,7 +2,7 @@ import type { DepartmentModule } from "../types";
 
 export const administrationModule: DepartmentModule = {
   department: "administration",
-  name: "Administration",
+  name: "Operations",
   description: "Member onboarding, approvals, contributions and member letters.",
   basePath: "/administration",
   permission: "module.administration",

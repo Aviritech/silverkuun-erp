@@ -21,7 +21,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             <span className="silver-text">One workspace</span> for every department.
           </h2>
           <p className="mt-4 text-sm leading-relaxed text-silver-300">
-            Administration, Accounts and Internal Audit work from the same records, so data moves between departments without
+            Operations, Accounts and Internal Audit work from the same records, so data moves between departments without
             re-typing.
           </p>
         </div>

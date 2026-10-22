@@ -10,7 +10,7 @@ export default async function AdministrationReportsPage() {
   return (
     <div className="max-w-4xl">
       <PageHeader
-        title="Administration reports"
+        title="Operations reports"
         description="Filter by branch and region, then download for Excel or as a PDF."
       />
       <div className="grid gap-4 sm:grid-cols-2">

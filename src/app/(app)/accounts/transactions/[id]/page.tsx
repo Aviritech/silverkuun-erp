@@ -137,7 +137,7 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
           </div>
           {txn.contribution_id && (
             <div className="sm:col-span-3">
-              <Detail label="Source">A contribution verified in Administration</Detail>
+              <Detail label="Source">A contribution verified in Operations</Detail>
             </div>
           )}
           {txn.statement_line_id && (

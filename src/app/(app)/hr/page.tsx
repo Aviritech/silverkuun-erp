@@ -81,7 +81,7 @@ export default async function HrOverviewPage() {
   return (
     <div className="max-w-5xl space-y-6">
       <PageHeader
-        title="Human Resources"
+        title="HR/Admin"
         description="Who works here, and what needs attention in the next 30 days."
         actions={staff.permissions.has("hr.manage") && <ButtonLink href="/hr/employees/new">New employee</ButtonLink>}
       />
