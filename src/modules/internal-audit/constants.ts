@@ -43,6 +43,8 @@ export function recordHref(recordType: string, recordId: string | null): string 
     case "journal_entry":
     case "journal_entries":
       return `/accounts/journals/${recordId}`;
+    case "employees":
+      return `/hr/employees/${recordId}`;
     default:
       return `/internal-audit/trace/${recordId}`;
   }
@@ -73,6 +75,13 @@ export const AUDITED_TABLES: Record<string, string> = {
   loan_products: "Loan products",
   ledger_accounts: "Chart of accounts",
   posting_rules: "Posting rules",
+  employees: "Employees",
+  employee_job_history: "Employee job history",
+  employee_contracts: "Employment contracts",
+  employee_documents: "Employee documents",
+  employee_dependents: "Employee dependents",
+  employee_qualifications: "Employee qualifications",
+  job_titles: "Job titles",
   staff: "Staff",
   staff_roles: "Staff roles",
   branches: "Branches",

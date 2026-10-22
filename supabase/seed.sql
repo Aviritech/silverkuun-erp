@@ -24,7 +24,10 @@ insert into seed_staff values
   ('30000000-0000-0000-0000-000000000010', 'credit.lagos@kuun.test', 'Kemi Account Officer', 'credit', 'credit_officer', '20000000-0000-0000-0000-000000000001'),
   ('30000000-0000-0000-0000-000000000011', 'credit.abuja@kuun.test', 'Bello Account Officer', 'credit', 'credit_officer', '20000000-0000-0000-0000-000000000002'),
   ('30000000-0000-0000-0000-000000000012', 'analyst@kuun.test', 'Ngozi Analyst', 'credit', 'credit_analyst', null),
-  ('30000000-0000-0000-0000-000000000013', 'head.credit@kuun.test', 'Uche Head of Credit', 'credit', 'credit_manager', null);
+  ('30000000-0000-0000-0000-000000000013', 'head.credit@kuun.test', 'Uche Head of Credit', 'credit', 'credit_manager', null),
+  ('30000000-0000-0000-0000-000000000014', 'hr.lagos@kuun.test', 'Halima HR Officer', 'hr', 'hr_officer', '20000000-0000-0000-0000-000000000001'),
+  ('30000000-0000-0000-0000-000000000015', 'head.hr@kuun.test', 'Kunle Head of HR', 'hr', 'head_of_hr', null),
+  ('30000000-0000-0000-0000-000000000016', 'payroll@kuun.test', 'Pat Payroll', 'hr', 'payroll_officer', null);
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -333,6 +336,163 @@ select public.submit_loan('b0000000-0000-0000-0000-000000000006');
 -- The Lagos officer reminded Ada about her overdue instalment.
 insert into public.loan_reminders (loan_id, branch_id, kind, channel, amount, note)
 values ('b0000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'overdue', 'call', 57500, 'Promised to pay at month end');
+
+-- ---------------------------------------------------------------------------
+-- HR: employee records for some of the test accounts (linked to their logins), a driver with no login, and a new
+-- starter whose probation and contract end soon.
+-- ---------------------------------------------------------------------------
+
+select pg_temp.act_as('head.hr@kuun.test');
+insert into public.employees (id, employee_no, status, branch_id, department_code, job_title_id, employment_type, hire_date,
+  first_name, last_name, gender, phone, work_email, address, nin, bank_name, bank_account_number)
+select e.id, e.no, e.status::public.employee_status, e.branch, e.department, (select id from public.job_titles where name = e.title),
+       e.kind, e.hired, e.first_name, e.last_name, e.gender, e.phone, e.email, e.address, e.nin, 'Zenith Bank', e.account
+from (values
+  ('c0000000-0000-0000-0000-000000000001'::uuid, 'SK-00001', 'active', '20000000-0000-0000-0000-000000000001'::uuid, 'hr', 'Head of HR', 'permanent', date '2019-03-01',
+   'Kunle', 'Head of HR', 'male', '08031110001', 'head.hr@kuun.test', '5 Bourdillon Road, Ikoyi', '22222222201', '2010000001'),
+  ('c0000000-0000-0000-0000-000000000002', 'SK-00002', 'active', '20000000-0000-0000-0000-000000000001', 'hr', 'HR Officer', 'permanent',
+   date '2022-06-13', 'Halima', 'HR Officer', 'female', '08031110002', 'hr.lagos@kuun.test', '14 Ogunlana Drive, Surulere', '22222222202', '2010000002'),
+  ('c0000000-0000-0000-0000-000000000003', 'SK-00003', 'active', '20000000-0000-0000-0000-000000000001', 'administration',
+   'Administrative Officer', 'permanent', date '2021-01-11', 'Ola', 'Officer', 'female', '08031110003', 'officer.lagos@kuun.test',
+   '22 Herbert Macaulay Way, Yaba', '22222222203', '2010000003'),
+  ('c0000000-0000-0000-0000-000000000004', 'SK-00004', 'active', '20000000-0000-0000-0000-000000000001', 'branch_operations',
+   'Branch Manager', 'permanent', date '2018-09-03', 'Mo', 'Manager', 'male', '08031110004', 'manager.lagos@kuun.test',
+   '3 Awolowo Road, Ikoyi', '22222222204', '2010000004'),
+  ('c0000000-0000-0000-0000-000000000005', 'SK-00005', 'active', '20000000-0000-0000-0000-000000000001', 'credit', 'Account Officer',
+   'permanent', date '2023-02-20', 'Kemi', 'Account Officer', 'female', '08031110005', 'credit.lagos@kuun.test',
+   '9 Adeniran Ogunsanya, Surulere', '22222222205', '2010000005'),
+  ('c0000000-0000-0000-0000-000000000006', 'SK-00006', 'active', '20000000-0000-0000-0000-000000000002', 'administration', 'Supervisor',
+   'permanent', date '2020-05-04', 'Danjuma', 'Bello', 'male', '08031110006', null, '12 Aminu Kano Crescent, Wuse 2', '22222222206', '2010000006'),
+  ('c0000000-0000-0000-0000-000000000007', 'SK-00007', 'probation', '20000000-0000-0000-0000-000000000001', 'credit', 'Account Officer',
+   'contract', current_date - 160, 'Tobi', 'Adewale', 'male', '08031110007', 'tobi.adewale@kuun.test', '7 Allen Avenue, Ikeja',
+   '22222222207', '2010000007')
+) as e(id, no, status, branch, department, title, kind, hired, first_name, last_name, gender, phone, email, address, nin, account);
+
+update public.employees set probation_end_date = current_date + 20 where id = 'c0000000-0000-0000-0000-000000000007';
+
+insert into public.employee_contracts (employee_id, contract_type, start_date, end_date) values
+  ('c0000000-0000-0000-0000-000000000003', 'permanent', '2021-01-11', null),
+  ('c0000000-0000-0000-0000-000000000004', 'permanent', '2018-09-03', null),
+  ('c0000000-0000-0000-0000-000000000007', 'fixed_term', current_date - 160, current_date + 25);
+
+insert into public.employee_qualifications (employee_id, kind, qualification, course, institution, year_obtained) values
+  ('c0000000-0000-0000-0000-000000000002', 'education', 'B.Sc.', 'Psychology', 'University of Lagos', 2016),
+  ('c0000000-0000-0000-0000-000000000002', 'professional', 'Associate Member', null, 'Chartered Institute of Personnel Management', 2020);
+
+insert into public.employee_dependents (employee_id, full_name, relationship, date_of_birth) values
+  ('c0000000-0000-0000-0000-000000000004', 'Amaka Manager', 'spouse', '1988-04-12'),
+  ('c0000000-0000-0000-0000-000000000004', 'Tolu Manager', 'child', '2015-08-30');
+
+-- Link the records that have a test login. Their staff accounts take their names from HR from now on.
+select public.link_employee_login(id) from public.employees
+where staff_id is null and work_email in (select email from auth.users);
+
+-- The Abuja supervisor was promoted to run the branch, which leaves a promotion on his job history.
+select public.change_employee_job('c0000000-0000-0000-0000-000000000006', 'promotion', '20000000-0000-0000-0000-000000000002',
+  'administration', (select id from public.job_titles where name = 'Branch Manager'), current_date - 30,
+  'Took over the Abuja office after the previous manager retired');
+
+-- Salaries, proposed by the payroll officer and approved by the Head of HR, from January.
+select pg_temp.act_as('payroll@kuun.test');
+insert into public.employee_salaries (employee_id, effective_from, basic, housing, transport, medical, utility, other_allowance, reason)
+select e.id, date_trunc('year', current_date)::date, s.basic, s.housing, s.transport, s.medical, s.utility, 0, 'Salary on the ERP from January'
+from (values
+  ('c0000000-0000-0000-0000-000000000001'::uuid, 600000, 300000, 120000, 40000, 40000),
+  ('c0000000-0000-0000-0000-000000000002', 250000, 125000, 60000, 20000, 20000),
+  ('c0000000-0000-0000-0000-000000000003', 180000, 90000, 45000, 15000, 15000),
+  ('c0000000-0000-0000-0000-000000000004', 400000, 200000, 90000, 30000, 30000),
+  ('c0000000-0000-0000-0000-000000000005', 200000, 100000, 50000, 15000, 15000),
+  ('c0000000-0000-0000-0000-000000000006', 350000, 175000, 80000, 25000, 25000)
+) as s(id, basic, housing, transport, medical, utility)
+join public.employees e on e.id = s.id;
+-- The new starter's salary is still waiting for approval, so it shows on the payroll page.
+insert into public.employee_salaries (employee_id, effective_from, basic, housing, transport, reason)
+values ('c0000000-0000-0000-0000-000000000007', date_trunc('month', current_date)::date, 150000, 75000, 40000, 'Starting salary');
+insert into public.employee_deductions (employee_id, kind, description, monthly_amount, total_amount, start_month)
+values ('c0000000-0000-0000-0000-000000000003', 'salary_advance', 'School fees advance', 20000, 60000,
+        (date_trunc('month', current_date) - interval '1 month')::date);
+update public.employees set annual_rent = 1500000 where id = 'c0000000-0000-0000-0000-000000000003';
+
+select pg_temp.act_as('head.hr@kuun.test');
+select public.decide_salary(id, true) from public.employee_salaries
+where status = 'pending'
+  and employee_id not in ('c0000000-0000-0000-0000-000000000007', 'c0000000-0000-0000-0000-000000000001');
+-- Nobody approves their own salary, so the Financial Controller approves the Head of HR's.
+select pg_temp.act_as('controller@kuun.test');
+select public.decide_salary(id, true) from public.employee_salaries
+where employee_id = 'c0000000-0000-0000-0000-000000000001';
+
+-- Last month's payroll, prepared by payroll and approved by the Financial Controller, which posts it to the ledger.
+select pg_temp.act_as('payroll@kuun.test');
+select public.create_payroll_run(p, 'Monthly payroll') from (select (date_trunc('month', current_date) - interval '1 month')::date p) x
+where p >= '2026-01-01';
+select public.submit_payroll_run(id) from public.payroll_runs where status = 'draft';
+select pg_temp.act_as('controller@kuun.test');
+select public.approve_payroll_run(id) from public.payroll_runs where status = 'submitted';
+
+-- Leave: casual leave taken in February, and annual leave in December waiting for the relief officer.
+select pg_temp.act_as('hr.lagos@kuun.test');
+select public.request_leave((select id from public.leave_types where name = 'Casual leave'),
+  make_date(extract(year from current_date)::integer, 2, 10), make_date(extract(year from current_date)::integer, 2, 11),
+  'Family wedding', null, null, 'c0000000-0000-0000-0000-000000000005');
+select pg_temp.act_as('manager.lagos@kuun.test');
+select public.approve_leave_step(id, 'Enjoy it') from public.leave_requests where employee_id = 'c0000000-0000-0000-0000-000000000005';
+select pg_temp.act_as('head.hr@kuun.test');
+select public.approve_leave_step(id) from public.leave_requests where employee_id = 'c0000000-0000-0000-0000-000000000005';
+select pg_temp.act_as('hr.lagos@kuun.test');
+select public.request_leave((select id from public.leave_types where name = 'Annual leave'),
+  make_date(extract(year from current_date)::integer, 12, 7), make_date(extract(year from current_date)::integer, 12, 11),
+  'End-of-year break', 'c0000000-0000-0000-0000-000000000003', null, 'c0000000-0000-0000-0000-000000000005');
+
+-- A review the Branch Manager has submitted for the Lagos account officer to acknowledge, and two goals.
+select pg_temp.act_as('manager.lagos@kuun.test');
+insert into public.performance_reviews (id, employee_id, period_label, period_start, period_end, strengths, improvements, reviewer_comments)
+values ('d0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000005', 'First half of the year',
+        date_trunc('year', current_date)::date, (date_trunc('year', current_date) + interval '6 months - 1 day')::date,
+        'Builds strong relationships with salary-earner customers.', 'Follow up overdue repayments sooner.',
+        'A solid half-year. Keep the portfolio clean.');
+insert into public.performance_review_scores (review_id, criterion, target, actual, score, sort_order) values
+  ('d0000000-0000-0000-0000-000000000001', 'Loans booked', '20 loans', '23 loans', 5, 1),
+  ('d0000000-0000-0000-0000-000000000001', 'Portfolio at risk', 'Under 5%', '7%', 3, 2),
+  ('d0000000-0000-0000-0000-000000000001', 'Teamwork', null, null, 4, 3);
+select public.submit_performance_review('d0000000-0000-0000-0000-000000000001');
+insert into public.employee_goals (employee_id, title, goal_type, target_date, description) values
+  ('c0000000-0000-0000-0000-000000000005', 'Bring portfolio at risk under 5%', 'performance', current_date + 60,
+   'Call every customer more than seven days overdue within two working days.'),
+  ('c0000000-0000-0000-0000-000000000005', 'Complete the credit risk course', 'development', current_date + 45, null);
+
+-- Training: a course coming up for Credit, and a completed customer service course.
+select pg_temp.act_as('hr.lagos@kuun.test');
+insert into public.trainings (id, title, description, trainer, starts_on, ends_on, hours, venue, capacity, pass_mark, departments) values
+  ('e0000000-0000-0000-0000-000000000001', 'Credit risk basics', 'Bureau checks, affordability and early warning signs.',
+   'Ade and Partners', current_date + 21, current_date + 22, 12, 'Lagos office training room', 15, 70, '{credit}'),
+  ('e0000000-0000-0000-0000-000000000002', 'Customer service excellence', 'Handling member enquiries and complaints.',
+   'In-house', current_date + 1, current_date + 1, 6, 'Lagos office', null, null, '{}');
+select public.enrol_in_training('e0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000003');
+update public.trainings set starts_on = current_date - 40, ends_on = current_date - 40, status = 'completed'
+where id = 'e0000000-0000-0000-0000-000000000002';
+select public.record_training_result(id, 'completed', 6, null) from public.training_enrollments
+where training_id = 'e0000000-0000-0000-0000-000000000002';
+
+-- Commission: last quarter's target for the Lagos account officer, with one sale approved and one waiting.
+insert into public.commission_targets (id, employee_id, name, period_start, period_end, target_amount, method, rate) values
+  ('f0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000005', 'Loan book growth',
+   (date_trunc('month', current_date) - interval '3 months')::date, (date_trunc('month', current_date) - interval '1 day')::date,
+   3000000, 'percent_of_sales', 1);
+select pg_temp.act_as('credit.lagos@kuun.test');
+insert into public.commission_sales (target_id, employee_id, client_name, description, amount, sale_date, reference) values
+  ('f0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000005', 'Okeke Building Supplies', 'Business loan',
+   1000000, (date_trunc('month', current_date) - interval '2 months')::date, 'LN-B-001'),
+  ('f0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000005', 'Ada Obi', 'Personal loan',
+   300000, (date_trunc('month', current_date) - interval '1 month')::date, 'LN-P-002');
+select pg_temp.act_as('controller@kuun.test');
+select public.decide_commission_sale(id, true) from public.commission_sales where reference = 'LN-B-001';
+
+-- An anonymous concern for Internal Audit to follow up.
+select pg_temp.act_as('officer.lagos@kuun.test');
+select public.submit_whistleblowing_report('misconduct', 'Pressure to backdate member files',
+  'A colleague has asked twice for KYC files to be dated earlier than they were received, before month-end reporting.',
+  null, 'Lagos office', null, true);
 
 select set_config('request.jwt.claim.sub', '', false);
 

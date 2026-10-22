@@ -8,7 +8,13 @@ import { createClient } from "@/lib/supabase/server";
 import { accountsModule } from "@/modules/accounts/module";
 
 const PAGE_SIZE = 100;
-const SOURCES = { manual: "Manual", transaction: "Receipt or payment", reversal: "Reversal" } as const;
+const SOURCES = {
+  manual: "Manual",
+  transaction: "Receipt or payment",
+  reversal: "Reversal",
+  bill: "Supplier bill",
+  payroll: "Payroll",
+} as const;
 
 export default async function JournalsPage({ searchParams }: { searchParams: Promise<{ status?: string; source?: string }> }) {
   await requireModule(accountsModule);

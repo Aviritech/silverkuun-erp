@@ -5,8 +5,8 @@
 export type ModuleNavItem = {
   label: string;
   href: string;
-  /** Hide the link unless the staff member holds this permission. */
-  permission?: string;
+  /** Hide the link unless the staff member holds this permission (or, given a list, any of them). */
+  permission?: string | readonly string[];
 };
 
 export type DepartmentModule = {

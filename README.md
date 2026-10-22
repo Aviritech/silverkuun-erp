@@ -40,7 +40,7 @@ is reviewed in git.
 
 ```bash
 npm install
-cp .env.example .env.local   # fill in your Supabase URL and anon key
+cp .env.example .env.local   # fill in your Supabase URL, anon key and service role key
 npx supabase db push         # apply migrations to the linked Supabase project
 npm run dev
 ```
@@ -73,6 +73,9 @@ npx supabase db reset       # or start over: rebuilds the database and reloads t
 | credit.abuja@kuun.test | Account Officer | Abuja |
 | analyst@kuun.test | Credit Analyst (bureau check, risk rating, recommendation) | Whole organisation |
 | head.credit@kuun.test | Head of Credit (approves loans and restructures, loan products) | Whole organisation |
+| hr.lagos@kuun.test | HR Officer (employee records, documents, contracts, ERP logins) | Lagos |
+| head.hr@kuun.test | Head of HR (confirms, transfers, promotes, records exits, job titles) | Whole organisation |
+| payroll@kuun.test | Payroll Officer (salaries, deductions, monthly payroll) | Whole organisation |
 
 ## Departments
 
@@ -97,6 +100,39 @@ npx supabase db reset       # or start over: rebuilds the database and reloads t
   filterable by branch, officer, product, customer category and period; and reports (portfolio and PAR with suggested
   provision, overdue loans, applications, approvals and disbursements, repayments against what fell due, officer
   performance, repayments falling due). Seven demo loans cover every stage.
+- **Human Resources**:
+  - *Employee records* for everyone on the staff, whether or not they use the ERP: personal details, identification,
+    emergency contact, bank, pension and tax details, dependents, qualifications (with expiry dates for
+    certifications), passport photo and documents; contracts, where a new contract ends the one before; confirmation
+    after probation, transfers, promotions, exits and reinstatement by the Head of HR, each on a dated job history; and
+    ERP logins created from the record, switched off the moment an exit is recorded.
+  - *Leave*: leave types with yearly days (pro-rated for new starters, extra days for long service), public holidays,
+    and requests counted in working days. Requests go first to the colleague covering the work, then up the approval
+    chain by job title (supervisor, branch manager, regional manager, business development manager, HR), each step
+    limited to the same branch, region or department as set; steps nobody holds are skipped, and the Head of HR decides
+    when the whole chain is empty. Pending requests hold their days, so the balance can't be spent twice.
+  - *Payroll*: salaries proposed and approved by different people; recurring deductions (an advance stops once it is
+    recovered); a monthly run that pro-rates joiners and leavers and works out pension (8% employee, 10% employer on
+    basic, housing and transport), NHF (2.5% of basic) and PAYE on the Nigeria Tax Act 2025 bands after rent relief,
+    with one-off pay taxed at the rate it adds. The Financial Controller approves the run, which posts one journal per
+    branch (staff costs by department against net pay, PAYE, pension, NHF and deductions payable); Accounts then pays
+    salaries and remits the deductions as ordinary payments. Rates and bands are dated settings the Financial
+    Controller keeps. Employees see their payslips once the run is approved.
+  - *Performance*: reviews scored 1 to 5 per criterion by branch and department heads, acknowledged by the employee
+    with their comments; goals with progress.
+  - *Training*: scheduled courses that staff enrol in themselves (for their department, while there is room), results
+    and scores recorded by HR, feedback, and a printable certificate.
+  - *Commission*: targets with their terms (a percentage of sales, a percentage or flat amount when met, or tiered),
+    sales recorded by the employee and approved by someone else, and the commission paid through the next payroll.
+  - *Speak up*: any staff member can report a concern, named or anonymous, to Internal Audit and follow it up with a
+    reference and access code. Anonymous reports keep nothing about who sent them.
+  - *My HR* for every employee: their record, leave balances and requests, approvals waiting for them, payslips,
+    reviews and goals, training and commission.
+  - Reports: staff register, headcount and turnover, leave register and balances, payroll register, bank payment
+    schedule, PAYE, pension and NHF schedules, training register and commission summary.
+- **System Administration**: staff logins and the roles that give access, each for a branch, a region or the whole
+  organisation; password resets with a temporary password; switching logins off; and regions, branches and
+  departments. Anyone given a temporary password chooses their own the first time they sign in.
 - Every report downloads as Excel (.xlsx), PDF or CSV.
 - **Internal Audit**: read-only dashboard, exception checks (incomplete KYC, stale approvals, large transactions,
   segregation breaches, unmatched bank lines, changes after approval, deletions, overdue loans, stale loan applications,
@@ -104,7 +140,8 @@ npx supabase db reset       # or start over: rebuilds the database and reloads t
   operations reports, the audit trail, and a per-record history showing every change with before and after values.
 
 On a real Supabase project, create the first system administrator by adding a user in Supabase Auth, then running in
-the SQL editor:
+the SQL editor (after that, everything is done in the app: System Administration for logins, roles and branches, and
+Human Resources for employees):
 
 ```sql
 insert into public.regions (code, name) values ('HQ', 'Head Office');

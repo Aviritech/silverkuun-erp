@@ -1,6 +1,7 @@
 import { accountsReports } from "@/modules/accounts/reports";
 import { administrationReports } from "@/modules/administration/reports";
 import { accountsLoanPortfolio, creditReports } from "@/modules/credit/reports";
+import { hrReports } from "@/modules/hr/reports";
 import { internalAuditReports } from "@/modules/internal-audit/reports";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ReportDefinition } from "./types";
@@ -11,6 +12,7 @@ export const reports: readonly ReportDefinition[] = [
   accountsLoanPortfolio,
   ...internalAuditReports,
   ...creditReports,
+  ...hrReports,
 ];
 
 export function findReport(key: string, basePath?: ReportDefinition["basePath"]): ReportDefinition | undefined {

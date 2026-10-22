@@ -15,6 +15,18 @@ describe("visibleModules", () => {
     expect(visible[0].nav.map((n) => n.label)).toEqual(["Dashboard", "Exceptions", "Customer register", "Branch reports"]);
   });
 
+  it("gives System Administrators their own module, and HR officers theirs", () => {
+    const admin = visibleModules(new PermissionSet([grant("module.system"), grant("staff.read"), grant("system.manage")]));
+    expect(admin.map((m) => m.department)).toEqual(["system"]);
+    const hr = visibleModules(new PermissionSet([grant("module.hr"), grant("hr.read")]));
+    expect(hr[0].nav.map((n) => n.label)).toEqual(["Overview", "Employees", "Leave", "Training", "Commission", "Reports", "Settings"]);
+    // The Financial Controller opens HR for payroll and commission only.
+    const controller = visibleModules(
+      new PermissionSet([grant("module.hr"), grant("payroll.read"), grant("commission.approve"), grant("performance.read")]),
+    );
+    expect(controller[0].nav.map((n) => n.label)).toEqual(["Payroll", "Performance", "Training", "Commission", "Reports"]);
+  });
+
   it("gives every module a unique department, path and permission", () => {
     for (const key of ["department", "basePath", "permission"] as const) {
       expect(new Set(modules.map((m) => m[key])).size).toBe(modules.length);

@@ -23,13 +23,19 @@ export const getCurrentStaff = cache(async (): Promise<CurrentStaff> => {
   if (!user) redirect("/login");
 
   const [{ data: staff }, { data: grants, error }] = await Promise.all([
-    supabase.from("staff").select("id, full_name, email, department_code, is_active").eq("id", user.id).maybeSingle(),
+    supabase
+      .from("staff")
+      .select("id, full_name, email, department_code, is_active, must_change_password")
+      .eq("id", user.id)
+      .maybeSingle(),
     supabase.rpc("my_permissions"),
   ]);
   if (error) throw dbFailure(error);
 
   // An auth account with no active staff record cannot use the system.
   if (!staff || !staff.is_active) redirect("/login?error=no-access");
+  // A temporary password from HR or a System Administrator has to be replaced before anything else.
+  if (staff.must_change_password) redirect("/account/password");
 
   return {
     id: staff.id,

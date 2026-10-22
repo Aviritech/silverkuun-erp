@@ -2,6 +2,8 @@ import Link from "next/link";
 import { BrandLogo } from "@/components/brand";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { getCurrentStaff } from "@/lib/auth/session";
+import { myHrNav, speakUpNav } from "@/modules/me/nav";
+import { getMyEmployee } from "@/modules/me/queries";
 import { visibleModules } from "@/modules/registry";
 import { signOut } from "../login/actions";
 
@@ -15,8 +17,10 @@ function initials(name: string) {
 }
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const staff = await getCurrentStaff();
+  const [staff, employee] = await Promise.all([getCurrentStaff(), getMyEmployee()]);
   const modules = visibleModules(staff.permissions);
+  // Everyone's own HR comes first; staff without an employee record still get "Speak up".
+  const myHr = { department: "me", name: "My HR", nav: employee ? [...myHrNav, speakUpNav] : [speakUpNav] };
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
@@ -27,7 +31,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </Link>
         </div>
         <div className="mx-5 mb-5 hidden h-px bg-gradient-to-r from-transparent via-ink-600 to-transparent md:block" />
-        <SidebarNav modules={modules.map(({ department, name, nav }) => ({ department, name, nav }))} />
+        <SidebarNav modules={[myHr, ...modules.map(({ department, name, nav }) => ({ department, name, nav }))]} />
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="no-print sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-zinc-200 bg-white/90 px-6 py-3 backdrop-blur">
@@ -43,6 +47,12 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             >
               {initials(staff.fullName)}
             </span>
+            <Link
+              href="/account/password"
+              className="hidden rounded-md px-2 py-1.5 text-sm text-zinc-600 transition-colors hover:text-ink sm:block"
+            >
+              Change password
+            </Link>
             <form action={signOut}>
               <button
                 type="submit"

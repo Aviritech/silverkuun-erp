@@ -99,7 +99,7 @@ export type JournalEntry = {
   branch_id: string;
   entry_date: string;
   description: string;
-  source: "manual" | "transaction" | "reversal" | "bill";
+  source: "manual" | "transaction" | "reversal" | "bill" | "payroll";
   bill_id: string | null;
   transaction_id: string | null;
   status: "draft" | "posted";

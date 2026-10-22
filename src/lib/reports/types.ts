@@ -32,7 +32,7 @@ export type ReportDefinition = {
   title: string;
   description: string;
   /** The department module the report lives under, for links back. */
-  basePath: "/accounts" | "/internal-audit" | "/administration" | "/credit";
+  basePath: "/accounts" | "/internal-audit" | "/administration" | "/credit" | "/hr";
   /** Needed to run or export the report. */
   permission: string;
   /** "period" shows from/to; "asAt" shows a single date (uses `to`). */

@@ -12,3 +12,18 @@ export function publicEnv() {
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
   });
 }
+
+/**
+ * The service role key, needed only to create, reset or switch off logins in Supabase Auth.
+ * Read on first use rather than at start-up, so the rest of the app works without it.
+ */
+export function serviceRoleKey(): string {
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!key) {
+    throw new Error(
+      "SUPABASE_SERVICE_ROLE_KEY is not set, so logins can't be created or changed. Add it from Supabase " +
+        "(Project Settings → API Keys, the service_role / secret key) to .env.local or the Vercel project settings.",
+    );
+  }
+  return key;
+}
