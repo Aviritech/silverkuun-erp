@@ -9,6 +9,7 @@ const MANAGER = "00000000-0000-0000-0000-0000000000b1";
 const MANAGER_ABUJA = "00000000-0000-0000-0000-0000000000b2";
 const HEAD = "00000000-0000-0000-0000-0000000000c1";
 const AUDITOR = "00000000-0000-0000-0000-0000000000d1";
+const MARKETER = "00000000-0000-0000-0000-0000000000e1";
 
 const REQUIRED_DOCS = ["kyc_form", "nin_slip", "means_of_id", "utility_bill"];
 
@@ -64,9 +65,16 @@ async function uploadDocs(memberId: string, branchId = lagos, types = REQUIRED_D
   }
 }
 
+/** Officer sends the file to the marketer, who reviews it and sends it back to the officer. */
+async function throughMarketer(memberId: string, by = OFFICER) {
+  await commitAs(by, () => db.query("select send_member_to_marketer($1)", [memberId]));
+  await commitAs(MARKETER, () => db.query("select marketer_review_member($1, 'Known to me; details checked')", [memberId]));
+}
+
 async function approvedMember(): Promise<string> {
   const id = await createDraft();
   await uploadDocs(id);
+  await throughMarketer(id);
   await commitAs(OFFICER, () => db.query("select submit_member($1)", [id]));
   await commitAs(MANAGER, () => db.query("select approve_member($1, $2)", [id, SIG]));
   return id;
@@ -89,6 +97,7 @@ beforeAll(async () => {
   await addStaff(MANAGER_ABUJA, "branch_operations", "branch_manager", abuja);
   await addStaff(HEAD, "administration", "head_of_administration", null);
   await addStaff(AUDITOR, "internal_audit", "internal_auditor", null);
+  await addStaff(MARKETER, "administration", "marketer", lagos);
 });
 
 describe("member files", () => {
@@ -146,6 +155,7 @@ describe("approval workflow", () => {
   it("won't submit a file until the required documents are uploaded", async () => {
     const id = await createDraft();
     await uploadDocs(id, lagos, ["kyc_form", "nin_slip"]);
+    await throughMarketer(id);
     await expect(commitAs(OFFICER, () => db.query("select submit_member($1)", [id]))).rejects.toThrow(
       /missing required documents: means_of_id, utility_bill/,
     );
@@ -154,6 +164,7 @@ describe("approval workflow", () => {
   it("locks a submitted file and lets only the branch manager approve it", async () => {
     const id = await createDraft();
     await uploadDocs(id);
+    await throughMarketer(id);
     await commitAs(OFFICER, () => db.query("select submit_member($1)", [id]));
     expect(await status(id)).toBe("pending_approval");
 
@@ -172,12 +183,14 @@ describe("approval workflow", () => {
   it("returns a file with a reason and lets the officer fix and resubmit it", async () => {
     const id = await createDraft();
     await uploadDocs(id);
+    await throughMarketer(id);
     await commitAs(OFFICER, () => db.query("select submit_member($1)", [id]));
     await expect(commitAs(MANAGER, () => db.query("select return_member($1, '  ')", [id]))).rejects.toThrow(/correcting/);
     await commitAs(MANAGER, () => db.query("select return_member($1, 'Utility bill is older than 3 months')", [id]));
     expect(await status(id)).toBe("returned");
 
     await commitAs(OFFICER, () => db.query("update members set address = '2 Marina' where id = $1", [id]));
+    await throughMarketer(id);
     await commitAs(OFFICER, () => db.query("select submit_member($1)", [id]));
     const row = await db.query<{ status: string; return_reason: string | null }>(
       "select status, return_reason from members where id = $1",
@@ -191,6 +204,7 @@ describe("approval workflow", () => {
     await db.query("insert into staff_roles (staff_id, role_code, branch_id) values ($1, 'admin_officer', $2)", [MANAGER, lagos]);
     const id = await createDraft(lagos, MANAGER);
     await uploadDocs(id);
+    await throughMarketer(id, MANAGER);
     await commitAs(MANAGER, () => db.query("select submit_member($1)", [id]));
     await expect(commitAs(MANAGER, () => db.query("select approve_member($1, $2)", [id, SIG]))).rejects.toThrow(/someone else/);
     await db.query("delete from staff_roles where staff_id = $1 and role_code = 'admin_officer'", [MANAGER]);
@@ -202,8 +216,68 @@ describe("approval workflow", () => {
       "select actor_id, changed_fields from audit_log where table_name = 'public.members' and record_id = $1 and action = 'UPDATE' order by id",
       [id],
     );
-    expect(trail.rows.map((r) => r.actor_id)).toEqual([OFFICER, MANAGER]);
-    expect(trail.rows[1].changed_fields).toContain("membership_no");
+    expect(trail.rows.map((r) => r.actor_id)).toEqual([OFFICER, MARKETER, OFFICER, MANAGER]);
+    expect(trail.rows[3].changed_fields).toContain("membership_no");
+  });
+});
+
+describe("marketer review", () => {
+  it("won't send a file to the Branch Manager before the marketer has reviewed it", async () => {
+    const id = await createDraft();
+    await uploadDocs(id);
+    await expect(commitAs(OFFICER, () => db.query("select submit_member($1)", [id]))).rejects.toThrow(/marketer first/);
+  });
+
+  it("locks the file while it is with the marketer", async () => {
+    const id = await createDraft();
+    await commitAs(OFFICER, () => db.query("select send_member_to_marketer($1)", [id]));
+    expect(await status(id)).toBe("with_marketer");
+    const edit = await asUser(db, OFFICER, (tx) => tx.query("update members set phone = '0809' where id = $1", [id]));
+    expect(edit.affectedRows).toBe(0);
+    await expect(uploadDocs(id, lagos, ["other"])).rejects.toThrow(/with the marketer/);
+    await expect(commitAs(OFFICER, () => db.query("select marketer_review_member($1, null)", [id]))).rejects.toThrow(/not found/);
+  });
+
+  it("gives the file back to the officer to finish, recording who reviewed it", async () => {
+    const id = await createDraft();
+    await throughMarketer(id);
+    const row = await db.query<{ status: string; marketer_id: string; marketer_note: string }>(
+      "select status, marketer_id, marketer_note from members where id = $1",
+      [id],
+    );
+    expect(row.rows[0]).toEqual({ status: "marketer_reviewed", marketer_id: MARKETER, marketer_note: "Known to me; details checked" });
+    // The officer can now complete the file and add the remaining documents.
+    await commitAs(OFFICER, () => db.query("update members set address = '5 Marina' where id = $1", [id]));
+    await uploadDocs(id);
+    await commitAs(OFFICER, () => db.query("select submit_member($1)", [id]));
+    expect(await status(id)).toBe("pending_approval");
+  });
+
+  it("lets the marketer return a file with a reason, which then goes round the chain again", async () => {
+    const id = await createDraft();
+    await commitAs(OFFICER, () => db.query("select send_member_to_marketer($1)", [id]));
+    await commitAs(MARKETER, () => db.query("select return_member($1, 'I don''t know this person')", [id]));
+    const row = await db.query<{ status: string; returned_by: string }>("select status, returned_by from members where id = $1", [id]);
+    expect(row.rows[0]).toEqual({ status: "returned", returned_by: MARKETER });
+    await uploadDocs(id);
+    await expect(commitAs(OFFICER, () => db.query("select submit_member($1)", [id]))).rejects.toThrow(/marketer first/);
+  });
+
+  it("never lets the marketer who reviewed a file approve it", async () => {
+    await db.query("insert into staff_roles (staff_id, role_code, branch_id) values ($1, 'branch_manager', $2)", [MARKETER, lagos]);
+    const id = await createDraft();
+    await uploadDocs(id);
+    await throughMarketer(id);
+    await commitAs(OFFICER, () => db.query("select submit_member($1)", [id]));
+    await expect(commitAs(MARKETER, () => db.query("select approve_member($1, $2)", [id, SIG]))).rejects.toThrow(/as the marketer/);
+    await db.query("delete from staff_roles where staff_id = $1 and role_code = 'branch_manager'", [MARKETER]);
+  });
+
+  it("stops anyone writing the marketer's review directly", async () => {
+    const id = await createDraft();
+    await expect(
+      commitAs(OFFICER, () => db.query("update members set marketer_id = $2 where id = $1", [id, OFFICER])),
+    ).rejects.toThrow(/approval workflow/);
   });
 });
 
@@ -229,6 +303,7 @@ describe("approved members", () => {
   it("refuses document uploads while a file is with the manager", async () => {
     const id = await createDraft();
     await uploadDocs(id);
+    await throughMarketer(id);
     await commitAs(OFFICER, () => db.query("select submit_member($1)", [id]));
     await expect(uploadDocs(id, lagos, ["other"])).rejects.toThrow(/with the Branch Manager/);
   });

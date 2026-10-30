@@ -5,6 +5,7 @@ import { asUser, createTestDatabase } from "./harness";
 
 const SIG = "data:image/png;base64,iVBORw0KGgo=";
 const ADMIN_OFFICER = "00000000-0000-0000-0000-0000000000a1";
+const MARKETER = "00000000-0000-0000-0000-0000000000e9";
 const BRANCH_MANAGER = "00000000-0000-0000-0000-0000000000b1";
 const CREDIT_OFFICER = "00000000-0000-0000-0000-0000000000c1";
 const CREDIT_OFFICER_2 = "00000000-0000-0000-0000-0000000000c2";
@@ -16,6 +17,7 @@ const ACCOUNTANT = "00000000-0000-0000-0000-0000000000e1";
 const ACCOUNTANT_2 = "00000000-0000-0000-0000-0000000000e2";
 const CONTROLLER = "00000000-0000-0000-0000-0000000000f1";
 const AUDITOR = "00000000-0000-0000-0000-0000000000d1";
+const HEAD_OF_BUSINESS = "00000000-0000-0000-0000-0000000000f5";
 
 let db: PGlite;
 let lagos: string;
@@ -67,6 +69,8 @@ async function approvedMember(): Promise<string> {
       [id, lagos, t, `${lagos}/${id}/${t}-${Math.random()}.pdf`],
     );
   }
+  await q(ADMIN_OFFICER, "select send_member_to_marketer($1)", [id]);
+  await q(MARKETER, "select marketer_review_member($1, null)", [id]);
   await q(ADMIN_OFFICER, "select submit_member($1)", [id]);
   await q(BRANCH_MANAGER, "select approve_member($1, $2)", [id, SIG]);
   return id;
@@ -115,16 +119,23 @@ async function completeApplication(loan: Loan) {
   );
 }
 
+/** The analyst confirms every guarantor on a submitted application. */
+async function confirmGuarantors(loan: Loan) {
+  await q(ANALYST, "select confirm_loan_guarantor(id, 'Called the guarantor, who confirmed') from loan_guarantors where loan_id = $1", [loan.id]);
+}
+
 /** Takes a loan from draft to approved through the real workflow. */
 async function approvedLoan(fields: Parameters<typeof draftLoan>[0] = {}): Promise<Loan> {
   const loan = await draftLoan(fields);
   await completeApplication(loan);
   await q(CREDIT_OFFICER, "select submit_loan($1)", [loan.id]);
+  await confirmGuarantors(loan);
   await q(ANALYST, "select appraise_loan($1, 'clear', 'CRC', '712', 'low', 'approve', $2, 'Steady salary, low obligations')", [
     loan.id,
     fields.amount ?? 120000,
   ]);
   await q(HEAD_OF_CREDIT, "select decide_loan($1, true, $2, null)", [loan.id, fields.amount ?? 120000]);
+  await q(HEAD_OF_BUSINESS, "select business_decide_loan($1, true, null)", [loan.id]);
   return loan;
 }
 
@@ -152,6 +163,7 @@ async function disburse(loan: Loan, amount: number, daysAgo = 0) {
   ).rows[0];
   await q(ACCOUNTANT, "select submit_finance_transaction($1)", [txn.id]);
   await q(CONTROLLER, "select approve_finance_transaction($1)", [txn.id]);
+  await q(AUDITOR, "select audit_approve_payment($1)", [txn.id]);
   await attach(ACCOUNTANT_2, txn, "payment_proof");
   await q(ACCOUNTANT_2, "select pay_finance_transaction($1)", [txn.id]);
   return txn;
@@ -199,6 +211,7 @@ beforeAll(async () => {
   abuja = (await db.query<{ id: string }>("insert into branches (region_id, code, name) values ($1, 'ABJ', 'Abuja') returning id", [r2.rows[0].id])).rows[0].id;
 
   await addStaff(ADMIN_OFFICER, "administration", "admin_officer", lagos);
+  await addStaff(MARKETER, "administration", "marketer", lagos);
   await addStaff(BRANCH_MANAGER, "branch_operations", "branch_manager", lagos);
   await addStaff(CREDIT_OFFICER, "credit", "credit_officer", lagos);
   await addStaff(CREDIT_OFFICER_2, "credit", "credit_officer", lagos);
@@ -210,6 +223,7 @@ beforeAll(async () => {
   await addStaff(ACCOUNTANT_2, "accounts", "regional_accountant", lagos);
   await addStaff(CONTROLLER, "accounts", "financial_controller", null);
   await addStaff(AUDITOR, "internal_audit", "internal_auditor", null);
+  await addStaff(HEAD_OF_BUSINESS, "management", "head_of_business", null);
 
   await db.exec(`insert into ledger_accounts (code, name, account_type, parent_code, cash_flow_class) values ('1131', 'Lagos bank', 'asset', '1130', 'cash');`);
   lagosBank = (
@@ -315,6 +329,7 @@ describe("loan applications", () => {
       q(CREDIT_OFFICER, "select appraise_loan($1, 'clear', null, null, 'low', 'approve', 100000, 'Looks fine')", [loan.id]),
     ).rejects.toThrow(/loan not found/);
     await expect(q(HEAD_OF_CREDIT, "select decide_loan($1, true, 100000, null)", [loan.id])).rejects.toThrow(/only appraised/);
+    await confirmGuarantors(loan);
     await q(ANALYST, "select appraise_loan($1, 'clear', 'CRC', '700', 'medium', 'approve', 100000, 'Salary covers the instalment')", [
       loan.id,
     ]);
@@ -325,7 +340,76 @@ describe("loan applications", () => {
       "select status, approved_amount from decide_loan($1, true, 100000, 'Approved at the recommended amount')",
       [loan.id],
     );
-    expect(decided.rows[0]).toEqual({ status: "approved", approved_amount: "100000.00" });
+    expect(decided.rows[0]).toEqual({ status: "credit_approved", approved_amount: "100000.00" });
+
+    // Then the Head of Business, who must be someone other than the Head of Credit, before Accounts can pay it out.
+    await expect(q(HEAD_OF_CREDIT, "select business_decide_loan($1, true, null)", [loan.id])).rejects.toThrow(/loan not found/);
+    await db.query("insert into staff_roles (staff_id, role_code, branch_id) values ($1, 'head_of_business', null)", [HEAD_OF_CREDIT]);
+    await expect(q(HEAD_OF_CREDIT, "select business_decide_loan($1, true, null)", [loan.id])).rejects.toThrow(/someone else/);
+    await db.query("delete from staff_roles where staff_id = $1 and role_code = 'head_of_business'", [HEAD_OF_CREDIT]);
+    const awaiting = await asUser(db, ACCOUNTANT, (tx) => tx.query("select id from loans_awaiting_disbursement where id = $1", [loan.id]));
+    expect(awaiting.rows).toHaveLength(0);
+    const final = await q<{ status: string; business_approved_by: string }>(
+      HEAD_OF_BUSINESS,
+      "select status, business_approved_by from business_decide_loan($1, true, 'Fits the business plan')",
+      [loan.id],
+    );
+    expect(final.rows[0]).toEqual({ status: "approved", business_approved_by: HEAD_OF_BUSINESS });
+  });
+
+  it("lets the Head of Business return or reject what the Head of Credit approved", async () => {
+    const toBusiness = async () => {
+      const loan = await draftLoan();
+      await completeApplication(loan);
+      await q(CREDIT_OFFICER, "select submit_loan($1)", [loan.id]);
+      await confirmGuarantors(loan);
+      await q(ANALYST, "select appraise_loan($1, 'clear', 'CRC', '700', 'low', 'approve', 120000, 'Salary covers the instalment')", [loan.id]);
+      await q(HEAD_OF_CREDIT, "select decide_loan($1, true, 120000, null)", [loan.id]);
+      return loan;
+    };
+    const returned = await toBusiness();
+    await expect(q(HEAD_OF_CREDIT, "select return_loan($1, 'Second thoughts')", [returned.id])).rejects.toThrow(/with the Head of Business/);
+    await q(HEAD_OF_BUSINESS, "select return_loan($1, 'Reduce the tenor to three months')", [returned.id]);
+    const row = await db.query("select status, approved_amount, approved_by from loans where id = $1", [returned.id]);
+    expect(row.rows[0]).toEqual({ status: "returned", approved_amount: null, approved_by: null });
+
+    const rejected = await toBusiness();
+    await expect(q(HEAD_OF_BUSINESS, "select business_decide_loan($1, false, '')", [rejected.id])).rejects.toThrow(/reason for rejecting/);
+    const r = await q<{ status: string }>(HEAD_OF_BUSINESS, "select status from business_decide_loan($1, false, 'Sector exposure is too high')", [
+      rejected.id,
+    ]);
+    expect(r.rows[0].status).toBe("rejected");
+  });
+
+  it("need every guarantor confirmed by someone other than the officer before appraisal", async () => {
+    const loan = await draftLoan();
+    await completeApplication(loan);
+    // Confirmation can't be typed in while preparing.
+    await q(CREDIT_OFFICER, "update loan_guarantors set confirmed_by = $2, confirmed_at = now() where loan_id = $1", [loan.id, CREDIT_OFFICER]);
+    expect((await db.query("select confirmed_at from loan_guarantors where loan_id = $1", [loan.id])).rows[0]).toEqual({ confirmed_at: null });
+    await expect(
+      q(ANALYST, "select confirm_loan_guarantor(id, 'Called them') from loan_guarantors where loan_id = $1", [loan.id]),
+    ).rejects.toThrow(/while the application is being appraised/);
+
+    await q(CREDIT_OFFICER, "select submit_loan($1)", [loan.id]);
+    await expect(
+      q(ANALYST, "select appraise_loan($1, 'clear', 'CRC', '700', 'low', 'approve', 100000, 'Salary covers the instalment')", [loan.id]),
+    ).rejects.toThrow(/confirm every guarantor/);
+    await expect(
+      q(CREDIT_OFFICER, "select confirm_loan_guarantor(id, 'Called them') from loan_guarantors where loan_id = $1", [loan.id]),
+    ).rejects.toThrow(/not found/);
+    await expect(q(ANALYST, "select confirm_loan_guarantor(id, '') from loan_guarantors where loan_id = $1", [loan.id])).rejects.toThrow(
+      /how you confirmed/,
+    );
+    await confirmGuarantors(loan);
+    const g = await db.query("select confirmed_by, confirmation_note from loan_guarantors where loan_id = $1", [loan.id]);
+    expect(g.rows[0]).toEqual({ confirmed_by: ANALYST, confirmation_note: "Called the guarantor, who confirmed" });
+    await q(ANALYST, "select appraise_loan($1, 'clear', 'CRC', '700', 'low', 'approve', 100000, 'Salary covers the instalment')", [loan.id]);
+
+    // If the application comes back and the officer changes a guarantor, it must be confirmed again.
+    await q(HEAD_OF_CREDIT, "select return_loan($1, 'Check the guarantor''s address')", [loan.id]);
+    await q(CREDIT_OFFICER, "update loan_guarantors set address = '3 Marina, Lagos' where loan_id = $1", [loan.id]);
+    expect((await db.query("select confirmed_at from loan_guarantors where loan_id = $1", [loan.id])).rows[0]).toEqual({ confirmed_at: null });
   });
 
   it("can be returned with a reason, corrected and sent again, or rejected", async () => {
@@ -336,6 +420,7 @@ describe("loan applications", () => {
     await q(ANALYST, "select return_loan($1, 'Attach the latest payslip')", [loan.id]);
     await q(CREDIT_OFFICER, "update loans set purpose = 'School fees and books' where id = $1", [loan.id]);
     await q(CREDIT_OFFICER, "select submit_loan($1)", [loan.id]);
+    await confirmGuarantors(loan);
     await q(ANALYST, "select appraise_loan($1, 'adverse', 'CRC', '410', 'high', 'decline', null, 'Two loans in default elsewhere')", [loan.id]);
     await expect(q(HEAD_OF_CREDIT, "select decide_loan($1, false, null, '')", [loan.id])).rejects.toThrow(/reason for rejecting/);
     const rejected = await q<{ status: string }>(HEAD_OF_CREDIT, "select status from decide_loan($1, false, null, 'Adverse bureau report')", [

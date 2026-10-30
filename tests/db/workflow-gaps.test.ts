@@ -4,6 +4,7 @@ import { asUser, createTestDatabase } from "./harness";
 
 const SIG = "data:image/png;base64,iVBORw0KGgo=";
 const OFFICER = "00000000-0000-0000-0000-0000000000a1";
+const MARKETER = "00000000-0000-0000-0000-0000000000e9";
 const MANAGER = "00000000-0000-0000-0000-0000000000b1";
 const LAGOS_ACCOUNTANT = "00000000-0000-0000-0000-0000000000e1";
 const LAGOS_ACCOUNTANT_2 = "00000000-0000-0000-0000-0000000000e2";
@@ -63,6 +64,8 @@ async function approvedMember(): Promise<string> {
       ),
     );
   }
+  await commitAs(OFFICER, () => db.query("select send_member_to_marketer($1)", [id]));
+  await commitAs(MARKETER, () => db.query("select marketer_review_member($1, null)", [id]));
   await commitAs(OFFICER, () => db.query("select submit_member($1)", [id]));
   await commitAs(MANAGER, () => db.query("select approve_member($1, $2)", [id, SIG]));
   return id;
@@ -101,6 +104,7 @@ beforeAll(async () => {
   abuja = (await db.query<{ id: string }>("insert into branches (region_id, code, name) values ($1, 'ABJ', 'Abuja') returning id", [r2.rows[0].id])).rows[0].id;
 
   await addStaff(OFFICER, "administration", "admin_officer", lagos);
+  await addStaff(MARKETER, "administration", "marketer", lagos);
   await addStaff(MANAGER, "branch_operations", "branch_manager", lagos);
   await addStaff(LAGOS_ACCOUNTANT, "accounts", "regional_accountant", lagos);
   await addStaff(LAGOS_ACCOUNTANT_2, "accounts", "regional_accountant", lagos);
@@ -201,6 +205,8 @@ describe("administration gaps", () => {
         ),
       );
     }
+    await commitAs(OFFICER, () => db.query("select send_member_to_marketer($1)", [id]));
+    await commitAs(MARKETER, () => db.query("select marketer_review_member($1, null)", [id]));
     await commitAs(OFFICER, () => db.query("select submit_member($1)", [id]));
     await expect(commitAs(MANAGER, () => db.query("select approve_member($1, '')", [id]))).rejects.toThrow(/sign in the box/);
     await expect(commitAs(MANAGER, () => db.query("select approve_member($1, 'javascript:alert(1)')", [id]))).rejects.toThrow(/sign in the box/);
@@ -343,6 +349,7 @@ describe("suppliers and bills", () => {
     await attach(LAGOS_ACCOUNTANT, txn);
     await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [txn.id]));
     await commitAs(CONTROLLER, () => db.query("select approve_finance_transaction($1)", [txn.id]));
+    await commitAs(AUDITOR, () => db.query("select audit_approve_payment($1)", [txn.id]));
     await attach(LAGOS_ACCOUNTANT_2, txn, "payment_proof");
     await commitAs(LAGOS_ACCOUNTANT_2, () => db.query("select pay_finance_transaction($1)", [txn.id]));
     const balance = await asUser(db, AUDITOR, (tx) => tx.query("select paid, outstanding from supplier_bill_balances where id = $1", [bill.id]));
@@ -368,6 +375,7 @@ describe("reporting dimensions", () => {
     await attach(LAGOS_ACCOUNTANT, txn);
     await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [txn.id]));
     await commitAs(CONTROLLER, () => db.query("select approve_finance_transaction($1)", [txn.id]));
+    await commitAs(AUDITOR, () => db.query("select audit_approve_payment($1)", [txn.id]));
     await attach(LAGOS_ACCOUNTANT_2, txn, "payment_proof");
     await commitAs(LAGOS_ACCOUNTANT_2, () => db.query("select pay_finance_transaction($1)", [txn.id]));
 
