@@ -185,7 +185,7 @@ export default async function CreditDashboard({ searchParams }: { searchParams: 
           <Stat
             label="Pending"
             value={String(received.filter(isPending).length)}
-            sub={`${count("submitted")} awaiting appraisal, ${count("appraised")} awaiting decision (all dates)`}
+            sub={`${count("submitted")} awaiting appraisal, ${count("appraised")} with the Head of Credit, ${count("credit_approved")} with the Head of Business (all dates)`}
             href="/credit/approvals"
           />
           <Stat label="Approved" value={String(approvedInPeriod.length)} sub={formatMoney(approvedInPeriod.reduce((s, l) => s + n(l.approved_amount), 0))} href={`/credit/reports/loan-applications?${query}&status=approved`} />

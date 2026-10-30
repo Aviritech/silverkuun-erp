@@ -80,7 +80,7 @@ export const round2 = (v: number) => Math.round(v * 100) / 100;
 /** Loans on the book today: paid out and not yet fully repaid. */
 export const isOnBook = (l: LoanBookRow) => l.status === "active";
 export const isDisbursed = (l: LoanBookRow) => l.status === "active" || l.status === "closed";
-export const PENDING_STATUSES = ["draft", "submitted", "appraised", "returned"] as const;
+export const PENDING_STATUSES = ["draft", "submitted", "appraised", "credit_approved", "returned"] as const;
 export const isPending = (l: LoanBookRow) => (PENDING_STATUSES as readonly string[]).includes(l.status);
 export const wasApproved = (l: LoanBookRow) => ["approved", "active", "closed"].includes(l.status);
 export const outstanding = (l: LoanBookRow) => n(l.outstanding_principal) + n(l.outstanding_interest);

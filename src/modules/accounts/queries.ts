@@ -64,6 +64,9 @@ export type FinanceTransaction = {
   submitted_at: string | null;
   approved_by: string | null;
   approved_at: string | null;
+  /** Internal Audit's approval of a payment, needed before it is paid. */
+  audited_by: string | null;
+  audited_at: string | null;
   paid_by: string | null;
   paid_at: string | null;
   posted_at: string | null;
@@ -225,7 +228,7 @@ export async function getTransactionBundle(id: string) {
     : { data: [] };
   const urls = new Map((signed.data ?? []).map((s) => [s.path, s.signedUrl]));
   const [staffName, members, tags] = await Promise.all([
-    staffNameLookup([t.created_by, t.submitted_by, t.approved_by, t.paid_by, t.staff_id, ...attachments.map((a) => a.uploaded_by)]),
+    staffNameLookup([t.created_by, t.submitted_by, t.approved_by, t.audited_by, t.paid_by, t.staff_id, ...attachments.map((a) => a.uploaded_by)]),
     memberNames([t.member_id]),
     Promise.all([
       t.department_code ? supabase.from("departments").select("name").eq("code", t.department_code).maybeSingle() : null,

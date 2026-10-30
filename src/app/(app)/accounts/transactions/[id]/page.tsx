@@ -8,6 +8,8 @@ import { listOrg } from "@/lib/org";
 import { createClient } from "@/lib/supabase/server";
 import {
   approveTransaction,
+  auditApprovePayment,
+  auditDeclinePayment,
   declineTransaction,
   payTransaction,
   submitTransaction,
@@ -15,7 +17,7 @@ import {
 } from "@/modules/accounts/actions";
 import { ReasonForm } from "@/modules/accounts/components/reason-form";
 import { UploadForm } from "@/modules/accounts/components/upload-form";
-import { ATTACHMENT_KINDS, DIRECTIONS, FINANCE_STATUSES } from "@/modules/accounts/constants";
+import { ATTACHMENT_KINDS, DIRECTIONS, financeStatus } from "@/modules/accounts/constants";
 import { accountsModule } from "@/modules/accounts/module";
 import { getTransactionBundle, listLedgerAccounts } from "@/modules/accounts/queries";
 
@@ -49,8 +51,12 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
   const isOwner = txn.created_by === staff.id;
   const isPreparer = isOwner || txn.submitted_by === staff.id;
   const canReview = txn.status === "submitted" && can("accounts.transactions.approve") && !isPreparer;
-  const canPay = txn.direction === "payment" && txn.status === "approved" && can("accounts.payments.pay") && txn.approved_by !== staff.id;
-  const status = FINANCE_STATUSES[txn.status];
+  const awaitingAudit = txn.direction === "payment" && txn.status === "approved" && !txn.audited_at;
+  const workedOnIt = [txn.created_by, txn.submitted_by, txn.approved_by].includes(staff.id);
+  const canAudit = awaitingAudit && can("audit.payments.approve") && !workedOnIt;
+  const canPay =
+    txn.direction === "payment" && txn.status === "approved" && !!txn.audited_at && can("accounts.payments.pay") && txn.approved_by !== staff.id;
+  const status = financeStatus(txn);
   const supporting = attachments.filter((a) => a.kind === "supporting");
   const needsEvidence =
     !txn.contribution_id && !txn.statement_line_id && !(txn.transaction_type === "loan_disbursement" && txn.loan_id) && supporting.length === 0;
@@ -157,6 +163,7 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
           <li>Prepared by {staffName(txn.created_by)} on {formatDateTime(txn.created_at)}</li>
           {txn.submitted_at && <li>Submitted by {staffName(txn.submitted_by)} on {formatDateTime(txn.submitted_at)}</li>}
           {txn.approved_at && <li>{txn.direction === "receipt" ? "Confirmed" : "Approved"} by {staffName(txn.approved_by)} on {formatDateTime(txn.approved_at)}</li>}
+          {txn.audited_at && <li>Approved by Internal Audit ({staffName(txn.audited_by)}) on {formatDateTime(txn.audited_at)}</li>}
           {txn.paid_at && <li>Paid by {staffName(txn.paid_by)} on {formatDateTime(txn.paid_at)}</li>}
           {txn.posted_at && <li>Posted to the ledger on {formatDateTime(txn.posted_at)}</li>}
         </ol>
@@ -181,13 +188,28 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
             </>
           )}
           {txn.status === "submitted" && isPreparer && <p className="text-sm text-zinc-600">Waiting for someone else to review it.</p>}
+          {canAudit && (
+            <>
+              <ActionButton
+                action={auditApprovePayment.bind(null, txn.id)}
+                label="Approve for payment (Internal Audit)"
+                pendingLabel="Approving…"
+                confirm="Approve this payment as Internal Audit? Accounts can then pay it."
+              />
+              <ReasonForm action={auditDeclinePayment.bind(null, txn.id, "returned")} openLabel="Return to Accounts" submitLabel="Return" question="What needs correcting?" variant="secondary" />
+              <ReasonForm action={auditDeclinePayment.bind(null, txn.id, "rejected")} openLabel="Reject" submitLabel="Reject" question="Why is this being rejected?" />
+            </>
+          )}
+          {awaitingAudit && !canAudit && (
+            <p className="text-sm text-zinc-600">Approved by Accounts. Internal Audit must approve it before it can be paid.</p>
+          )}
           {canPay &&
             (attachments.some((a) => a.kind === "payment_proof") ? (
               <ActionButton action={payTransaction.bind(null, txn.id)} label="Mark as paid and post" pendingLabel="Posting…" confirm="Confirm the money has gone out and post this payment?" />
             ) : (
               <p className="text-sm text-amber-800">Attach the proof of payment below to mark this as paid.</p>
             ))}
-          {txn.direction === "payment" && txn.status === "approved" && txn.approved_by === staff.id && (
+          {txn.direction === "payment" && txn.status === "approved" && !awaitingAudit && txn.approved_by === staff.id && (
             <p className="text-sm text-zinc-600">You approved this payment, so someone else must make it.</p>
           )}
         </div>

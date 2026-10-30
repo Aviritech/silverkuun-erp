@@ -170,6 +170,21 @@ export async function payTransaction(id: string): Promise<ActionState> {
   return runWorkflow("pay_finance_transaction", { p_id: id }, txnPath(id));
 }
 
+export async function auditApprovePayment(id: string): Promise<ActionState> {
+  return runWorkflow("audit_approve_payment", { p_id: id }, txnPath(id));
+}
+
+export async function auditDeclinePayment(
+  id: string,
+  outcome: "returned" | "rejected",
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const parsed = reasonSchema.safeParse({ reason: formData.get("reason") ?? "" });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  return runWorkflow("audit_decline_payment", { p_id: id, p_outcome: outcome, p_reason: parsed.data.reason }, txnPath(id));
+}
+
 export async function declineTransaction(
   id: string,
   outcome: "returned" | "rejected",

@@ -5,7 +5,7 @@ import { dbFailure } from "@/lib/db-errors";
 import { formatDate, formatMoney } from "@/lib/format";
 import { listOrg } from "@/lib/org";
 import { createClient } from "@/lib/supabase/server";
-import { DIRECTIONS, FINANCE_STATUSES, type FinanceStatus } from "@/modules/accounts/constants";
+import { DIRECTIONS, FINANCE_STATUSES, financeStatus, type FinanceStatus } from "@/modules/accounts/constants";
 import { accountsModule } from "@/modules/accounts/module";
 
 const PAGE_SIZE = 100;
@@ -18,7 +18,9 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
 
   let query = supabase
     .from("finance_transactions")
-    .select("id, txn_no, txn_date, direction, status, amount, counterparty, description, branch_id, members(first_name, last_name), posting_rules(name)")
+    .select(
+      "id, txn_no, txn_date, direction, status, audited_at, amount, counterparty, description, branch_id, members(first_name, last_name), posting_rules(name)",
+    )
     .order("created_at", { ascending: false })
     .limit(PAGE_SIZE);
   if (status === "waiting") query = query.in("status", ["submitted", "approved"]);
@@ -28,7 +30,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   if (error) throw dbFailure(error);
   const branchName = new Map(org.branches.map((b) => [b.id, b.name]));
   type Row = {
-    id: string; txn_no: string; txn_date: string; direction: "receipt" | "payment"; status: FinanceStatus; amount: string;
+    id: string; txn_no: string; txn_date: string; direction: "receipt" | "payment"; status: FinanceStatus; audited_at: string | null; amount: string;
     counterparty: string | null; description: string; branch_id: string;
     members: { first_name: string; last_name: string } | null; posting_rules: { name: string };
   };
@@ -106,7 +108,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
                     {formatMoney(t.amount)}
                   </td>
                   <td className="px-4 py-2">
-                    <Badge tone={FINANCE_STATUSES[t.status].tone}>{FINANCE_STATUSES[t.status].label}</Badge>
+                    <Badge tone={financeStatus(t).tone}>{financeStatus(t).label}</Badge>
                   </td>
                 </tr>
               ))}

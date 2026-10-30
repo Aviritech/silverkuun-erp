@@ -1,7 +1,8 @@
 export const LOAN_STATUSES = {
   draft: { label: "Draft", tone: "gray" },
   submitted: { label: "Awaiting appraisal", tone: "amber" },
-  appraised: { label: "Awaiting decision", tone: "amber" },
+  appraised: { label: "Awaiting Head of Credit", tone: "amber" },
+  credit_approved: { label: "Awaiting Head of Business", tone: "amber" },
   returned: { label: "Returned", tone: "red" },
   rejected: { label: "Rejected", tone: "red" },
   approved: { label: "Awaiting disbursement", tone: "blue" },

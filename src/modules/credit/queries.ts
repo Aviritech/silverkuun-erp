@@ -71,6 +71,10 @@ export type Loan = {
   decision_reason: string | null;
   approved_by: string | null;
   approved_at: string | null;
+  /** The Head of Business's approval, after the Head of Credit's. */
+  business_approved_by: string | null;
+  business_approved_at: string | null;
+  business_note: string | null;
   decided_by: string | null;
   decided_at: string | null;
   disbursement_txn_id: string | null;
@@ -157,6 +161,10 @@ export type Guarantor = {
   employer: string | null;
   monthly_income: string | null;
   is_member: boolean;
+  /** Confirmed by the credit analyst while appraising. */
+  confirmed_by: string | null;
+  confirmed_at: string | null;
+  confirmation_note: string | null;
 };
 
 export type Collateral = {
@@ -308,7 +316,9 @@ export async function getLoanBundle(id: string) {
     loan.submitted_by,
     loan.appraised_by,
     loan.approved_by,
+    loan.business_approved_by,
     loan.decided_by,
+    ...guarantors.map((g) => g.confirmed_by),
     loan.account_officer_id,
     ...documents.map((d) => d.uploaded_by),
     ...restructures.flatMap((r) => [r.requested_by, r.decided_by]),

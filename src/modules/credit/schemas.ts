@@ -106,6 +106,14 @@ export const appraisalSchema = z
     message: "Enter the amount you recommend",
   });
 
+export const businessDecisionSchema = z
+  .object({ decision: z.enum(["approve", "reject"]), note: optionalText })
+  .refine((v) => v.decision === "approve" || (v.note?.length ?? 0) >= 5, { path: ["note"], message: "Give the reason for rejecting" });
+
+export const guarantorConfirmationSchema = z.object({
+  note: z.string().trim().min(5, "Say how you confirmed the guarantor, for example the call or visit").max(500),
+});
+
 export const decisionSchema = z
   .object({
     decision: z.enum(["approve", "reject"]),

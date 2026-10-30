@@ -27,7 +27,9 @@ insert into seed_staff values
   ('30000000-0000-0000-0000-000000000013', 'head.credit@kuun.test', 'Uche Head of Credit', 'credit', 'credit_manager', null),
   ('30000000-0000-0000-0000-000000000014', 'hr.lagos@kuun.test', 'Halima HR Officer', 'hr', 'hr_officer', '20000000-0000-0000-0000-000000000001'),
   ('30000000-0000-0000-0000-000000000015', 'head.hr@kuun.test', 'Kunle Head of HR', 'hr', 'head_of_hr', null),
-  ('30000000-0000-0000-0000-000000000016', 'payroll@kuun.test', 'Pat Payroll', 'hr', 'payroll_officer', null);
+  ('30000000-0000-0000-0000-000000000016', 'payroll@kuun.test', 'Pat Payroll', 'hr', 'payroll_officer', null),
+  ('30000000-0000-0000-0000-000000000017', 'marketer.lagos@kuun.test', 'Mariam Marketer', 'administration', 'marketer', '20000000-0000-0000-0000-000000000001'),
+  ('30000000-0000-0000-0000-000000000018', 'head.business@kuun.test', 'Bayo Head of Business', 'management', 'head_of_business', null);
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,
@@ -81,7 +83,8 @@ create function pg_temp.add_docs(p_member uuid, p_types text[]) returns void lan
   from public.members m, unnest(p_types) t where m.id = p_member;
 $$;
 
--- Members in Lagos: two approved, one awaiting the Branch Manager, one incomplete draft.
+-- Members in Lagos: two approved, one awaiting the Branch Manager, one with the marketer (documents still to come).
+-- Each file goes officer, marketer, officer, Branch Manager.
 select pg_temp.act_as('officer.lagos@kuun.test');
 insert into public.members (id, branch_id, title, first_name, last_name, gender, phone, email, address, nin, id_type, id_number, created_at) values
   ('50000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'Mrs', 'Ada', 'Obi', 'female', '08031234567', 'ada.obi@example.com', '12 Marina, Lagos Island', '12345678901', 'national_id', 'NG-A001', now()),
@@ -91,6 +94,13 @@ insert into public.members (id, branch_id, title, first_name, last_name, gender,
 select pg_temp.add_docs(id, array['kyc_form', 'nin_slip', 'means_of_id', 'utility_bill', 'passport_photo'])
 from public.members where id in ('50000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000002', '50000000-0000-0000-0000-000000000003');
 select pg_temp.add_docs('50000000-0000-0000-0000-000000000004', array['kyc_form', 'nin_slip']);
+select public.send_member_to_marketer(id) from public.members where branch_id = '20000000-0000-0000-0000-000000000001';
+
+select pg_temp.act_as('marketer.lagos@kuun.test');
+select public.marketer_review_member(id, 'My customer; details confirmed by phone')
+from public.members where id in ('50000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000002', '50000000-0000-0000-0000-000000000003');
+
+select pg_temp.act_as('officer.lagos@kuun.test');
 select public.submit_member(id)
 from public.members where id in ('50000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000002', '50000000-0000-0000-0000-000000000003');
 
@@ -134,7 +144,7 @@ values
    '50000000-0000-0000-0000-000000000001', 'TRF-ADA-001', 'Gold plan contribution', '70000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001');
 select public.submit_finance_transaction('90000000-0000-0000-0000-000000000001');
 
--- Office rent: requested, approved, paid with proof.
+-- Office rent: requested, approved by Accounts and by Internal Audit, paid with proof.
 insert into public.finance_transactions (id, direction, transaction_type, txn_date, amount, bank_account_id, counterparty, reference, description, branch_id)
 values
   ('90000000-0000-0000-0000-000000000002', 'payment', 'admin_expense', current_date - 7, 350000, '40000000-0000-0000-0000-000000000001',
@@ -147,12 +157,26 @@ select public.submit_finance_transaction('90000000-0000-0000-0000-000000000002')
 select pg_temp.act_as('controller@kuun.test');
 select public.approve_finance_transaction('90000000-0000-0000-0000-000000000001');
 select public.approve_finance_transaction('90000000-0000-0000-0000-000000000002');
+select pg_temp.act_as('auditor@kuun.test');
+select public.audit_approve_payment('90000000-0000-0000-0000-000000000002');
 
 select pg_temp.act_as('accountant.lagos@kuun.test');
 insert into public.finance_attachments (transaction_id, branch_id, kind, file_name, storage_path, mime_type, size_bytes)
 values ('90000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'payment_proof', 'transfer-receipt.pdf',
         '20000000-0000-0000-0000-000000000001/90000000-0000-0000-0000-000000000002/seed-proof.pdf', 'application/pdf', 1024);
 select public.pay_finance_transaction('90000000-0000-0000-0000-000000000002');
+
+-- Lagos stationery, approved by the Financial Controller and waiting for Internal Audit.
+insert into public.finance_transactions (id, direction, transaction_type, txn_date, amount, bank_account_id, counterparty, reference, description, branch_id)
+values
+  ('90000000-0000-0000-0000-000000000004', 'payment', 'admin_expense', current_date - 1, 48000, '40000000-0000-0000-0000-000000000001',
+   'Shoprite Office Supplies', 'INV-SOS-2210', 'Printer paper and toner for the Lagos office', '20000000-0000-0000-0000-000000000001');
+insert into public.finance_attachments (transaction_id, branch_id, kind, file_name, storage_path, mime_type, size_bytes)
+values ('90000000-0000-0000-0000-000000000004', '20000000-0000-0000-0000-000000000001', 'supporting', 'stationery-invoice.pdf',
+        '20000000-0000-0000-0000-000000000001/90000000-0000-0000-0000-000000000004/seed-invoice.pdf', 'application/pdf', 1024);
+select public.submit_finance_transaction('90000000-0000-0000-0000-000000000004');
+select pg_temp.act_as('controller@kuun.test');
+select public.approve_finance_transaction('90000000-0000-0000-0000-000000000004');
 
 -- An Abuja payment request waiting for approval.
 select pg_temp.act_as('payments.abuja@kuun.test');
@@ -214,8 +238,8 @@ select pg_temp.act_as('controller@kuun.test');
 select public.approve_supplier_bill('a1000000-0000-0000-0000-000000000001');
 
 -- ---------------------------------------------------------------------------
--- Credit: loans at every stage, raised by the Lagos account officer, appraised by the analyst, decided by the
--- Head of Credit, and paid out and repaid through Accounts.
+-- Credit: loans at every stage, raised by the Lagos account officer, appraised by the analyst (who confirms the
+-- guarantor), approved by the Head of Credit and then the Head of Business, and paid out and repaid through Accounts.
 -- ---------------------------------------------------------------------------
 
 create function pg_temp.new_loan(p_id uuid, p_member uuid, p_product text, p_amount numeric, p_tenor int, p_method text, p_rate numeric,
@@ -237,15 +261,23 @@ create function pg_temp.new_loan(p_id uuid, p_member uuid, p_product text, p_amo
   from public.loans l where l.id = p_id;
 $$;
 
+create function pg_temp.confirm_guarantors(p_id uuid) returns void language sql as $$
+  select public.confirm_loan_guarantor(g.id, 'Called the guarantor, who confirmed they stand for the loan')
+  from (select pg_temp.act_as('analyst@kuun.test')) a, public.loan_guarantors g where g.loan_id = p_id;
+$$;
+
 create function pg_temp.approve_loan(p_id uuid, p_amount numeric) returns void language sql as $$
   select public.submit_loan(p_id) from (select pg_temp.act_as('credit.lagos@kuun.test')) a;
+  select pg_temp.confirm_guarantors(p_id);
   select public.appraise_loan(p_id, 'clear', 'CRC Credit Bureau', '702', 'low', 'approve', p_amount,
     'Steady income, no adverse bureau records, repayment within a third of monthly income.')
   from (select pg_temp.act_as('analyst@kuun.test')) a;
   select public.decide_loan(p_id, true, p_amount, null) from (select pg_temp.act_as('head.credit@kuun.test')) a;
+  select public.business_decide_loan(p_id, true, null) from (select pg_temp.act_as('head.business@kuun.test')) a;
 $$;
 
--- Accounts pays the loan out: the accountant requests it, the controller approves, the accountant pays with proof.
+-- Accounts pays the loan out: the accountant requests it, the controller and Internal Audit approve, the accountant
+-- pays with proof.
 create function pg_temp.disburse_loan(p_loan uuid, p_txn uuid, p_days_ago int) returns void language sql as $$
   select pg_temp.act_as('accountant.lagos@kuun.test');
   insert into public.finance_transactions (id, direction, transaction_type, txn_date, amount, bank_account_id, member_id, loan_id,
@@ -256,6 +288,8 @@ create function pg_temp.disburse_loan(p_loan uuid, p_txn uuid, p_days_ago int) r
   select public.submit_finance_transaction(p_txn);
   select pg_temp.act_as('controller@kuun.test');
   select public.approve_finance_transaction(p_txn);
+  select pg_temp.act_as('auditor@kuun.test');
+  select public.audit_approve_payment(p_txn);
   select pg_temp.act_as('accountant.lagos@kuun.test');
   insert into public.finance_attachments (transaction_id, branch_id, kind, file_name, storage_path, mime_type, size_bytes)
   select p_txn, branch_id, 'payment_proof', 'transfer-receipt.pdf', branch_id || '/' || p_txn || '/seed-proof.pdf', 'application/pdf', 1024
@@ -319,12 +353,25 @@ select pg_temp.repay_loan('b0000000-0000-0000-0000-000000000003', '91000000-0000
 select pg_temp.repay_loan('b0000000-0000-0000-0000-000000000003', '91000000-0000-0000-0000-000000000007', 38333.33, 60);
 select pg_temp.repay_loan('b0000000-0000-0000-0000-000000000003', '91000000-0000-0000-0000-000000000008', null, 31);
 
--- Approved by the Head of Credit and waiting for Accounts to pay it out.
+-- Approved by the Head of Credit and the Head of Business, and waiting for Accounts to pay it out.
 select pg_temp.approve_loan('b0000000-0000-0000-0000-000000000004', 180000);
+
+-- Approved by the Head of Credit and waiting for the Head of Business.
+select pg_temp.act_as('credit.lagos@kuun.test');
+select pg_temp.new_loan('b0000000-0000-0000-0000-000000000008', '50000000-0000-0000-0000-000000000002', 'personal', 250000, 6, 'flat', 2.5,
+  'business_owner', 'New shop fittings');
+select public.submit_loan('b0000000-0000-0000-0000-000000000008');
+select pg_temp.confirm_guarantors('b0000000-0000-0000-0000-000000000008');
+select pg_temp.act_as('analyst@kuun.test');
+select public.appraise_loan('b0000000-0000-0000-0000-000000000008', 'clear', 'CRC Credit Bureau', '688', 'medium', 'approve', 220000,
+  'Shop takings are steady and the guarantor is confirmed. Recommend a little less than asked.');
+select pg_temp.act_as('head.credit@kuun.test');
+select public.decide_loan('b0000000-0000-0000-0000-000000000008', true, 220000, 'Repay from weekly shop takings');
 
 -- Appraised and waiting for the Head of Credit.
 select pg_temp.act_as('credit.lagos@kuun.test');
 select public.submit_loan('b0000000-0000-0000-0000-000000000005');
+select pg_temp.confirm_guarantors('b0000000-0000-0000-0000-000000000005');
 select pg_temp.act_as('analyst@kuun.test');
 select public.appraise_loan('b0000000-0000-0000-0000-000000000005', 'no_record', 'FirstCentral', null, 'medium', 'approve', 400000,
   'No credit history, but salary covers the instalment well. Recommend a slightly smaller amount.');
@@ -506,7 +553,8 @@ where bank_account_id = '40000000-0000-0000-0000-000000000001' and reference = '
 -- Loans were raised before they were paid out; the stale application has waited more than a week.
 update public.loans
    set created_at = disbursed_on - interval '6 days', submitted_at = disbursed_on - interval '5 days',
-       appraised_at = disbursed_on - interval '3 days', approved_at = disbursed_on - interval '2 days', decided_at = disbursed_on - interval '2 days'
+       appraised_at = disbursed_on - interval '3 days', approved_at = disbursed_on - interval '2 days', decided_at = disbursed_on - interval '2 days',
+       business_approved_at = disbursed_on - interval '1 day'
  where disbursed_on is not null;
 update public.loans set created_at = now() - interval '10 days', submitted_at = now() - interval '9 days'
  where id = 'b0000000-0000-0000-0000-000000000006';

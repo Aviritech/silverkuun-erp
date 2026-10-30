@@ -208,6 +208,43 @@ export function DecisionForm({ action, recommendedAmount }: { action: Action; re
   );
 }
 
+export function BusinessDecisionForm({ action }: { action: Action }) {
+  const [state, formAction, pending] = useActionState(action, {});
+  const [decision, setDecision] = useState("approve");
+  const e = state.fieldErrors ?? {};
+  return (
+    <form action={formAction} className="space-y-3">
+      <FormError message={state.error} />
+      <div className="grid gap-3 sm:grid-cols-3">
+        <Field label="Decision" error={e.decision}>
+          <Select name="decision" value={decision} onChange={(ev) => setDecision(ev.target.value)}>
+            <option value="approve">Approve for disbursement</option>
+            <option value="reject">Reject</option>
+          </Select>
+        </Field>
+      </div>
+      <Field label={decision === "approve" ? "Note (optional)" : "Reason for rejecting"} error={e.note}>
+        <Textarea name="note" rows={2} required={decision === "reject"} />
+      </Field>
+      <Button type="submit" variant={decision === "approve" ? "primary" : "danger"} disabled={pending}>
+        {pending ? "Saving…" : decision === "approve" ? "Approve and send to Accounts" : "Reject loan"}
+      </Button>
+    </form>
+  );
+}
+
+export function ConfirmGuarantorForm({ action }: { action: Action }) {
+  return (
+    <InlineForm action={action} openLabel="Confirm guarantor" submitLabel="Confirm" variant="primary">
+      {(e) => (
+        <Field label="How did you confirm them?" error={e.note}>
+          <Textarea name="note" rows={2} required placeholder="For example: called on 0803…, confirmed they stand as guarantor and their employer." />
+        </Field>
+      )}
+    </InlineForm>
+  );
+}
+
 export function ReassignForm({ action, officers, current }: { action: Action; officers: { id: string; full_name: string }[]; current: string }) {
   return (
     <InlineForm action={action} openLabel="Change account officer" submitLabel="Reassign">
