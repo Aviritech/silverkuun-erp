@@ -83,17 +83,23 @@ npx supabase db reset       # or start over: rebuilds the database and reloads t
 
 - **Operations** (formerly Administration): member files, KYC documents, plans and contributions (in their own tab on
   the member's page). A new file goes officer, marketer (who confirms the member), officer (who finishes the documents),
-  then the Branch Manager, who approves with a drawn signature; expected against paid per plan; maturities (within 30, 60 or 90 days, this week, next week or a custom date range); issued letters and statements; monthly branch targets; and
+  then the Branch Manager, who approves with a drawn signature; each member's bank (from the CBN bank code list) and
+  interest pay day; plans opened at the plan type's yearly interest rate; "Receipts to check", where Operations
+  confirms member savings and capital that Accounts keyed in, against the member's records, or sends them back;
+  expected against paid per plan; maturities (within 30, 60 or 90 days, this week, next week or a custom date range); issued letters and statements; monthly branch targets; and
   reports (contribution schedule, maturities, issued documents, member register).
 - **Accounts**: receipts and payment requests with evidence and maker-checker approval, posting to a double-entry
   ledger through posting rules that change only when a second person approves; department, product, staff, supplier
   and currency on each transaction; suppliers and supplier bills (Dr expense, Cr payables) paid against the bill;
-  verified Operations contributions flow in to be posted; every payment needs Internal Audit's approval after Accounts
+  verified Operations contributions flow in to be posted; member savings and capital receipts keyed in by Accounts name
+  the savings plan and need Operations' check before they can be confirmed; every payment needs Internal Audit's approval after Accounts
   approves it and before it is paid; manual journals with reversal and an ROI accrual screen (Dr 5100 Interest
   expense);
   bank statement import (Excel or CSV) with suggestions that learn from earlier postings, auto-matching and
   reconciliation sign-off; financial reports (profit and loss, financial position, cash flow, trial balance, general
-  ledger, member balances, register, payables aging, bank reconciliations).
+  ledger, member balances, register, payables aging, bank reconciliations); and the daily interest payment schedule
+  for the Payments accountant (members due that day with bank, CBN code, account, amount, total savings, rate and
+  branch; the amount is a placeholder, savings times the plan's yearly rate over 12, until Kuun confirms the formula).
 - **Credit**: loan applications (customer, employment or business, amount, purpose, tenor and frequency, rate and
   method, repayment mode, guarantors, collateral with valuation, documents and proforma invoice) that move from the
   account officer to a credit analyst's appraisal (each guarantor confirmed, bureau check, risk rating,

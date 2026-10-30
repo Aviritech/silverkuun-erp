@@ -642,6 +642,46 @@ const payablesAging: ReportDefinition = {
   },
 };
 
+const interestPayments: ReportDefinition = {
+  key: "interest-payments",
+  title: "Interest payment schedule",
+  description: "Members whose monthly interest falls due on the date, with their bank details, savings and the amount to pay.",
+  basePath: "/accounts",
+  permission: "accounts.payments.request",
+  dates: "asAt",
+  branchFilter: true,
+  async run(supabase, f) {
+    const { data, error } = await supabase.rpc("interest_payment_schedule", { p_date: f.to, p_branch_id: f.branch, p_region_id: f.region });
+    if (error) throw dbFailure(error);
+    const list = data as Record<string, string | null>[];
+    const total = round(list.reduce((s, r) => s + n(r.amount), 0));
+    const missingBank = list.filter((r) => !r.bank_account_no).length;
+    const naira = (v: number) => `₦${v.toLocaleString("en-NG", { minimumFractionDigits: 2 })}`;
+    return {
+      columns: [
+        { key: "beneficiary_name", label: "Beneficiary name" },
+        { key: "bank_name", label: "Bank name" },
+        { key: "bank_code", label: "Bank code" },
+        { key: "bank_account_no", label: "Account number" },
+        { key: "amount", label: "Amount", kind: "money" },
+        { key: "total_savings", label: "Total savings", kind: "money" },
+        { key: "interest_rate", label: "Interest rate (% a year)", kind: "number" },
+        { key: "branch_name", label: "Branch" },
+      ],
+      rows: [
+        ...list.map((r) => ({ ...r, interest_rate: n(r.interest_rate) }) as Row),
+        { beneficiary_name: `Total (${list.length} payments)`, amount: total, _kind: "total" },
+      ],
+      notes: [
+        `${f.to}: ${list.length} payment${list.length === 1 ? "" : "s"} totalling ${naira(total)}.`,
+        ...(missingBank ? [`${missingBank} member${missingBank === 1 ? " has" : "s have"} no bank details yet; Operations adds them on the member's file.`] : []),
+        "Amount is a placeholder until Kuun confirms its formula: each active plan's verified savings at the date times the plan's yearly rate, divided by 12.",
+        "Members whose pay day is later than the month's last day are paid on the last day. Banks without a CBN code have a blank code.",
+      ],
+    };
+  },
+};
+
 export const accountsReports: ReportDefinition[] = [
   profitAndLoss,
   balanceSheet,
@@ -649,6 +689,7 @@ export const accountsReports: ReportDefinition[] = [
   trialBalance,
   generalLedger,
   memberBalances,
+  interestPayments,
   transactionRegister,
   payablesAging,
   bankReconciliations,

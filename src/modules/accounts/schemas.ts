@@ -31,6 +31,7 @@ export const transactionSchema = z
     amount: money,
     interest_amount: optionalMoney,
     member_id: optionalId,
+    member_plan_id: optionalId,
     counterparty: optionalText,
     reference: optionalText,
     description: z.string().trim().min(3, "Describe the transaction"),
@@ -54,6 +55,10 @@ export const transactionSchema = z
   .refine((v) => !["loan_repayment", "loan_disbursement"].includes(v.transaction_type) || v.loan_id, {
     path: ["loan_id"],
     message: "Choose the loan",
+  })
+  .refine((v) => v.transaction_type !== "member_savings" || v.member_plan_id, {
+    path: ["member_plan_id"],
+    message: "Choose the savings plan the money was paid into",
   })
   .refine((v) => v.transaction_type !== "supplier_payment" || v.supplier_id, { path: ["supplier_id"], message: "Choose the supplier being paid" })
   .refine((v) => v.currency === "NGN" || v.foreign_amount, { path: ["foreign_amount"], message: "Enter the amount in the foreign currency" })

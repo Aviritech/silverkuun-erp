@@ -64,6 +64,13 @@ export type FinanceTransaction = {
   submitted_at: string | null;
   approved_by: string | null;
   approved_at: string | null;
+  /** The savings plan a member receipt was paid into. */
+  member_plan_id: string | null;
+  /** Savings and capital keyed in by Accounts: Operations checks them against the member's records before approval. */
+  needs_ops_confirmation: boolean;
+  ops_confirmed_by: string | null;
+  ops_confirmed_at: string | null;
+  ops_note: string | null;
   /** Internal Audit's approval of a payment, needed before it is paid. */
   audited_by: string | null;
   audited_at: string | null;
@@ -115,7 +122,9 @@ export type JournalEntry = {
   posted_at: string | null;
 };
 
-export type MemberOption = { id: string; name: string; membership_no: string | null; branch_id: string };
+/** An active savings plan a receipt can be paid into. */
+export type PlanOption = { id: string; label: string };
+export type MemberOption = { id: string; name: string; membership_no: string | null; branch_id: string; plans: PlanOption[] };
 
 async function rows<T>(promise: PromiseLike<{ data: unknown; error: { code?: string; message: string } | null }>): Promise<T> {
   const { data, error } = await promise;
@@ -174,10 +183,20 @@ export async function listLoanOptions(): Promise<LoanOption[]> {
 
 export async function listMemberOptions(): Promise<MemberOption[]> {
   const supabase = await createClient();
-  const data = await rows<{ id: string; first_name: string; middle_name: string | null; last_name: string; membership_no: string | null; branch_id: string }[]>(
+  const data = await rows<
+    {
+      id: string;
+      first_name: string;
+      middle_name: string | null;
+      last_name: string;
+      membership_no: string | null;
+      branch_id: string;
+      member_plans: { id: string; status: string; start_date: string; plan_types: { name: string } | null }[];
+    }[]
+  >(
     supabase
       .from("members")
-      .select("id, first_name, middle_name, last_name, membership_no, branch_id")
+      .select("id, first_name, middle_name, last_name, membership_no, branch_id, member_plans(id, status, start_date, plan_types(name))")
       .eq("status", "approved")
       .order("last_name")
       .limit(2000),
@@ -187,6 +206,9 @@ export async function listMemberOptions(): Promise<MemberOption[]> {
     name: [m.first_name, m.middle_name, m.last_name].filter(Boolean).join(" "),
     membership_no: m.membership_no,
     branch_id: m.branch_id,
+    plans: (m.member_plans ?? [])
+      .filter((p) => p.status === "active")
+      .map((p) => ({ id: p.id, label: `${p.plan_types?.name ?? "Plan"} from ${p.start_date}` })),
   }));
 }
 
@@ -228,20 +250,24 @@ export async function getTransactionBundle(id: string) {
     : { data: [] };
   const urls = new Map((signed.data ?? []).map((s) => [s.path, s.signedUrl]));
   const [staffName, members, tags] = await Promise.all([
-    staffNameLookup([t.created_by, t.submitted_by, t.approved_by, t.audited_by, t.paid_by, t.staff_id, ...attachments.map((a) => a.uploaded_by)]),
+    staffNameLookup([t.created_by, t.submitted_by, t.ops_confirmed_by, t.approved_by, t.audited_by, t.paid_by, t.staff_id, ...attachments.map((a) => a.uploaded_by)]),
     memberNames([t.member_id]),
     Promise.all([
       t.department_code ? supabase.from("departments").select("name").eq("code", t.department_code).maybeSingle() : null,
       t.plan_type ? supabase.from("plan_types").select("name").eq("code", t.plan_type).maybeSingle() : null,
       t.supplier_id ? supabase.from("suppliers").select("name").eq("id", t.supplier_id).maybeSingle() : null,
       t.supplier_bill_id ? supabase.from("supplier_bills").select("id, bill_no").eq("id", t.supplier_bill_id).maybeSingle() : null,
+      t.member_plan_id
+        ? supabase.from("member_plans").select("start_date, plan_types(name)").eq("id", t.member_plan_id).maybeSingle()
+        : null,
     ]),
   ]);
-  const [department, product, supplier, bill] = tags.map((r) => r?.data ?? null) as [
+  const [department, product, supplier, bill, plan] = tags.map((r) => r?.data ?? null) as [
     { name: string } | null,
     { name: string } | null,
     { name: string } | null,
     { id: string; bill_no: string } | null,
+    { start_date: string; plan_types: { name: string } | null } | null,
   ];
   return {
     txn: t,
@@ -249,6 +275,7 @@ export async function getTransactionBundle(id: string) {
     product: product?.name ?? null,
     supplier: supplier?.name ?? null,
     bill,
+    plan: plan ? `${plan.plan_types?.name ?? "Plan"} from ${plan.start_date}` : null,
     rule,
     bank,
     attachments: attachments.map((a) => ({ ...a, url: urls.get(a.storage_path) ?? null })),

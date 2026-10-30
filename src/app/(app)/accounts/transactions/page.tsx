@@ -19,7 +19,7 @@ export default async function TransactionsPage({ searchParams }: { searchParams:
   let query = supabase
     .from("finance_transactions")
     .select(
-      "id, txn_no, txn_date, direction, status, audited_at, amount, counterparty, description, branch_id, members(first_name, last_name), posting_rules(name)",
+      "id, txn_no, txn_date, direction, status, audited_at, needs_ops_confirmation, ops_confirmed_at, amount, counterparty, description, branch_id, members(first_name, last_name), posting_rules(name)",
     )
     .order("created_at", { ascending: false })
     .limit(PAGE_SIZE);

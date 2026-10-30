@@ -33,6 +33,18 @@ export function MarketerReviewForm({ action }: { action: Action }) {
   );
 }
 
+export function ConfirmReceiptForm({ action }: { action: Action }) {
+  return (
+    <InlineForm action={action} openLabel="Matches the member's records" submitLabel="Confirm receipt" variant="primary">
+      {(e) => (
+        <Field label="Note for Accounts (optional)" error={e.note}>
+          <Textarea name="note" rows={2} placeholder="For example: matches the passbook and the member's payment card." />
+        </Field>
+      )}
+    </InlineForm>
+  );
+}
+
 export function PlanForm({ action, planTypes }: { action: Action; planTypes: { code: string; name: string }[] }) {
   return (
     <InlineForm action={action} openLabel="Add plan" submitLabel="Add plan" variant="primary">

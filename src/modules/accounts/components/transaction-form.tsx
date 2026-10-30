@@ -1,10 +1,24 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Button, Field, FormError, Input, Select, Textarea } from "@/components/ui";
+import {
+  Button,
+  Field,
+  FormError,
+  Input,
+  Select,
+  Textarea,
+} from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 import { COMMON_CURRENCIES } from "../constants";
-import type { BankAccount, LoanOption, MemberOption, OpenBill, PostingRule, Supplier } from "../queries";
+import type {
+  BankAccount,
+  LoanOption,
+  MemberOption,
+  OpenBill,
+  PostingRule,
+  Supplier,
+} from "../queries";
 
 export type DimensionChoices = {
   departments: { code: string; name: string }[];
@@ -21,6 +35,7 @@ export type TransactionDefaults = Partial<{
   amount: string;
   interest_amount: string;
   member_id: string | null;
+  member_plan_id: string | null;
   counterparty: string | null;
   reference: string | null;
   description: string;
@@ -69,35 +84,67 @@ export function TransactionForm({
   const [supplierId, setSupplierId] = useState(defaults.supplier_id ?? "");
   const [billId, setBillId] = useState(defaults.supplier_bill_id ?? "");
   const [loanId, setLoanId] = useState(defaults.loan_id ?? "");
+  const [memberId, setMemberId] = useState(defaults.member_id ?? "");
   const [currency, setCurrency] = useState(defaults.currency ?? "NGN");
-  const [foreign, setForeign] = useState({ amount: defaults.foreign_amount ?? "", rate: defaults.fx_rate ?? "" });
+  const [foreign, setForeign] = useState({
+    amount: defaults.foreign_amount ?? "",
+    rate: defaults.fx_rate ?? "",
+  });
   const rule = rules.find((r) => r.transaction_type === type);
   const bank = banks.find((b) => b.id === bankId);
   const e = state.fieldErrors ?? {};
   const today = new Date().toISOString().slice(0, 10);
-  const memberChoices = bank ? members.filter((m) => m.branch_id === bank.branch_id) : members;
+  const memberChoices = bank
+    ? members.filter((m) => m.branch_id === bank.branch_id)
+    : members;
   const isSupplierPayment = type === "supplier_payment";
-  const loanStatus = type === "loan_repayment" ? "active" : type === "loan_disbursement" ? "approved" : null;
-  const loanChoices = loans.filter((l) => l.status === loanStatus && (!bank || l.branch_id === bank.branch_id));
+  const takesPlan = type === "member_savings";
+  const planChoices = members.find((m) => m.id === memberId)?.plans ?? [];
+  const loanStatus =
+    type === "loan_repayment"
+      ? "active"
+      : type === "loan_disbursement"
+        ? "approved"
+        : null;
+  const loanChoices = loans.filter(
+    (l) => l.status === loanStatus && (!bank || l.branch_id === bank.branch_id),
+  );
   const loan = loanStatus ? loans.find((l) => l.id === loanId) : undefined;
   const billChoices = dimensions.openBills.filter(
-    (b) => (!supplierId || b.supplier_id === supplierId) && (!bank || b.branch_id === bank.branch_id),
+    (b) =>
+      (!supplierId || b.supplier_id === supplierId) &&
+      (!bank || b.branch_id === bank.branch_id),
   );
   const setForeignValue = (key: "amount" | "rate", value: string) => {
     const next = { ...foreign, [key]: value };
     setForeign(next);
     const product = Number(next.amount) * Number(next.rate);
-    if (next.amount && next.rate && Number.isFinite(product)) setAmount((Math.round(product * 100) / 100).toFixed(2));
+    if (next.amount && next.rate && Number.isFinite(product))
+      setAmount((Math.round(product * 100) / 100).toFixed(2));
   };
 
   return (
     <form action={formAction} className="space-y-4">
       <FormError message={state.error} />
       <input type="hidden" name="direction" value={direction} />
-      <input type="hidden" name="statement_line_id" value={defaults.statement_line_id ?? ""} />
+      <input
+        type="hidden"
+        name="statement_line_id"
+        value={defaults.statement_line_id ?? ""}
+      />
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label={direction === "receipt" ? "What was received" : "What is being paid"} error={e.transaction_type}>
-          <Select name="transaction_type" required value={type} onChange={(ev) => setType(ev.target.value)}>
+        <Field
+          label={
+            direction === "receipt" ? "What was received" : "What is being paid"
+          }
+          error={e.transaction_type}
+        >
+          <Select
+            name="transaction_type"
+            required
+            value={type}
+            onChange={(ev) => setType(ev.target.value)}
+          >
             <option value="">Choose</option>
             {rules.map((r) => (
               <option key={r.transaction_type} value={r.transaction_type}>
@@ -109,9 +156,18 @@ export function TransactionForm({
         <Field
           label={direction === "receipt" ? "Paid into" : "Paid from"}
           error={e.bank_account_id}
-          hint={bank ? `${branchName.get(bank.branch_id)} · ledger ${bank.ledger_account_code}` : undefined}
+          hint={
+            bank
+              ? `${branchName.get(bank.branch_id)} · ledger ${bank.ledger_account_code}`
+              : undefined
+          }
         >
-          <Select name="bank_account_id" required value={bankId} onChange={(ev) => setBankId(ev.target.value)}>
+          <Select
+            name="bank_account_id"
+            required
+            value={bankId}
+            onChange={(ev) => setBankId(ev.target.value)}
+          >
             <option value="">Choose</option>
             {banks.map((b) => (
               <option key={b.id} value={b.id}>
@@ -121,12 +177,22 @@ export function TransactionForm({
           </Select>
         </Field>
         <Field label="Date" error={e.txn_date}>
-          <Input name="txn_date" type="date" max={today} defaultValue={defaults.txn_date ?? today} required />
+          <Input
+            name="txn_date"
+            type="date"
+            max={today}
+            defaultValue={defaults.txn_date ?? today}
+            required
+          />
         </Field>
         <Field
           label="Amount (₦)"
           error={e.amount}
-          hint={currency !== "NGN" ? `Worked out from the ${currency} amount and rate.` : undefined}
+          hint={
+            currency !== "NGN"
+              ? `Worked out from the ${currency} amount and rate.`
+              : undefined
+          }
         >
           <Input
             name="amount"
@@ -141,7 +207,11 @@ export function TransactionForm({
         </Field>
         {loanStatus && (
           <Field
-            label={loanStatus === "active" ? "Loan being repaid" : "Loan being paid out"}
+            label={
+              loanStatus === "active"
+                ? "Loan being repaid"
+                : "Loan being paid out"
+            }
             error={e.loan_id}
             hint={
               loan
@@ -160,7 +230,8 @@ export function TransactionForm({
               onChange={(ev) => {
                 setLoanId(ev.target.value);
                 const chosen = loans.find((l) => l.id === ev.target.value);
-                if (chosen && loanStatus === "approved") setAmount(chosen.approved_amount);
+                if (chosen && loanStatus === "approved")
+                  setAmount(chosen.approved_amount);
               }}
             >
               <option value="">Choose</option>
@@ -173,8 +244,18 @@ export function TransactionForm({
           </Field>
         )}
         {rule?.interest_account && !loanStatus && (
-          <Field label="Of which interest (₦)" error={e.interest_amount} hint="The rest is applied to the loan principal.">
-            <Input name="interest_amount" type="number" min="0" step="0.01" defaultValue={defaults.interest_amount ?? ""} />
+          <Field
+            label="Of which interest (₦)"
+            error={e.interest_amount}
+            hint="The rest is applied to the loan principal."
+          >
+            <Input
+              name="interest_amount"
+              type="number"
+              min="0"
+              step="0.01"
+              defaultValue={defaults.interest_amount ?? ""}
+            />
           </Field>
         )}
         {loanStatus ? (
@@ -183,10 +264,21 @@ export function TransactionForm({
           <Field
             label={rule?.requires_member ? "Member" : "Member (optional)"}
             error={e.member_id}
-            hint={bank ? "Approved members of the account's branch." : "Choose the account first to narrow this list."}
+            hint={
+              bank
+                ? "Approved members of the account's branch."
+                : "Choose the account first to narrow this list."
+            }
           >
-            <Select name="member_id" defaultValue={defaults.member_id ?? ""} required={rule?.requires_member}>
-              <option value="">{rule?.requires_member ? "Choose" : "None"}</option>
+            <Select
+              name="member_id"
+              value={memberId}
+              onChange={(ev) => setMemberId(ev.target.value)}
+              required={rule?.requires_member}
+            >
+              <option value="">
+                {rule?.requires_member ? "Choose" : "None"}
+              </option>
               {memberChoices.map((m) => (
                 <option key={m.id} value={m.id}>
                   {m.name}
@@ -196,8 +288,36 @@ export function TransactionForm({
             </Select>
           </Field>
         )}
+        {takesPlan && (
+          <Field
+            label="Savings plan"
+            error={e.member_plan_id}
+            hint={
+              memberId
+                ? "The member's active plans. Operations checks the receipt against it."
+                : "Choose the member first."
+            }
+          >
+            <Select
+              name="member_plan_id"
+              defaultValue={defaults.member_plan_id ?? ""}
+              required
+              key={memberId}
+            >
+              <option value="">Choose</option>
+              {planChoices.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
         {direction === "payment" && (
-          <Field label={isSupplierPayment ? "Supplier" : "Supplier (optional)"} error={e.supplier_id}>
+          <Field
+            label={isSupplierPayment ? "Supplier" : "Supplier (optional)"}
+            error={e.supplier_id}
+          >
             <Select
               name="supplier_id"
               value={supplierId}
@@ -219,13 +339,19 @@ export function TransactionForm({
           </Field>
         )}
         {isSupplierPayment && (
-          <Field label="Bill being paid (optional)" error={e.supplier_bill_id} hint="Approved bills with money still owed.">
+          <Field
+            label="Bill being paid (optional)"
+            error={e.supplier_bill_id}
+            hint="Approved bills with money still owed."
+          >
             <Select
               name="supplier_bill_id"
               value={billId}
               onChange={(ev) => {
                 setBillId(ev.target.value);
-                const bill = dimensions.openBills.find((b) => b.id === ev.target.value);
+                const bill = dimensions.openBills.find(
+                  (b) => b.id === ev.target.value,
+                );
                 if (bill) {
                   setSupplierId(bill.supplier_id);
                   if (currency === "NGN") setAmount(bill.outstanding);
@@ -235,24 +361,48 @@ export function TransactionForm({
               <option value="">Not against a bill</option>
               {billChoices.map((b) => (
                 <option key={b.id} value={b.id}>
-                  {b.bill_no} · {b.supplier_reference} · owed ₦{Number(b.outstanding).toLocaleString("en-NG")}
+                  {b.bill_no} · {b.supplier_reference} · owed ₦
+                  {Number(b.outstanding).toLocaleString("en-NG")}
                 </option>
               ))}
             </Select>
           </Field>
         )}
-        <Field label={direction === "receipt" ? "Received from" : "Beneficiary"} error={e.counterparty}>
-          <Input name="counterparty" defaultValue={defaults.counterparty ?? ""} />
+        <Field
+          label={direction === "receipt" ? "Received from" : "Beneficiary"}
+          error={e.counterparty}
+        >
+          <Input
+            name="counterparty"
+            defaultValue={defaults.counterparty ?? ""}
+          />
         </Field>
-        <Field label="Reference" error={e.reference} hint="Bank transfer, teller or invoice reference. Must be unique on the account.">
+        <Field
+          label="Reference"
+          error={e.reference}
+          hint="Bank transfer, teller or invoice reference. Must be unique on the account."
+        >
           <Input name="reference" defaultValue={defaults.reference ?? ""} />
         </Field>
       </div>
-      <details className="rounded-md border border-zinc-200 px-3 py-2" open={Boolean(defaults.department_code || defaults.plan_type || defaults.staff_id || (defaults.currency && defaults.currency !== "NGN"))}>
-        <summary className="cursor-pointer text-sm font-medium">Reporting details and foreign currency</summary>
+      <details
+        className="rounded-md border border-zinc-200 px-3 py-2"
+        open={Boolean(
+          defaults.department_code ||
+          defaults.plan_type ||
+          defaults.staff_id ||
+          (defaults.currency && defaults.currency !== "NGN"),
+        )}
+      >
+        <summary className="cursor-pointer text-sm font-medium">
+          Reporting details and foreign currency
+        </summary>
         <div className="mt-3 grid gap-4 sm:grid-cols-3">
           <Field label="Department" error={e.department_code}>
-            <Select name="department_code" defaultValue={defaults.department_code ?? ""}>
+            <Select
+              name="department_code"
+              defaultValue={defaults.department_code ?? ""}
+            >
               <option value="">Not set</option>
               {dimensions.departments.map((d) => (
                 <option key={d.code} value={d.code}>
@@ -271,7 +421,11 @@ export function TransactionForm({
               ))}
             </Select>
           </Field>
-          <Field label="Staff member" error={e.staff_id} hint="For salaries, allowances and staff advances.">
+          <Field
+            label="Staff member"
+            error={e.staff_id}
+            hint="For salaries, allowances and staff advances."
+          >
             <Select name="staff_id" defaultValue={defaults.staff_id ?? ""}>
               <option value="">Not set</option>
               {dimensions.staff.map((x) => (
@@ -282,7 +436,11 @@ export function TransactionForm({
             </Select>
           </Field>
           <Field label="Currency" error={e.currency}>
-            <Select name="currency" value={currency} onChange={(ev) => setCurrency(ev.target.value)}>
+            <Select
+              name="currency"
+              value={currency}
+              onChange={(ev) => setCurrency(ev.target.value)}
+            >
               {COMMON_CURRENCIES.map((c) => (
                 <option key={c} value={c}>
                   {c === "NGN" ? "Naira (NGN)" : c}
@@ -319,28 +477,53 @@ export function TransactionForm({
         </div>
       </details>
       <Field label="Description" error={e.description}>
-        <Textarea name="description" rows={2} defaultValue={defaults.description ?? ""} required />
+        <Textarea
+          name="description"
+          rows={2}
+          defaultValue={defaults.description ?? ""}
+          required
+        />
       </Field>
       {withEvidence && (
         <Field
-          label={direction === "receipt" ? "Evidence (teller, transfer receipt or screenshot)" : "Supporting document (invoice or approval)"}
+          label={
+            direction === "receipt"
+              ? "Evidence (teller, transfer receipt or screenshot)"
+              : "Supporting document (invoice or approval)"
+          }
           error={e.file}
           hint="PDF, JPEG or PNG up to 10 MB. Needed before you submit; you can also add it on the next page."
         >
-          <Input name="file" type="file" accept="application/pdf,image/jpeg,image/png" />
+          <Input
+            name="file"
+            type="file"
+            accept="application/pdf,image/jpeg,image/png"
+          />
         </Field>
       )}
       {type === "loan_repayment" && (
         <p className="rounded-md bg-sky-50 px-3 py-2 text-xs text-sky-900">
-          The split between interest and principal is worked out from the loan&apos;s schedule when this posts: the oldest instalment first,
+          The split between interest and principal is worked out from the
+          loan&apos;s schedule when this posts: the oldest instalment first,
           interest before principal.
         </p>
       )}
       {rule && (
         <p className="rounded-md bg-zinc-50 px-3 py-2 text-xs text-zinc-600">
-          Posts as: debit {rule.debit_account ?? (bank ? `${bank.ledger_account_code} ${bank.name}` : "the bank account")}, credit{" "}
-          {rule.credit_account ?? (bank ? `${bank.ledger_account_code} ${bank.name}` : "the bank account")}
-          {rule.interest_account ? `, interest to ${rule.interest_account}` : ""}.
+          Posts as: debit{" "}
+          {rule.debit_account ??
+            (bank
+              ? `${bank.ledger_account_code} ${bank.name}`
+              : "the bank account")}
+          , credit{" "}
+          {rule.credit_account ??
+            (bank
+              ? `${bank.ledger_account_code} ${bank.name}`
+              : "the bank account")}
+          {rule.interest_account
+            ? `, interest to ${rule.interest_account}`
+            : ""}
+          .
         </p>
       )}
       <Button type="submit" disabled={pending}>

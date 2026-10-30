@@ -10,7 +10,16 @@ export const FINANCE_STATUSES = {
 export type FinanceStatus = keyof typeof FINANCE_STATUSES;
 
 /** The status to show: an approved payment waits for Internal Audit before anyone can pay it. */
-export function financeStatus(t: { status: FinanceStatus; direction: string; audited_at?: string | null }) {
+export function financeStatus(t: {
+  status: FinanceStatus;
+  direction: string;
+  audited_at?: string | null;
+  needs_ops_confirmation?: boolean;
+  ops_confirmed_at?: string | null;
+}) {
+  if (t.status === "submitted" && t.needs_ops_confirmation && !t.ops_confirmed_at) {
+    return { label: "Awaiting Operations check", tone: "amber" } as const;
+  }
   if (t.direction === "payment" && t.status === "approved") {
     return t.audited_at
       ? ({ label: "Audit approved, awaiting payment", tone: "blue" } as const)

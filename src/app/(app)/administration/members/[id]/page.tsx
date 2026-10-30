@@ -279,6 +279,11 @@ export default async function MemberPage({
               <Detail label="Next of kin">
                 {[member.next_of_kin_name, member.next_of_kin_relationship, member.next_of_kin_phone].filter(Boolean).join(" · ")}
               </Detail>
+              <Detail label="Interest paid to">
+                {member.bank_account_no &&
+                  `${member.bank_name}${member.bank_code ? ` (${member.bank_code})` : ""} · ${member.bank_account_no}`}
+                {member.interest_pay_day && <span className="block text-xs text-zinc-500">on day {member.interest_pay_day} of each month</span>}
+              </Detail>
               <Detail label="Prepared by">
                 {staffName(member.created_by)}, {formatDate(member.created_at)}
               </Detail>
@@ -378,7 +383,7 @@ export default async function MemberPage({
                           {FREQUENCIES[plan.contribution_frequency as keyof typeof FREQUENCIES].toLowerCase()}
                         </p>
                         <p className="text-xs text-zinc-500">
-                          {formatDate(plan.start_date)} to {formatDate(plan.maturity_date)} · {plan.status}
+                          {formatDate(plan.start_date)} to {formatDate(plan.maturity_date)} · {Number(plan.interest_rate)}% a year · {plan.status}
                         </p>
                       </div>
                       <dl className="grid grid-cols-3 gap-x-6 gap-y-2 text-right">

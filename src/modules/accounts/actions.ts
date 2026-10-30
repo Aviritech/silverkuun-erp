@@ -77,6 +77,7 @@ const TRANSACTION_FIELDS = [
   "amount",
   "interest_amount",
   "member_id",
+  "member_plan_id",
   "counterparty",
   "reference",
   "description",

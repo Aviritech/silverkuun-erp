@@ -26,6 +26,12 @@ export type Member = {
   next_of_kin_name: string | null;
   next_of_kin_phone: string | null;
   next_of_kin_relationship: string | null;
+  /** Where monthly interest is paid. bank_code is null for a bank without a CBN code. */
+  bank_code: string | null;
+  bank_name: string | null;
+  bank_account_no: string | null;
+  /** Day of the month interest is paid; the last day in shorter months. */
+  interest_pay_day: number | null;
   return_reason: string | null;
   returned_by: string | null;
   sent_to_marketer_by: string | null;
@@ -43,6 +49,15 @@ export type Member = {
   /** PNG data URL drawn by the Branch Manager on approval. */
   approval_signature: string | null;
 };
+
+export type CbnBank = { code: string; name: string };
+
+export async function listCbnBanks(): Promise<CbnBank[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("cbn_banks").select("code, name").order("name");
+  if (error) throw dbFailure(error);
+  return data as CbnBank[];
+}
 
 export type MemberDocument = {
   id: string;
@@ -66,6 +81,8 @@ export type Plan = {
   start_date: string;
   maturity_date: string;
   status: string;
+  /** Annual interest rate (%), fixed from the plan type when the plan was opened. */
+  interest_rate: string;
 };
 
 export type PlanTotals = {

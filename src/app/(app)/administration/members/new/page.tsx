@@ -4,11 +4,11 @@ import { requireModule } from "@/lib/auth/session";
 import { createMember } from "@/modules/administration/actions";
 import { MemberForm } from "@/modules/administration/components/member-form";
 import { administrationModule } from "@/modules/administration/module";
-import { branchesWith } from "@/modules/administration/queries";
+import { branchesWith, listCbnBanks } from "@/modules/administration/queries";
 
 export default async function NewMemberPage() {
   const staff = await requireModule(administrationModule);
-  const branches = await branchesWith(staff.permissions, "members.manage");
+  const [branches, banks] = await Promise.all([branchesWith(staff.permissions, "members.manage"), listCbnBanks()]);
   if (branches.length === 0) notFound();
 
   return (
@@ -18,7 +18,7 @@ export default async function NewMemberPage() {
         description="Start the member's file. You'll upload the KYC documents next, then send it to the Branch Manager."
       />
       <Card>
-        <MemberForm action={createMember} branches={branches} submitLabel="Create draft file" />
+        <MemberForm action={createMember} branches={branches} banks={banks} submitLabel="Create draft file" />
       </Card>
     </div>
   );
