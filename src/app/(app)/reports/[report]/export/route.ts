@@ -32,7 +32,7 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const filters = parseFilters(report, Object.fromEntries(search));
   const [result, org, dimensions] = await Promise.all([report.run(supabase, filters), listOrg(), listDimensions()]);
   const scope = describeScope(report, filters, { ...org, ...dimensions });
-  const name = `${report.key}-${report.dates === "period" ? `${filters.from}-to-${filters.to}` : filters.to}.${format}`;
+  const name = `${report.key}-${report.dates === "period" || report.dates === "range" ? `${filters.from}-to-${filters.to}` : filters.to}.${format}`;
 
   let body: Buffer | string;
   if (format === "xlsx") body = reportToXlsx(result, { title: report.title, scope });

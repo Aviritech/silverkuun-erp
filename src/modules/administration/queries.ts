@@ -1,7 +1,7 @@
 import "server-only";
 import type { PermissionSet } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import type { DocumentType, MemberStatus } from "./constants";
+import { MEMBER_STATUSES, type DocumentType, type MemberStatus } from "./constants";
 import { dbFailure } from "@/lib/db-errors";
 
 export type Branch = { id: string; code: string; name: string; region_id: string };
@@ -27,6 +27,13 @@ export type Member = {
   next_of_kin_phone: string | null;
   next_of_kin_relationship: string | null;
   return_reason: string | null;
+  returned_by: string | null;
+  sent_to_marketer_by: string | null;
+  sent_to_marketer_at: string | null;
+  /** The marketer who reviewed the file, with their note. */
+  marketer_id: string | null;
+  marketer_reviewed_at: string | null;
+  marketer_note: string | null;
   created_by: string;
   created_at: string;
   submitted_by: string | null;
@@ -139,7 +146,17 @@ export async function getMemberBundle(memberId: string) {
   const urls = new Map((signed.data ?? []).map((s) => [s.path, s.signedUrl]));
 
   const staffIds = [
-    ...new Set([member.created_by, member.submitted_by, member.approved_by, ...docs.map((d) => d.issued_by)].filter(Boolean)),
+    ...new Set(
+      [
+        member.created_by,
+        member.sent_to_marketer_by,
+        member.marketer_id,
+        member.submitted_by,
+        member.approved_by,
+        member.returned_by,
+        ...docs.map((d) => d.issued_by),
+      ].filter(Boolean),
+    ),
   ];
   const { data: staff } = staffIds.length
     ? await supabase.rpc("staff_display_names", { p_ids: staffIds })
@@ -160,7 +177,7 @@ export async function getMemberBundle(memberId: string) {
 
 export async function memberCounts(): Promise<Record<MemberStatus, number>> {
   const supabase = await createClient();
-  const statuses: MemberStatus[] = ["draft", "pending_approval", "returned", "approved"];
+  const statuses = Object.keys(MEMBER_STATUSES) as MemberStatus[];
   const results = await Promise.all(
     statuses.map((s) => supabase.from("members").select("id", { count: "exact", head: true }).eq("status", s)),
   );

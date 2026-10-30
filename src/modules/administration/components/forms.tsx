@@ -21,6 +21,18 @@ export function ReturnForm({ action }: { action: Action }) {
   );
 }
 
+export function MarketerReviewForm({ action }: { action: Action }) {
+  return (
+    <InlineForm action={action} openLabel="Confirm and send back to the officer" submitLabel="Confirm member" variant="primary">
+      {(e) => (
+        <Field label="Note for the officer (optional)" error={e.note}>
+          <Textarea name="note" rows={2} placeholder="For example: I brought this member in; details confirmed by phone." />
+        </Field>
+      )}
+    </InlineForm>
+  );
+}
+
 export function PlanForm({ action, planTypes }: { action: Action; planTypes: { code: string; name: string }[] }) {
   return (
     <InlineForm action={action} openLabel="Add plan" submitLabel="Add plan" variant="primary">

@@ -56,7 +56,7 @@ export const SUGGESTION_CONFIDENCE = {
 
 /** Supplier payables control account; approved bills credit it and supplier payments debit it. */
 export const SUPPLIER_PAYABLES_ACCOUNT = "2210";
-export const ROI_EXPENSE_ACCOUNT = "5100";
+export const INTEREST_EXPENSE_ACCOUNT = "5100";
 export const ROI_PAYABLE_ACCOUNT = "2140";
 
 export const COMMON_CURRENCIES = ["NGN", "USD", "GBP", "EUR"] as const;

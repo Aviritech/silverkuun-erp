@@ -12,14 +12,26 @@ export function startOfYear(date = today()): string {
   return `${date.slice(0, 4)}-01-01`;
 }
 
+export function addDays(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+/** True when a "range" report is being run for its custom from/to dates. */
+export function usesCustomRange(report: ReportDefinition, filters: ReportFilters): boolean {
+  return report.dates === "range" && Object.values(filters.options).includes("custom");
+}
+
 /** Reads report filters from the query string, falling back to the year to date. Anything malformed is ignored. */
 export function parseFilters(report: ReportDefinition, params: Record<string, string | string[] | undefined>): ReportFilters {
   const get = (k: string) => {
     const v = params[k];
     return typeof v === "string" ? v.trim() : "";
   };
-  const to = ISO_DATE.test(get("to")) ? get("to") : today();
-  const from = ISO_DATE.test(get("from")) && get("from") <= to ? get("from") : startOfYear(to);
+  const range = report.dates === "range";
+  const to = ISO_DATE.test(get("to")) ? get("to") : range ? addDays(today(), 30) : today();
+  const from = ISO_DATE.test(get("from")) && get("from") <= to ? get("from") : range ? (today() <= to ? today() : to) : startOfYear(to);
   const options: Record<string, string> = {};
   for (const option of report.options ?? []) {
     const value = get(option.name);

@@ -8,7 +8,7 @@ import { requireModule } from "@/lib/auth/session";
 import { friendlyDbError } from "@/lib/db-errors";
 import { createClient } from "@/lib/supabase/server";
 import { fieldErrors } from "@/modules/administration/schemas";
-import { ALLOWED_EVIDENCE_TYPES, MAX_EVIDENCE_BYTES, MAX_STATEMENT_BYTES, ROI_EXPENSE_ACCOUNT, ROI_PAYABLE_ACCOUNT } from "./constants";
+import { ALLOWED_EVIDENCE_TYPES, MAX_EVIDENCE_BYTES, MAX_STATEMENT_BYTES, INTEREST_EXPENSE_ACCOUNT, ROI_PAYABLE_ACCOUNT } from "./constants";
 import { accountsModule } from "./module";
 import {
   accrualSchema,
@@ -572,7 +572,7 @@ export async function declineBill(id: string, outcome: "returned" | "rejected", 
 // ROI accrual
 // ---------------------------------------------------------------------------
 
-/** Drafts the month's ROI accrual as a manual journal (Dr ROI expense, Cr ROI payable per member) for the controller to post. */
+/** Drafts the month's ROI accrual as a manual journal (Dr interest expense, Cr ROI payable per member) for the controller to post. */
 export async function createRoiAccrual(_prev: ActionState, formData: FormData): Promise<ActionState> {
   await requireModule(accountsModule);
   const members = formData
@@ -588,7 +588,7 @@ export async function createRoiAccrual(_prev: ActionState, formData: FormData): 
   const { data: entry, error } = await supabase.from("journal_entries").insert(header).select("id").single();
   if (error) return { error: friendlyDbError(error) };
   const { error: linesError } = await supabase.from("journal_lines").insert([
-    { entry_id: entry.id, line_no: 1, branch_id: header.branch_id, account_code: ROI_EXPENSE_ACCOUNT, debit: total, credit: 0, description: header.description },
+    { entry_id: entry.id, line_no: 1, branch_id: header.branch_id, account_code: INTEREST_EXPENSE_ACCOUNT, debit: total, credit: 0, description: header.description },
     ...lines.map((l, i) => ({
       entry_id: entry.id,
       line_no: i + 2,

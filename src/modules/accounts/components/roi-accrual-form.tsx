@@ -8,7 +8,7 @@ import { formatMoney } from "@/lib/format";
 export type AccrualMember = { member_id: string; name: string; membership_no: string | null; balance: number };
 
 /**
- * One ROI amount per member, credited to ROI payable against a single ROI expense debit. The rate box is only a
+ * One ROI amount per member, credited to ROI payable against a single interest expense debit. The rate box is only a
  * convenience for filling amounts; the Society's ROI rule per product is still to be confirmed.
  */
 export function RoiAccrualForm({
@@ -86,7 +86,7 @@ export function RoiAccrualForm({
         </table>
       </div>
       <p className="text-sm">
-        Debit 5100 ROI expense <strong>{formatMoney(total)}</strong>; credit 2140 ROI payable to each member above.
+        Debit 5100 Interest expense <strong>{formatMoney(total)}</strong>; credit 2140 ROI payable to each member above.
       </p>
       <Button type="submit" disabled={pending || total <= 0}>
         {pending ? "Saving…" : "Save as draft journal"}

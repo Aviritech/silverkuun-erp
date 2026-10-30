@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { Card, PageHeader } from "@/components/ui";
 import { requireModule } from "@/lib/auth/session";
 import { updateMember } from "@/modules/administration/actions";
+import { OFFICER_EDITABLE } from "@/modules/administration/constants";
 import { MemberForm } from "@/modules/administration/components/member-form";
 import { administrationModule } from "@/modules/administration/module";
 import { fullName, getMemberBundle, listBranches } from "@/modules/administration/queries";
@@ -19,7 +20,7 @@ export default async function EditMemberPage({ params }: { params: Promise<{ id:
     branch &&
     (isApproved
       ? staff.permissions.hasForBranch("members.amend", branch)
-      : ["draft", "returned"].includes(member.status) && staff.permissions.hasForBranch("members.manage", branch));
+      : OFFICER_EDITABLE.includes(member.status) && staff.permissions.hasForBranch("members.manage", branch));
   if (!allowed) notFound();
 
   return (

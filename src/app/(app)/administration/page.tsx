@@ -17,7 +17,7 @@ export default async function AdministrationPage() {
         description="Member files across the branches you work in."
         actions={canCreate && <ButtonLink href="/administration/members/new">New member</ButtonLink>}
       />
-      <div className="grid gap-4 sm:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-3">
         {(Object.keys(MEMBER_STATUSES) as MemberStatus[]).map((status) => (
           <Link
             key={status}

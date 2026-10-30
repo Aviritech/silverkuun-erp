@@ -57,6 +57,10 @@ export const targetSchema = z.object({
   collections: z.coerce.number("Enter an amount").min(0, "Can't be negative").multipleOf(0.01, "Use at most two decimal places"),
 });
 
+export const marketerReviewSchema = z.object({
+  note: z.string().trim().max(1000, "Keep the note under 1,000 characters"),
+});
+
 export const returnSchema = z.object({
   reason: z.string().trim().min(5, "Say what needs correcting"),
 });

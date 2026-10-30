@@ -16,6 +16,7 @@ import {
   documentSchema,
   fieldErrors,
   issueSchema,
+  marketerReviewSchema,
   memberSchema,
   planSchema,
   returnSchema,
@@ -135,6 +136,27 @@ export async function removeDocument(memberId: string, documentId: string): Prom
   if (error) return { error: friendlyDbError(error) };
   if (!data?.length) return { error: "You can't remove this document." };
   revalidatePath(memberPath(memberId));
+  return { ok: true };
+}
+
+export async function sendToMarketer(memberId: string): Promise<ActionState> {
+  await requireModule(administrationModule);
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("send_member_to_marketer", { p_member_id: memberId });
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/administration", "layout");
+  return { ok: true };
+}
+
+export async function marketerReview(memberId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireModule(administrationModule);
+  const parsed = marketerReviewSchema.safeParse({ note: formData.get("note") ?? "" });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("marketer_review_member", { p_member_id: memberId, p_note: parsed.data.note });
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/administration", "layout");
   return { ok: true };
 }
 
