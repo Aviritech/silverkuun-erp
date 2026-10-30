@@ -62,9 +62,10 @@ npx supabase db reset       # or start over: rebuilds the database and reloads t
 | --- | --- | --- |
 | sysadmin@kuun.test | System Administrator | Whole organisation |
 | officer.lagos@kuun.test | Operations Officer | Lagos |
+| marketer.lagos@kuun.test | Marketer (confirms new members before the officer sends them to the Branch Manager) | Lagos |
 | manager.lagos@kuun.test | Branch Manager | Lagos |
 | head.admin@kuun.test | Head of Operations | Whole organisation |
-| auditor@kuun.test | Internal Auditor (read-only; also reads Accounts) | Whole organisation |
+| auditor@kuun.test | Internal Auditor (read-only, except that they approve every payment before it is paid) | Whole organisation |
 | accountant.lagos@kuun.test | Regional Accountant (records, requests, approves, pays, reconciles) | Lagos |
 | receipts.abuja@kuun.test | Receipts Accountant | Abuja |
 | payments.abuja@kuun.test | Payments Accountant | Abuja |
@@ -73,33 +74,44 @@ npx supabase db reset       # or start over: rebuilds the database and reloads t
 | credit.abuja@kuun.test | Account Officer | Abuja |
 | analyst@kuun.test | Credit Analyst (bureau check, risk rating, recommendation) | Whole organisation |
 | head.credit@kuun.test | Head of Credit (approves loans and restructures, loan products) | Whole organisation |
+| head.business@kuun.test | Head of Business (final loan approval after the Head of Credit) | Whole organisation |
 | hr.lagos@kuun.test | HR Officer (employee records, documents, contracts, ERP logins) | Lagos |
 | head.hr@kuun.test | Head of HR (confirms, transfers, promotes, records exits, job titles) | Whole organisation |
 | payroll@kuun.test | Payroll Officer (salaries, deductions, monthly payroll) | Whole organisation |
 
 ## Departments
 
-- **Operations** (formerly Administration): member files, KYC documents, plans and contributions, with the Branch Manager's drawn signature on
-  approval; expected against paid per plan; maturities; issued letters and statements; monthly branch targets; and
+- **Operations** (formerly Administration): member files, KYC documents, plans and contributions (in their own tab on
+  the member's page). A new file goes officer, marketer (who confirms the member), officer (who finishes the documents),
+  then the Branch Manager, who approves with a drawn signature; each member's bank (from the CBN bank code list) and
+  interest pay day; plans opened at the plan type's yearly interest rate; "Receipts to check", where Operations
+  confirms member savings and capital that Accounts keyed in, against the member's records, or sends them back;
+  expected against paid per plan; maturities (within 30, 60 or 90 days, this week, next week or a custom date range); issued letters and statements; monthly branch targets; and
   reports (contribution schedule, maturities, issued documents, member register).
 - **Accounts**: receipts and payment requests with evidence and maker-checker approval, posting to a double-entry
   ledger through posting rules that change only when a second person approves; department, product, staff, supplier
   and currency on each transaction; suppliers and supplier bills (Dr expense, Cr payables) paid against the bill;
-  verified Operations contributions flow in to be posted; manual journals with reversal and an ROI accrual screen;
+  verified Operations contributions flow in to be posted; member savings and capital receipts keyed in by Accounts name
+  the savings plan and need Operations' check before they can be confirmed; every payment needs Internal Audit's approval after Accounts
+  approves it and before it is paid; manual journals with reversal and an ROI accrual screen (Dr 5100 Interest
+  expense);
   bank statement import (Excel or CSV) with suggestions that learn from earlier postings, auto-matching and
   reconciliation sign-off; financial reports (profit and loss, financial position, cash flow, trial balance, general
-  ledger, member balances, register, payables aging, bank reconciliations).
+  ledger, member balances, register, payables aging, bank reconciliations); and the daily interest payment schedule
+  for the Payments accountant (members due that day with bank, CBN code, account, amount, total savings, rate and
+  branch; the amount is a placeholder, savings times the plan's yearly rate over 12, until Kuun confirms the formula).
 - **Credit**: loan applications (customer, employment or business, amount, purpose, tenor and frequency, rate and
   method, repayment mode, guarantors, collateral with valuation, documents and proforma invoice) that move from the
-  account officer to a credit analyst's appraisal (bureau check, risk rating, recommendation) to the Head of Credit's
-  decision, each step by a different person; loan products with limits and requirements; approved loans are paid out
+  account officer to a credit analyst's appraisal (each guarantor confirmed, bureau check, risk rating,
+  recommendation) to the Head of Credit's decision and then the Head of Business's approval, each step by a different
+  person; loan products with limits and requirements; approved loans are paid out
   by Accounts through a normal payment request, which activates the loan and fixes its repayment schedule (flat or
   reducing balance; weekly, monthly, quarterly or at the end); repayments are receipted by Accounts against the loan
   and the database splits them into interest and principal, oldest instalment first; arrears, missed repayments and
   days past due; reminders for upcoming and overdue instalments; restructures approved by a second person; a dashboard
   filterable by branch, officer, product, customer category and period; and reports (portfolio and PAR with suggested
   provision, overdue loans, applications, approvals and disbursements, repayments against what fell due, officer
-  performance, repayments falling due). Seven demo loans cover every stage.
+  performance, repayments falling due). Eight demo loans cover every stage.
 - **HR/Admin** (formerly Human Resources):
   - *Employee records* for everyone on the staff, whether or not they use the ERP: personal details, identification,
     emergency contact, bank, pension and tax details, dependents, qualifications (with expiry dates for
@@ -138,6 +150,8 @@ npx supabase db reset       # or start over: rebuilds the database and reloads t
   segregation breaches, unmatched bank lines, changes after approval, deletions, overdue loans, stale loan applications,
   approved loans not paid out), read-only access to the loan book, customer register, branch
   operations reports, the audit trail, and a per-record history showing every change with before and after values.
+  Auditors also approve, return or reject every payment (expenses, supplier payments, loan disbursements, salaries)
+  after Accounts approves it and before it is paid, from "Payments to approve".
 
 On a real Supabase project, create the first system administrator by adding a user in Supabase Auth, then running in
 the SQL editor (after that, everything is done in the app: System Administration for logins, roles and branches, and

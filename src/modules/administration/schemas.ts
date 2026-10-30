@@ -9,6 +9,14 @@ const optionalText = z
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a date");
 
+const optionalPayDay = z.coerce
+  .number("Choose a day")
+  .int()
+  .min(1, "Choose a day from 1 to 31")
+  .max(31, "Choose a day from 1 to 31")
+  .nullable()
+  .or(z.literal("").transform(() => null));
+
 export const memberSchema = z.object({
   branch_id: z.guid("Choose a branch"),
   title: optionalText,
@@ -26,6 +34,19 @@ export const memberSchema = z.object({
   next_of_kin_name: optionalText,
   next_of_kin_phone: optionalText,
   next_of_kin_relationship: optionalText,
+  bank_code: z
+    .string()
+    .regex(/^\d{3}$/, "Choose the bank")
+    .nullable()
+    .or(z.literal("").transform(() => null)),
+  bank_name: optionalText,
+  bank_account_no: z
+    .string()
+    .trim()
+    .regex(/^\d{10}$/, "An account number is 10 digits")
+    .nullable()
+    .or(z.literal("").transform(() => null)),
+  interest_pay_day: optionalPayDay,
 });
 export type MemberInput = z.infer<typeof memberSchema>;
 
@@ -55,6 +76,10 @@ export const targetSchema = z.object({
   month: z.string().regex(/^\d{4}-\d{2}$/, "Choose a month"),
   registrations: z.coerce.number("Enter a number").int("Use a whole number").min(0, "Can't be negative"),
   collections: z.coerce.number("Enter an amount").min(0, "Can't be negative").multipleOf(0.01, "Use at most two decimal places"),
+});
+
+export const marketerReviewSchema = z.object({
+  note: z.string().trim().max(1000, "Keep the note under 1,000 characters"),
 });
 
 export const returnSchema = z.object({

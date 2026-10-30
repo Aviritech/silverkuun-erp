@@ -1,13 +1,21 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ActionButton } from "@/components/action-button";
-import { Badge, ButtonLink, Card, EmptyState, PageHeader } from "@/components/ui";
+import {
+  Badge,
+  ButtonLink,
+  Card,
+  EmptyState,
+  PageHeader,
+} from "@/components/ui";
 import { requireModule } from "@/lib/auth/session";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import { listOrg } from "@/lib/org";
 import { createClient } from "@/lib/supabase/server";
 import {
   approveTransaction,
+  auditApprovePayment,
+  auditDeclinePayment,
   declineTransaction,
   payTransaction,
   submitTransaction,
@@ -15,11 +23,24 @@ import {
 } from "@/modules/accounts/actions";
 import { ReasonForm } from "@/modules/accounts/components/reason-form";
 import { UploadForm } from "@/modules/accounts/components/upload-form";
-import { ATTACHMENT_KINDS, DIRECTIONS, FINANCE_STATUSES } from "@/modules/accounts/constants";
+import {
+  ATTACHMENT_KINDS,
+  DIRECTIONS,
+  financeStatus,
+} from "@/modules/accounts/constants";
 import { accountsModule } from "@/modules/accounts/module";
-import { getTransactionBundle, listLedgerAccounts } from "@/modules/accounts/queries";
+import {
+  getTransactionBundle,
+  listLedgerAccounts,
+} from "@/modules/accounts/queries";
 
-function Detail({ label, children }: { label: string; children: React.ReactNode }) {
+function Detail({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
       <dt className="text-xs text-zinc-500">{label}</dt>
@@ -28,32 +49,83 @@ function Detail({ label, children }: { label: string; children: React.ReactNode 
   );
 }
 
-export default async function TransactionPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function TransactionPage({
+  params,
+}: {
+  params: Promise<{ id: string }>;
+}) {
   const staff = await requireModule(accountsModule);
   const { id } = await params;
   const bundle = await getTransactionBundle(id);
   if (!bundle) notFound();
-  const { txn, rule, bank, attachments, lines, staffName, memberName, department, product, supplier, bill } = bundle;
+  const {
+    txn,
+    rule,
+    bank,
+    attachments,
+    lines,
+    staffName,
+    memberName,
+    plan,
+    department,
+    product,
+    supplier,
+    bill,
+  } = bundle;
   const supabase = await createClient();
   const [org, accounts, loan] = await Promise.all([
     listOrg(),
     lines.length ? listLedgerAccounts() : Promise.resolve([]),
-    txn.loan_id ? supabase.from("loans").select("id, loan_no").eq("id", txn.loan_id).maybeSingle().then((r) => r.data) : Promise.resolve(null),
+    txn.loan_id
+      ? supabase
+          .from("loans")
+          .select("id, loan_no")
+          .eq("id", txn.loan_id)
+          .maybeSingle()
+          .then((r) => r.data)
+      : Promise.resolve(null),
   ]);
   const branch = org.branches.find((b) => b.id === txn.branch_id)!;
   const accountName = new Map(accounts.map((a) => [a.code, a.name]));
   const can = (p: string) => staff.permissions.hasForBranch(p, branch);
 
-  const recordPermission = txn.direction === "receipt" ? "accounts.receipts.record" : "accounts.payments.request";
+  const recordPermission =
+    txn.direction === "receipt"
+      ? "accounts.receipts.record"
+      : "accounts.payments.request";
   const editable = ["draft", "returned"].includes(txn.status);
   const isOwner = txn.created_by === staff.id;
   const isPreparer = isOwner || txn.submitted_by === staff.id;
-  const canReview = txn.status === "submitted" && can("accounts.transactions.approve") && !isPreparer;
-  const canPay = txn.direction === "payment" && txn.status === "approved" && can("accounts.payments.pay") && txn.approved_by !== staff.id;
-  const status = FINANCE_STATUSES[txn.status];
+  const canReview =
+    txn.status === "submitted" &&
+    can("accounts.transactions.approve") &&
+    !isPreparer;
+  const awaitingOps =
+    txn.status === "submitted" &&
+    txn.needs_ops_confirmation &&
+    !txn.ops_confirmed_at;
+  const awaitingAudit =
+    txn.direction === "payment" && txn.status === "approved" && !txn.audited_at;
+  const workedOnIt = [
+    txn.created_by,
+    txn.submitted_by,
+    txn.approved_by,
+  ].includes(staff.id);
+  const canAudit =
+    awaitingAudit && can("audit.payments.approve") && !workedOnIt;
+  const canPay =
+    txn.direction === "payment" &&
+    txn.status === "approved" &&
+    !!txn.audited_at &&
+    can("accounts.payments.pay") &&
+    txn.approved_by !== staff.id;
+  const status = financeStatus(txn);
   const supporting = attachments.filter((a) => a.kind === "supporting");
   const needsEvidence =
-    !txn.contribution_id && !txn.statement_line_id && !(txn.transaction_type === "loan_disbursement" && txn.loan_id) && supporting.length === 0;
+    !txn.contribution_id &&
+    !txn.statement_line_id &&
+    !(txn.transaction_type === "loan_disbursement" && txn.loan_id) &&
+    supporting.length === 0;
 
   return (
     <div className="max-w-5xl space-y-6">
@@ -69,57 +141,99 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
         actions={
           editable &&
           isOwner && (
-            <ButtonLink href={`/accounts/transactions/${txn.id}/edit`} variant="secondary">
+            <ButtonLink
+              href={`/accounts/transactions/${txn.id}/edit`}
+              variant="secondary"
+            >
               Edit
             </ButtonLink>
           )
         }
       />
 
-      {txn.decision_reason && ["returned", "rejected", "reversed"].includes(txn.status) && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
-          <p className="font-medium">{txn.status === "returned" ? "Returned for correction" : txn.status === "rejected" ? "Rejected" : "Reversed"}</p>
-          <p className="mt-1">{txn.decision_reason}</p>
-        </div>
-      )}
+      {txn.decision_reason &&
+        ["returned", "rejected", "reversed"].includes(txn.status) && (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+            <p className="font-medium">
+              {txn.status === "returned"
+                ? "Returned for correction"
+                : txn.status === "rejected"
+                  ? "Rejected"
+                  : "Reversed"}
+            </p>
+            <p className="mt-1">{txn.decision_reason}</p>
+          </div>
+        )}
 
       <Card title="Details">
         <dl className="grid gap-4 sm:grid-cols-3">
           <Detail label="Amount">
-            <span className="text-base font-semibold">{formatMoney(txn.amount)}</span>
-            {Number(txn.interest_amount) > 0 && <span className="block text-xs text-zinc-500">of which interest {formatMoney(txn.interest_amount)}</span>}
+            <span className="text-base font-semibold">
+              {formatMoney(txn.amount)}
+            </span>
+            {Number(txn.interest_amount) > 0 && (
+              <span className="block text-xs text-zinc-500">
+                of which interest {formatMoney(txn.interest_amount)}
+              </span>
+            )}
             {txn.currency !== "NGN" && (
               <span className="block text-xs text-zinc-500">
-                {txn.currency} {Number(txn.foreign_amount).toLocaleString("en-NG", { minimumFractionDigits: 2 })} at ₦{txn.fx_rate}
+                {txn.currency}{" "}
+                {Number(txn.foreign_amount).toLocaleString("en-NG", {
+                  minimumFractionDigits: 2,
+                })}{" "}
+                at ₦{txn.fx_rate}
               </span>
             )}
           </Detail>
           <Detail label="Date">{formatDate(txn.txn_date)}</Detail>
-          <Detail label={txn.direction === "receipt" ? "Paid into" : "Paid from"}>
-            {bank.name} <span className="text-xs text-zinc-500">({bank.ledger_account_code})</span>
+          <Detail
+            label={txn.direction === "receipt" ? "Paid into" : "Paid from"}
+          >
+            {bank.name}{" "}
+            <span className="text-xs text-zinc-500">
+              ({bank.ledger_account_code})
+            </span>
           </Detail>
           <Detail label="Member">{memberName}</Detail>
-          <Detail label={txn.direction === "receipt" ? "Received from" : "Beneficiary"}>{txn.counterparty}</Detail>
+          {plan && <Detail label="Savings plan">{plan}</Detail>}
+          <Detail
+            label={
+              txn.direction === "receipt" ? "Received from" : "Beneficiary"
+            }
+          >
+            {txn.counterparty}
+          </Detail>
           <Detail label="Reference">{txn.reference}</Detail>
           {loan && (
             <Detail label="Loan">
               {staff.permissions.has("credit.read") ? (
-                <Link href={`/credit/loans/${loan.id}`} className="font-mono text-xs underline">
+                <Link
+                  href={`/credit/loans/${loan.id}`}
+                  className="font-mono text-xs underline"
+                >
                   {loan.loan_no}
                 </Link>
               ) : (
                 <span className="font-mono text-xs">{loan.loan_no}</span>
               )}
-              {txn.transaction_type === "loan_repayment" && txn.status !== "posted" && (
-                <span className="block text-xs text-zinc-500">The interest and principal split is set from the schedule when it posts.</span>
-              )}
+              {txn.transaction_type === "loan_repayment" &&
+                txn.status !== "posted" && (
+                  <span className="block text-xs text-zinc-500">
+                    The interest and principal split is set from the schedule
+                    when it posts.
+                  </span>
+                )}
             </Detail>
           )}
           {supplier && (
             <Detail label="Supplier">
               {supplier}
               {bill && (
-                <Link href={`/accounts/bills/${bill.id}`} className="ml-1 text-xs underline">
+                <Link
+                  href={`/accounts/bills/${bill.id}`}
+                  className="ml-1 text-xs underline"
+                >
                   {bill.bill_no}
                 </Link>
               )}
@@ -127,7 +241,11 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
           )}
           {(department || product || txn.staff_id) && (
             <Detail label="Reporting">
-              {[department && `${department} department`, product && `${product} product`, txn.staff_id && `Staff: ${staffName(txn.staff_id)}`]
+              {[
+                department && `${department} department`,
+                product && `${product} product`,
+                txn.staff_id && `Staff: ${staffName(txn.staff_id)}`,
+              ]
                 .filter(Boolean)
                 .join(" · ")}
             </Detail>
@@ -137,13 +255,18 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
           </div>
           {txn.contribution_id && (
             <div className="sm:col-span-3">
-              <Detail label="Source">A contribution verified in Operations</Detail>
+              <Detail label="Source">
+                A contribution verified in Operations
+              </Detail>
             </div>
           )}
           {txn.statement_line_id && (
             <div className="sm:col-span-3">
               <Detail label="Source">
-                <Link href={`/accounts/bank/${txn.bank_account_id}`} className="underline">
+                <Link
+                  href={`/accounts/bank/${txn.bank_account_id}`}
+                  className="underline"
+                >
                   A line on the bank statement
                 </Link>
               </Detail>
@@ -154,42 +277,155 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
 
       <Card title="Approval trail">
         <ol className="space-y-1 text-sm">
-          <li>Prepared by {staffName(txn.created_by)} on {formatDateTime(txn.created_at)}</li>
-          {txn.submitted_at && <li>Submitted by {staffName(txn.submitted_by)} on {formatDateTime(txn.submitted_at)}</li>}
-          {txn.approved_at && <li>{txn.direction === "receipt" ? "Confirmed" : "Approved"} by {staffName(txn.approved_by)} on {formatDateTime(txn.approved_at)}</li>}
-          {txn.paid_at && <li>Paid by {staffName(txn.paid_by)} on {formatDateTime(txn.paid_at)}</li>}
-          {txn.posted_at && <li>Posted to the ledger on {formatDateTime(txn.posted_at)}</li>}
+          <li>
+            Prepared by {staffName(txn.created_by)} on{" "}
+            {formatDateTime(txn.created_at)}
+          </li>
+          {txn.submitted_at && (
+            <li>
+              Submitted by {staffName(txn.submitted_by)} on{" "}
+              {formatDateTime(txn.submitted_at)}
+            </li>
+          )}
+          {txn.ops_confirmed_at && (
+            <li>
+              Checked against the member&apos;s records by{" "}
+              {staffName(txn.ops_confirmed_by)} (Operations) on{" "}
+              {formatDateTime(txn.ops_confirmed_at)}
+              {txn.ops_note && (
+                <span className="text-zinc-500">: {txn.ops_note}</span>
+              )}
+            </li>
+          )}
+          {txn.approved_at && (
+            <li>
+              {txn.direction === "receipt" ? "Confirmed" : "Approved"} by{" "}
+              {staffName(txn.approved_by)} on {formatDateTime(txn.approved_at)}
+            </li>
+          )}
+          {txn.audited_at && (
+            <li>
+              Approved by Internal Audit ({staffName(txn.audited_by)}) on{" "}
+              {formatDateTime(txn.audited_at)}
+            </li>
+          )}
+          {txn.paid_at && (
+            <li>
+              Paid by {staffName(txn.paid_by)} on {formatDateTime(txn.paid_at)}
+            </li>
+          )}
+          {txn.posted_at && (
+            <li>Posted to the ledger on {formatDateTime(txn.posted_at)}</li>
+          )}
         </ol>
         <div className="mt-4 flex flex-wrap items-start gap-3">
-          {editable && can(recordPermission) && (
-            needsEvidence ? (
-              <p className="text-sm text-amber-800">Attach the supporting evidence below, then submit for approval.</p>
+          {editable &&
+            can(recordPermission) &&
+            (needsEvidence ? (
+              <p className="text-sm text-amber-800">
+                Attach the supporting evidence below, then submit for approval.
+              </p>
             ) : (
-              <ActionButton action={submitTransaction.bind(null, txn.id)} label="Submit for approval" pendingLabel="Submitting…" />
-            )
+              <ActionButton
+                action={submitTransaction.bind(null, txn.id)}
+                label="Submit for approval"
+                pendingLabel="Submitting…"
+              />
+            ))}
+          {awaitingOps && (
+            <p className="text-sm text-zinc-600">
+              Waiting for Operations to check the amount, member and plan
+              against the member&apos;s records before it can be confirmed.
+            </p>
           )}
           {canReview && (
             <>
-              <ActionButton
-                action={approveTransaction.bind(null, txn.id)}
-                label={txn.direction === "receipt" ? "Confirm and post" : "Approve payment"}
-                pendingLabel="Approving…"
-                confirm={txn.direction === "receipt" ? "Post this receipt to the ledger?" : "Approve this payment?"}
+              {!awaitingOps && (
+                <ActionButton
+                  action={approveTransaction.bind(null, txn.id)}
+                  label={
+                    txn.direction === "receipt"
+                      ? "Confirm and post"
+                      : "Approve payment"
+                  }
+                  pendingLabel="Approving…"
+                  confirm={
+                    txn.direction === "receipt"
+                      ? "Post this receipt to the ledger?"
+                      : "Approve this payment?"
+                  }
+                />
+              )}
+              <ReasonForm
+                action={declineTransaction.bind(null, txn.id, "returned")}
+                openLabel="Return for correction"
+                submitLabel="Return"
+                question="What needs correcting?"
+                variant="secondary"
               />
-              <ReasonForm action={declineTransaction.bind(null, txn.id, "returned")} openLabel="Return for correction" submitLabel="Return" question="What needs correcting?" variant="secondary" />
-              <ReasonForm action={declineTransaction.bind(null, txn.id, "rejected")} openLabel="Reject" submitLabel="Reject" question="Why is this being rejected?" />
+              <ReasonForm
+                action={declineTransaction.bind(null, txn.id, "rejected")}
+                openLabel="Reject"
+                submitLabel="Reject"
+                question="Why is this being rejected?"
+              />
             </>
           )}
-          {txn.status === "submitted" && isPreparer && <p className="text-sm text-zinc-600">Waiting for someone else to review it.</p>}
+          {txn.status === "submitted" && isPreparer && !awaitingOps && (
+            <p className="text-sm text-zinc-600">
+              Waiting for someone else to review it.
+            </p>
+          )}
+          {canAudit && (
+            <>
+              <ActionButton
+                action={auditApprovePayment.bind(null, txn.id)}
+                label="Approve for payment (Internal Audit)"
+                pendingLabel="Approving…"
+                confirm="Approve this payment as Internal Audit? Accounts can then pay it."
+              />
+              <ReasonForm
+                action={auditDeclinePayment.bind(null, txn.id, "returned")}
+                openLabel="Return to Accounts"
+                submitLabel="Return"
+                question="What needs correcting?"
+                variant="secondary"
+              />
+              <ReasonForm
+                action={auditDeclinePayment.bind(null, txn.id, "rejected")}
+                openLabel="Reject"
+                submitLabel="Reject"
+                question="Why is this being rejected?"
+              />
+            </>
+          )}
+          {awaitingAudit && !canAudit && (
+            <p className="text-sm text-zinc-600">
+              Approved by Accounts. Internal Audit must approve it before it can
+              be paid.
+            </p>
+          )}
           {canPay &&
             (attachments.some((a) => a.kind === "payment_proof") ? (
-              <ActionButton action={payTransaction.bind(null, txn.id)} label="Mark as paid and post" pendingLabel="Posting…" confirm="Confirm the money has gone out and post this payment?" />
+              <ActionButton
+                action={payTransaction.bind(null, txn.id)}
+                label="Mark as paid and post"
+                pendingLabel="Posting…"
+                confirm="Confirm the money has gone out and post this payment?"
+              />
             ) : (
-              <p className="text-sm text-amber-800">Attach the proof of payment below to mark this as paid.</p>
+              <p className="text-sm text-amber-800">
+                Attach the proof of payment below to mark this as paid.
+              </p>
             ))}
-          {txn.direction === "payment" && txn.status === "approved" && txn.approved_by === staff.id && (
-            <p className="text-sm text-zinc-600">You approved this payment, so someone else must make it.</p>
-          )}
+          {txn.direction === "payment" &&
+            txn.status === "approved" &&
+            !awaitingAudit &&
+            txn.approved_by === staff.id && (
+              <p className="text-sm text-zinc-600">
+                You approved this payment, so someone else must make it.
+              </p>
+            )}
         </div>
       </Card>
 
@@ -201,26 +437,44 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
             {attachments.map((a) => (
               <li key={a.id} className="flex items-center justify-between py-2">
                 <span>
-                  <span className="font-medium">{ATTACHMENT_KINDS[a.kind]}</span> · {a.file_name}
+                  <span className="font-medium">
+                    {ATTACHMENT_KINDS[a.kind]}
+                  </span>{" "}
+                  · {a.file_name}
                   <span className="block text-xs text-zinc-500">
                     {staffName(a.uploaded_by)}, {formatDateTime(a.uploaded_at)}
                   </span>
                 </span>
                 {a.url ? (
-                  <a href={a.url} target="_blank" rel="noreferrer" className="underline">
+                  <a
+                    href={a.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline"
+                  >
                     View
                   </a>
                 ) : (
-                  <span className="text-xs text-zinc-500">File not available</span>
+                  <span className="text-xs text-zinc-500">
+                    File not available
+                  </span>
                 )}
               </li>
             ))}
           </ul>
         )}
         {editable && can(recordPermission) && (
-          <UploadForm action={uploadEvidence.bind(null, txn.id, "supporting")} label="Add supporting evidence (PDF, JPEG or PNG)" />
+          <UploadForm
+            action={uploadEvidence.bind(null, txn.id, "supporting")}
+            label="Add supporting evidence (PDF, JPEG or PNG)"
+          />
         )}
-        {canPay && <UploadForm action={uploadEvidence.bind(null, txn.id, "payment_proof")} label="Add proof of payment (transfer receipt or teller)" />}
+        {canPay && (
+          <UploadForm
+            action={uploadEvidence.bind(null, txn.id, "payment_proof")}
+            label="Add proof of payment (transfer receipt or teller)"
+          />
+        )}
       </Card>
 
       {lines.length > 0 && (
@@ -228,7 +482,10 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
           title="Ledger posting"
           actions={
             txn.journal_entry_id && (
-              <Link href={`/accounts/journals/${txn.journal_entry_id}`} className="text-sm underline">
+              <Link
+                href={`/accounts/journals/${txn.journal_entry_id}`}
+                className="text-sm underline"
+              >
                 Open journal
               </Link>
             )
@@ -248,8 +505,12 @@ export default async function TransactionPage({ params }: { params: Promise<{ id
                   <td className="py-1.5">
                     {l.account_code} {accountName.get(l.account_code)}
                   </td>
-                  <td className="py-1.5 text-right tabular-nums">{Number(l.debit) ? formatMoney(l.debit) : ""}</td>
-                  <td className="py-1.5 text-right tabular-nums">{Number(l.credit) ? formatMoney(l.credit) : ""}</td>
+                  <td className="py-1.5 text-right tabular-nums">
+                    {Number(l.debit) ? formatMoney(l.debit) : ""}
+                  </td>
+                  <td className="py-1.5 text-right tabular-nums">
+                    {Number(l.credit) ? formatMoney(l.credit) : ""}
+                  </td>
                 </tr>
               ))}
             </tbody>

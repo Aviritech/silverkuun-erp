@@ -9,7 +9,13 @@ import { RISK_RATINGS, type RiskRating } from "@/modules/credit/constants";
 import { creditModule } from "@/modules/credit/module";
 import { officerNames, type LoanBookRow, type Restructure } from "@/modules/credit/queries";
 
-type Queued = LoanBookRow & { created_by: string; submitted_by: string | null; appraised_by: string | null; recommended_amount: string | null };
+type Queued = LoanBookRow & {
+  created_by: string;
+  submitted_by: string | null;
+  appraised_by: string | null;
+  approved_by: string | null;
+  recommended_amount: string | null;
+};
 
 function daysSince(iso: string | null) {
   return iso ? Math.max(0, Math.floor((Date.now() - Date.parse(iso)) / 86_400_000)) : 0;
@@ -20,8 +26,8 @@ export default async function ApprovalsPage() {
   await requirePermission("credit.read");
   const supabase = await createClient();
   const [queue, people, restructures, org, officers] = await Promise.all([
-    supabase.from("loan_book").select("*").in("status", ["submitted", "appraised", "returned"]).order("submitted_at"),
-    supabase.from("loans").select("id, created_by, submitted_by, appraised_by, recommended_amount").in("status", ["submitted", "appraised", "returned"]),
+    supabase.from("loan_book").select("*").in("status", ["submitted", "appraised", "credit_approved", "returned"]).order("submitted_at"),
+    supabase.from("loans").select("id, created_by, submitted_by, appraised_by, approved_by, recommended_amount").in("status", ["submitted", "appraised", "credit_approved", "returned"]),
     supabase.from("loan_restructures").select("*, loans(loan_no, member_id)").eq("status", "pending").order("requested_at"),
     listOrg(),
     officerNames(),
@@ -41,10 +47,17 @@ export default async function ApprovalsPage() {
       action: (l) => (can("credit.appraise", l.branch_id) && !mine(l) ? "Appraise" : null),
     },
     {
-      title: "Awaiting decision",
-      hint: "Appraised and recommended. The Head of Credit or management approves or rejects.",
+      title: "Awaiting Head of Credit",
+      hint: "Appraised and recommended. The Head of Credit approves, returns or rejects.",
       rows: loans.filter((l) => l.status === "appraised"),
       action: (l) => (can("credit.approve", l.branch_id) && !mine(l) && l.appraised_by !== staff.id ? "Decide" : null),
+    },
+    {
+      title: "Awaiting Head of Business",
+      hint: "Approved by the Head of Credit. The Head of Business gives the final approval before Accounts pays it out.",
+      rows: loans.filter((l) => l.status === "credit_approved"),
+      action: (l) =>
+        can("credit.business_approve", l.branch_id) && !mine(l) && ![l.appraised_by, l.approved_by].includes(staff.id) ? "Approve" : null,
     },
     {
       title: "Returned to the officer",
@@ -80,7 +93,14 @@ export default async function ApprovalsPage() {
               <tbody>
                 {s.rows.map((l) => {
                   const action = s.action(l);
-                  const since = l.status === "appraised" ? l.appraised_at : l.status === "returned" ? l.decided_at : l.submitted_at;
+                  const since =
+                    l.status === "appraised"
+                      ? l.appraised_at
+                      : l.status === "credit_approved"
+                        ? l.approved_at
+                        : l.status === "returned"
+                          ? l.decided_at
+                          : l.submitted_at;
                   return (
                     <tr key={l.id} className="border-t border-zinc-100">
                       <td className="py-1.5">

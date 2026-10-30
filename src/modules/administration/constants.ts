@@ -1,6 +1,8 @@
 export const MEMBER_STATUSES = {
   draft: { label: "Draft", tone: "gray" },
-  pending_approval: { label: "Awaiting approval", tone: "amber" },
+  with_marketer: { label: "With the marketer", tone: "blue" },
+  marketer_reviewed: { label: "Back with the officer", tone: "amber" },
+  pending_approval: { label: "With the Branch Manager", tone: "amber" },
   returned: { label: "Returned", tone: "red" },
   approved: { label: "Approved", tone: "green" },
 } as const;
@@ -32,6 +34,9 @@ export type IssueChannel = keyof typeof ISSUE_CHANNELS;
 
 /** The signature drawn on approval is stored as a PNG data URL. Mirrors approve_member(). */
 export const MAX_SIGNATURE_LENGTH = 200_000;
+
+/** Statuses in which the officer can edit the file and its documents. Mirrors the members update policy. */
+export const OFFICER_EDITABLE: MemberStatus[] = ["draft", "returned", "marketer_reviewed"];
 
 /** Must all be uploaded before a file can go to the Branch Manager. Mirrors submit_member() in the database. */
 export const REQUIRED_DOCUMENTS: DocumentType[] = ["kyc_form", "nin_slip", "means_of_id", "utility_bill"];

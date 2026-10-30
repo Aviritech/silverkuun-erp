@@ -10,7 +10,9 @@ import {
   addCollateral,
   addGuarantor,
   appraiseLoan,
+  businessDecideLoan,
   cancelLoan,
+  confirmGuarantor,
   decideLoan,
   decideRestructure,
   reassignOfficer,
@@ -23,7 +25,9 @@ import {
 } from "@/modules/credit/actions";
 import {
   AppraisalForm,
+  BusinessDecisionForm,
   CollateralForm,
+  ConfirmGuarantorForm,
   DecisionForm,
   GuarantorForm,
   LoanDocumentUpload,
@@ -96,7 +100,13 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
   const isPreparer = loan.created_by === staff.id || loan.submitted_by === staff.id || loan.account_officer_id === staff.id;
   const canAppraise = loan.status === "submitted" && can("credit.appraise") && !isPreparer;
   const canDecide = loan.status === "appraised" && can("credit.approve") && !isPreparer && loan.appraised_by !== staff.id;
-  const canReturn = (loan.status === "submitted" && canAppraise) || canDecide;
+  const canBusinessDecide =
+    loan.status === "credit_approved" &&
+    can("credit.business_approve") &&
+    !isPreparer &&
+    ![loan.appraised_by, loan.approved_by].includes(staff.id);
+  const canReturn = (loan.status === "submitted" && canAppraise) || canDecide || canBusinessDecide;
+  const unconfirmed = guarantors.filter((g) => !g.confirmed_at);
   const canCancel = (editable && canManage) || (loan.status === "approved" && can("credit.approve"));
   const pendingRestructure = restructures.find((r) => r.status === "pending");
   const live = ["active", "closed"].includes(loan.status);
@@ -184,7 +194,14 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
           {loan.appraised_at && <li>Appraised by {staffName(loan.appraised_by)} on {formatDateTime(loan.appraised_at)}</li>}
           {loan.approved_at && (
             <li>
-              Approved for {formatMoney(loan.approved_amount)} by {staffName(loan.approved_by)} on {formatDateTime(loan.approved_at)}
+              Approved for {formatMoney(loan.approved_amount)} by {staffName(loan.approved_by)} (Head of Credit) on{" "}
+              {formatDateTime(loan.approved_at)}
+            </li>
+          )}
+          {loan.business_approved_at && (
+            <li>
+              Approved by {staffName(loan.business_approved_by)} (Head of Business) on {formatDateTime(loan.business_approved_at)}
+              {loan.business_note && `: ${loan.business_note}`}
             </li>
           )}
           {loan.decided_at && !loan.approved_at && (
@@ -213,12 +230,13 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
             />
           )}
           {loan.status === "submitted" && isPreparer && <p className="text-sm text-zinc-600">Waiting for a credit analyst to appraise it.</p>}
-          {loan.status === "appraised" && (isPreparer || loan.appraised_by === staff.id) && (
-            <p className="text-sm text-zinc-600">Waiting for the Head of Credit or management to decide.</p>
+          {loan.status === "appraised" && !canDecide && <p className="text-sm text-zinc-600">Waiting for the Head of Credit to decide.</p>}
+          {loan.status === "credit_approved" && !canBusinessDecide && (
+            <p className="text-sm text-zinc-600">Approved by the Head of Credit and waiting for the Head of Business.</p>
           )}
           {loan.status === "approved" && (
             <p className="text-sm text-zinc-600">
-              Approved and waiting for Accounts to pay it out
+              Approved and waiting for Accounts to pay it out (Internal Audit approves the payment first)
               {loan.disbursement_txn_no ? ` (${loan.disbursement_txn_no}, ${loan.disbursement_status})` : ""}.
             </p>
           )}
@@ -228,7 +246,7 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
           {canCancel && (
             <ReasonForm action={cancelLoan.bind(null, loan.id)} openLabel="Cancel application" submitLabel="Cancel it" question="Why is it being cancelled?" />
           )}
-          {["draft", "returned", "submitted", "appraised", "approved", "active"].includes(loan.status) && can("credit.approve") && (
+          {["draft", "returned", "submitted", "appraised", "credit_approved", "approved", "active"].includes(loan.status) && can("credit.approve") && (
             <ReassignForm action={reassignOfficer.bind(null, loan.id)} officers={officersFor(officers, branch)} current={loan.account_officer_id} />
           )}
         </div>
@@ -237,7 +255,14 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
 
       {canAppraise && (
         <Card title="Credit appraisal">
-          <AppraisalForm action={appraiseLoan.bind(null, loan.id)} amountRequested={loan.amount_requested} />
+          {unconfirmed.length > 0 ? (
+            <p className="text-sm text-amber-800">
+              Confirm {unconfirmed.length === 1 ? "the guarantor" : `all ${unconfirmed.length} guarantors`} below before recording the
+              appraisal.
+            </p>
+          ) : (
+            <AppraisalForm action={appraiseLoan.bind(null, loan.id)} amountRequested={loan.amount_requested} />
+          )}
         </Card>
       )}
 
@@ -263,8 +288,17 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
         </Card>
       )}
 
+      {canBusinessDecide && (
+        <Card title="Head of Business approval">
+          <p className="mb-3 text-sm text-zinc-700">
+            The Head of Credit approved {formatMoney(loan.approved_amount)}. Approving sends it to Accounts to pay out.
+          </p>
+          <BusinessDecisionForm action={businessDecideLoan.bind(null, loan.id)} />
+        </Card>
+      )}
+
       {canDecide && (
-        <Card title="Management decision">
+        <Card title="Head of Credit decision">
           <DecisionForm action={decideLoan.bind(null, loan.id)} recommendedAmount={loan.recommended_amount ?? loan.amount_requested} />
         </Card>
       )}
@@ -322,6 +356,18 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
                   <span className="block text-xs text-zinc-500">
                     {[g.phone, g.address, g.occupation, g.employer, g.monthly_income && `${formatMoney(g.monthly_income)} a month`].filter(Boolean).join(" · ")}
                   </span>
+                  {g.confirmed_at ? (
+                    <span className="mt-1 block text-xs text-emerald-800">
+                      Confirmed by {staffName(g.confirmed_by)} on {formatDateTime(g.confirmed_at)}: {g.confirmation_note}
+                    </span>
+                  ) : (
+                    !editable && <span className="mt-1 block text-xs text-amber-800">Not confirmed yet</span>
+                  )}
+                  {!g.confirmed_at && canAppraise && (
+                    <span className="mt-2 block">
+                      <ConfirmGuarantorForm action={confirmGuarantor.bind(null, loan.id, g.id)} />
+                    </span>
+                  )}
                 </span>
                 {editable && canManage && (
                   <ActionButton action={removeLoanPart.bind(null, loan.id, "loan_guarantors", g.id)} label="Remove" variant="secondary" confirm="Remove this guarantor?" />

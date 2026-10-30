@@ -9,6 +9,25 @@ export const FINANCE_STATUSES = {
 } as const;
 export type FinanceStatus = keyof typeof FINANCE_STATUSES;
 
+/** The status to show: an approved payment waits for Internal Audit before anyone can pay it. */
+export function financeStatus(t: {
+  status: FinanceStatus;
+  direction: string;
+  audited_at?: string | null;
+  needs_ops_confirmation?: boolean;
+  ops_confirmed_at?: string | null;
+}) {
+  if (t.status === "submitted" && t.needs_ops_confirmation && !t.ops_confirmed_at) {
+    return { label: "Awaiting Operations check", tone: "amber" } as const;
+  }
+  if (t.direction === "payment" && t.status === "approved") {
+    return t.audited_at
+      ? ({ label: "Audit approved, awaiting payment", tone: "blue" } as const)
+      : ({ label: "Awaiting Internal Audit", tone: "amber" } as const);
+  }
+  return FINANCE_STATUSES[t.status];
+}
+
 export const DIRECTIONS = { receipt: "Receipt", payment: "Payment" } as const;
 export type Direction = keyof typeof DIRECTIONS;
 
@@ -56,7 +75,7 @@ export const SUGGESTION_CONFIDENCE = {
 
 /** Supplier payables control account; approved bills credit it and supplier payments debit it. */
 export const SUPPLIER_PAYABLES_ACCOUNT = "2210";
-export const ROI_EXPENSE_ACCOUNT = "5100";
+export const INTEREST_EXPENSE_ACCOUNT = "5100";
 export const ROI_PAYABLE_ACCOUNT = "2140";
 
 export const COMMON_CURRENCIES = ["NGN", "USD", "GBP", "EUR"] as const;

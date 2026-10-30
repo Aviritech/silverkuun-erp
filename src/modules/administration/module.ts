@@ -9,7 +9,8 @@ export const administrationModule: DepartmentModule = {
   nav: [
     { label: "Overview", href: "/administration" },
     { label: "Members", href: "/administration/members", permission: "members.read" },
-    { label: "Approvals", href: "/administration/approvals", permission: "members.approve" },
+    { label: "Approvals", href: "/administration/approvals", permission: ["members.approve", "members.endorse"] },
+    { label: "Receipts to check", href: "/administration/receipts", permission: "receipts.confirm" },
     { label: "Maturities", href: "/administration/reports/maturities", permission: "members.read" },
     { label: "Targets", href: "/administration/targets", permission: "members.read" },
     { label: "Reports", href: "/administration/reports", permission: "members.read" },

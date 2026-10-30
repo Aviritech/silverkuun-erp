@@ -124,3 +124,27 @@ export function FormError({ message }: { message?: string }) {
 export function EmptyState({ children }: { children: ReactNode }) {
   return <p className="py-6 text-center text-sm text-zinc-500">{children}</p>;
 }
+
+/** Page tabs as links (`?tab=`), so each tab can be bookmarked and the page stays server-rendered. */
+export function Tabs({ tabs, current }: { tabs: { key: string; label: string; href: string }[]; current: string }) {
+  return (
+    <nav className="no-print flex gap-1 overflow-x-auto border-b border-zinc-200" aria-label="Sections">
+      {tabs.map((t) => {
+        const active = t.key === current;
+        return (
+          <Link
+            key={t.key}
+            href={t.href}
+            scroll={false}
+            aria-current={active ? "page" : undefined}
+            className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
+              active ? "border-ink text-ink" : "border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-800"
+            }`}
+          >
+            {t.label}
+          </Link>
+        );
+      })}
+    </nav>
+  );
+}

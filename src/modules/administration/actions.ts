@@ -16,6 +16,7 @@ import {
   documentSchema,
   fieldErrors,
   issueSchema,
+  marketerReviewSchema,
   memberSchema,
   planSchema,
   returnSchema,
@@ -42,46 +43,98 @@ const MEMBER_FIELDS = [
   "next_of_kin_name",
   "next_of_kin_phone",
   "next_of_kin_relationship",
+  "bank_code",
+  "bank_name",
+  "bank_account_no",
+  "interest_pay_day",
 ] as const;
 
+/** A coded bank takes its name from the CBN list in the database; a bank without a code is entered by name. */
+function bankProblem(v: {
+  bank_code: string | null;
+  bank_name: string | null;
+  bank_account_no: string | null;
+}): Record<string, string> | null {
+  const hasBank = Boolean(v.bank_code || v.bank_name);
+  if (hasBank && !v.bank_account_no)
+    return { bank_account_no: "Enter the 10-digit account number" };
+  if (!hasBank && v.bank_account_no) return { bank_code: "Choose the bank" };
+  return null;
+}
+
+function withBank<
+  T extends { bank_code: string | null; bank_name: string | null },
+>(v: T): T {
+  return v.bank_code ? { ...v, bank_name: null } : v;
+}
+
 function formObject(formData: FormData, keys: readonly string[]) {
-  return Object.fromEntries(keys.map((k) => [k, (formData.get(k) as string | null) ?? ""]));
+  return Object.fromEntries(
+    keys.map((k) => [k, (formData.get(k) as string | null) ?? ""]),
+  );
 }
 
 function memberPath(memberId: string) {
   return `/administration/members/${memberId}`;
 }
 
-export async function createMember(_prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function createMember(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   await requireModule(administrationModule);
   const parsed = memberSchema.safeParse(formObject(formData, MEMBER_FIELDS));
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  const bank = bankProblem(parsed.data);
+  if (bank) return { fieldErrors: bank };
 
   const supabase = await createClient();
-  const { data, error } = await supabase.from("members").insert(parsed.data).select("id").single();
+  const { data, error } = await supabase
+    .from("members")
+    .insert(withBank(parsed.data))
+    .select("id")
+    .single();
   if (error) return { error: friendlyDbError(error) };
 
   revalidatePath("/administration", "layout");
   redirect(memberPath(data.id));
 }
 
-export async function updateMember(memberId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function updateMember(
+  memberId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   await requireModule(administrationModule);
-  const parsed = memberSchema.omit({ branch_id: true }).safeParse(formObject(formData, MEMBER_FIELDS));
+  const parsed = memberSchema
+    .omit({ branch_id: true })
+    .safeParse(formObject(formData, MEMBER_FIELDS));
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  const bank = bankProblem(parsed.data);
+  if (bank) return { fieldErrors: bank };
 
   const supabase = await createClient();
-  const { data: current } = await supabase.from("members").select("status").eq("id", memberId).maybeSingle();
+  const { data: current } = await supabase
+    .from("members")
+    .select("status")
+    .eq("id", memberId)
+    .maybeSingle();
   if (!current) return { error: "Member not found." };
 
-  let update: Record<string, unknown> = parsed.data;
+  let update: Record<string, unknown> = withBank(parsed.data);
   if (current.status === "approved") {
-    const reason = amendmentSchema.safeParse({ amendment_reason: formData.get("amendment_reason") ?? "" });
+    const reason = amendmentSchema.safeParse({
+      amendment_reason: formData.get("amendment_reason") ?? "",
+    });
     if (!reason.success) return { fieldErrors: fieldErrors(reason.error) };
     update = { ...update, amendment_reason: reason.data.amendment_reason };
   }
 
-  const { data, error } = await supabase.from("members").update(update).eq("id", memberId).select("id");
+  const { data, error } = await supabase
+    .from("members")
+    .update(update)
+    .eq("id", memberId)
+    .select("id");
   if (error) return { error: friendlyDbError(error) };
   if (!data?.length) return { error: "You can't edit this member right now." };
 
@@ -89,20 +142,32 @@ export async function updateMember(memberId: string, _prev: ActionState, formDat
   redirect(memberPath(memberId));
 }
 
-export async function uploadDocument(memberId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function uploadDocument(
+  memberId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   await requireModule(administrationModule);
-  const parsed = documentSchema.safeParse({ document_type: formData.get("document_type") ?? "" });
+  const parsed = documentSchema.safeParse({
+    document_type: formData.get("document_type") ?? "",
+  });
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
 
   const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0) return { fieldErrors: { file: "Choose a file to upload" } };
+  if (!(file instanceof File) || file.size === 0)
+    return { fieldErrors: { file: "Choose a file to upload" } };
   if (!(ALLOWED_UPLOAD_TYPES as readonly string[]).includes(file.type)) {
     return { fieldErrors: { file: "Upload a PDF, JPEG or PNG" } };
   }
-  if (file.size > MAX_UPLOAD_BYTES) return { fieldErrors: { file: "Files can be at most 10 MB" } };
+  if (file.size > MAX_UPLOAD_BYTES)
+    return { fieldErrors: { file: "Files can be at most 10 MB" } };
 
   const supabase = await createClient();
-  const { data: member } = await supabase.from("members").select("id, branch_id").eq("id", memberId).maybeSingle();
+  const { data: member } = await supabase
+    .from("members")
+    .select("id, branch_id")
+    .eq("id", memberId)
+    .maybeSingle();
   if (!member) return { error: "Member not found." };
 
   const safeName = file.name.replace(/[^\w.-]+/g, "_").slice(-100);
@@ -111,7 +176,8 @@ export async function uploadDocument(memberId: string, _prev: ActionState, formD
   const upload = await supabase.storage
     .from("member-documents")
     .upload(storagePath, file, { contentType: file.type, upsert: false });
-  if (upload.error) return { error: friendlyDbError({ message: upload.error.message }) };
+  if (upload.error)
+    return { error: friendlyDbError({ message: upload.error.message }) };
 
   const { error } = await supabase.from("member_documents").insert({
     member_id: member.id,
@@ -128,73 +194,205 @@ export async function uploadDocument(memberId: string, _prev: ActionState, formD
   return { ok: true };
 }
 
-export async function removeDocument(memberId: string, documentId: string): Promise<ActionState> {
+export async function removeDocument(
+  memberId: string,
+  documentId: string,
+): Promise<ActionState> {
   await requireModule(administrationModule);
   const supabase = await createClient();
-  const { data, error } = await supabase.from("member_documents").delete().eq("id", documentId).select("id");
+  const { data, error } = await supabase
+    .from("member_documents")
+    .delete()
+    .eq("id", documentId)
+    .select("id");
   if (error) return { error: friendlyDbError(error) };
   if (!data?.length) return { error: "You can't remove this document." };
   revalidatePath(memberPath(memberId));
   return { ok: true };
 }
 
+export async function sendToMarketer(memberId: string): Promise<ActionState> {
+  await requireModule(administrationModule);
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("send_member_to_marketer", {
+    p_member_id: memberId,
+  });
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/administration", "layout");
+  return { ok: true };
+}
+
+/** Operations has checked a receipt Accounts recorded against the member's records. */
+export async function confirmReceipt(
+  transactionId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireModule(administrationModule);
+  const parsed = marketerReviewSchema.safeParse({
+    note: formData.get("note") ?? "",
+  });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("confirm_member_receipt", {
+    p_id: transactionId,
+    p_note: parsed.data.note,
+  });
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/administration", "layout");
+  return { ok: true };
+}
+
+/** The receipt doesn't match the member's records: back to Accounts with the reason. */
+export async function returnReceipt(
+  transactionId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireModule(administrationModule);
+  const parsed = returnSchema.safeParse({
+    reason: formData.get("reason") ?? "",
+  });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("return_member_receipt", {
+    p_id: transactionId,
+    p_reason: parsed.data.reason,
+  });
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/administration", "layout");
+  return { ok: true };
+}
+
+export async function marketerReview(
+  memberId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireModule(administrationModule);
+  const parsed = marketerReviewSchema.safeParse({
+    note: formData.get("note") ?? "",
+  });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("marketer_review_member", {
+    p_member_id: memberId,
+    p_note: parsed.data.note,
+  });
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/administration", "layout");
+  return { ok: true };
+}
+
 export async function submitMember(memberId: string): Promise<ActionState> {
   await requireModule(administrationModule);
   const supabase = await createClient();
-  const { error } = await supabase.rpc("submit_member", { p_member_id: memberId });
+  const { error } = await supabase.rpc("submit_member", {
+    p_member_id: memberId,
+  });
   if (error) return { error: friendlyDbError(error) };
   revalidatePath("/administration", "layout");
   return { ok: true };
 }
 
-export async function approveMember(memberId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function approveMember(
+  memberId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   await requireModule(administrationModule);
-  const parsed = approvalSchema.safeParse({ signature: formData.get("signature") ?? "" });
+  const parsed = approvalSchema.safeParse({
+    signature: formData.get("signature") ?? "",
+  });
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
 
   const supabase = await createClient();
-  const { error } = await supabase.rpc("approve_member", { p_member_id: memberId, p_signature: parsed.data.signature });
+  const { error } = await supabase.rpc("approve_member", {
+    p_member_id: memberId,
+    p_signature: parsed.data.signature,
+  });
   if (error) return { error: friendlyDbError(error) };
   revalidatePath("/administration", "layout");
   return { ok: true };
 }
 
-export async function returnMember(memberId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function returnMember(
+  memberId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   await requireModule(administrationModule);
-  const parsed = returnSchema.safeParse({ reason: formData.get("reason") ?? "" });
+  const parsed = returnSchema.safeParse({
+    reason: formData.get("reason") ?? "",
+  });
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
 
   const supabase = await createClient();
-  const { error } = await supabase.rpc("return_member", { p_member_id: memberId, p_reason: parsed.data.reason });
+  const { error } = await supabase.rpc("return_member", {
+    p_member_id: memberId,
+    p_reason: parsed.data.reason,
+  });
   if (error) return { error: friendlyDbError(error) };
   revalidatePath("/administration", "layout");
   return { ok: true };
 }
 
-export async function addPlan(memberId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function addPlan(
+  memberId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   await requireModule(administrationModule);
   const parsed = planSchema.safeParse(
-    formObject(formData, ["plan_type", "contribution_amount", "contribution_frequency", "start_date", "maturity_date"]),
+    formObject(formData, [
+      "plan_type",
+      "contribution_amount",
+      "contribution_frequency",
+      "start_date",
+      "maturity_date",
+    ]),
   );
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
 
   const supabase = await createClient();
-  const { data: member } = await supabase.from("members").select("id, branch_id").eq("id", memberId).maybeSingle();
+  const { data: member } = await supabase
+    .from("members")
+    .select("id, branch_id")
+    .eq("id", memberId)
+    .maybeSingle();
   if (!member) return { error: "Member not found." };
 
   const { error } = await supabase
     .from("member_plans")
-    .insert({ ...parsed.data, member_id: member.id, branch_id: member.branch_id });
+    .insert({
+      ...parsed.data,
+      member_id: member.id,
+      branch_id: member.branch_id,
+    });
   if (error) return { error: friendlyDbError(error) };
 
   revalidatePath(memberPath(memberId));
   return { ok: true };
 }
 
-export async function recordContribution(memberId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function recordContribution(
+  memberId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   await requireModule(administrationModule);
   const parsed = contributionSchema.safeParse(
-    formObject(formData, ["member_plan_id", "kind", "amount", "paid_on", "payment_method", "reference"]),
+    formObject(formData, [
+      "member_plan_id",
+      "kind",
+      "amount",
+      "paid_on",
+      "payment_method",
+      "reference",
+    ]),
   );
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
 
@@ -209,16 +407,26 @@ export async function recordContribution(memberId: string, _prev: ActionState, f
   // member_id and branch_id are overwritten from the plan by the database; they're sent only to satisfy NOT NULL.
   const { error } = await supabase
     .from("contributions")
-    .insert({ ...parsed.data, member_id: plan.member_id, branch_id: plan.branch_id });
+    .insert({
+      ...parsed.data,
+      member_id: plan.member_id,
+      branch_id: plan.branch_id,
+    });
   if (error) return { error: friendlyDbError(error) };
 
   revalidatePath(memberPath(memberId));
   return { ok: true };
 }
 
-export async function reverseContribution(memberId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function reverseContribution(
+  memberId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   await requireModule(administrationModule);
-  const parsed = reversalSchema.safeParse(formObject(formData, ["contribution_id", "notes"]));
+  const parsed = reversalSchema.safeParse(
+    formObject(formData, ["contribution_id", "notes"]),
+  );
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
 
   const supabase = await createClient();
@@ -227,7 +435,8 @@ export async function reverseContribution(memberId: string, _prev: ActionState, 
     .select("id, member_plan_id, member_id, branch_id, amount, payment_method")
     .eq("id", parsed.data.contribution_id)
     .maybeSingle();
-  if (!original || original.member_id !== memberId) return { error: "Entry not found." };
+  if (!original || original.member_id !== memberId)
+    return { error: "Entry not found." };
 
   const { error } = await supabase.from("contributions").insert({
     member_plan_id: original.member_plan_id,
@@ -246,10 +455,15 @@ export async function reverseContribution(memberId: string, _prev: ActionState, 
   return { ok: true };
 }
 
-export async function verifyContribution(memberId: string, contributionId: string): Promise<ActionState> {
+export async function verifyContribution(
+  memberId: string,
+  contributionId: string,
+): Promise<ActionState> {
   await requireModule(administrationModule);
   const supabase = await createClient();
-  const { error } = await supabase.rpc("verify_contribution", { p_contribution_id: contributionId });
+  const { error } = await supabase.rpc("verify_contribution", {
+    p_contribution_id: contributionId,
+  });
   if (error) return { error: friendlyDbError(error) };
   revalidatePath(memberPath(memberId));
   return { ok: true };
@@ -262,7 +476,9 @@ export async function recordDocumentIssue(
   formData: FormData,
 ): Promise<ActionState> {
   await requireModule(administrationModule);
-  const parsed = issueSchema.safeParse(formObject(formData, ["issued_on", "issue_channel", "issue_note"]));
+  const parsed = issueSchema.safeParse(
+    formObject(formData, ["issued_on", "issue_channel", "issue_note"]),
+  );
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
 
   const supabase = await createClient();
@@ -277,16 +493,29 @@ export async function recordDocumentIssue(
   return { ok: true };
 }
 
-export async function saveBranchTarget(_prev: ActionState, formData: FormData): Promise<ActionState> {
+export async function saveBranchTarget(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   await requireModule(administrationModule);
-  const parsed = targetSchema.safeParse(formObject(formData, ["branch_id", "month", "registrations", "collections"]));
+  const parsed = targetSchema.safeParse(
+    formObject(formData, [
+      "branch_id",
+      "month",
+      "registrations",
+      "collections",
+    ]),
+  );
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
 
   const supabase = await createClient();
   const { month, ...target } = parsed.data;
   const { data, error } = await supabase
     .from("branch_targets")
-    .upsert({ ...target, month: `${month}-01` }, { onConflict: "branch_id,month" })
+    .upsert(
+      { ...target, month: `${month}-01` },
+      { onConflict: "branch_id,month" },
+    )
     .select("id");
   if (error) return { error: friendlyDbError(error) };
   if (!data?.length) return { error: "You can't set targets for this branch." };

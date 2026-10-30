@@ -35,8 +35,11 @@ export type ReportDefinition = {
   basePath: "/accounts" | "/internal-audit" | "/administration" | "/credit" | "/hr";
   /** Needed to run or export the report. */
   permission: string;
-  /** "period" shows from/to; "asAt" shows a single date (uses `to`). */
-  dates: "period" | "asAt" | "none";
+  /**
+   * "period" shows from/to; "asAt" shows a single date (uses `to`). "range" shows from/to for a report option whose
+   * value is "custom" (such as a custom maturity window), defaulting to the next 30 days.
+   */
+  dates: "period" | "asAt" | "range" | "none";
   branchFilter: boolean;
   /** Which of the department and savings product filters the report offers. */
   dimensionFilters?: readonly ("department" | "product")[];

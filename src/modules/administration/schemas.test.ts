@@ -18,6 +18,10 @@ const validMember = {
   next_of_kin_name: "",
   next_of_kin_phone: "",
   next_of_kin_relationship: "",
+  bank_code: "",
+  bank_name: "",
+  bank_account_no: "",
+  interest_pay_day: "",
 };
 
 describe("memberSchema", () => {
@@ -26,6 +30,17 @@ describe("memberSchema", () => {
     expect(parsed.first_name).toBe("Ada");
     expect(parsed.email).toBeNull();
     expect(parsed.date_of_birth).toBeNull();
+  });
+
+  it("checks the bank account number and interest pay day", () => {
+    const result = memberSchema.safeParse({ ...validMember, bank_code: "058", bank_account_no: "12345", interest_pay_day: "32" });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(fieldErrors(result.error).bank_account_no).toBe("An account number is 10 digits");
+      expect(fieldErrors(result.error).interest_pay_day).toBe("Choose a day from 1 to 31");
+    }
+    const ok = memberSchema.parse({ ...validMember, bank_code: "058", bank_account_no: "0123456789", interest_pay_day: "15" });
+    expect(ok.interest_pay_day).toBe(15);
   });
 
   it("explains an invalid NIN", () => {

@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { dbFailure } from "@/lib/db-errors";
 import { formatDate } from "@/lib/format";
+import { addDays, today } from "@/lib/reports/filters";
 import type { ReportDefinition, ReportFilters, Row } from "@/lib/reports/types";
 import { branchNames, customerRegister } from "@/modules/internal-audit/reports";
 import { DOCUMENT_TYPES, FREQUENCIES, ISSUE_CHANNELS, ISSUED_DOCUMENT_TYPES, type DocumentType } from "./constants";
@@ -112,13 +113,22 @@ const contributionSchedule: ReportDefinition = {
   },
 };
 
+/** The maturity dates a week or custom window covers, or null for the "within N days" windows. */
+export function maturityRange(f: Pick<ReportFilters, "from" | "to" | "options">, now = today()): { from: string; to: string } | null {
+  if (f.options.window === "custom") return { from: f.from, to: f.to };
+  if (f.options.window !== "this_week" && f.options.window !== "next_week") return null;
+  const daysSinceMonday = (new Date(`${now}T00:00:00Z`).getUTCDay() + 6) % 7;
+  const monday = addDays(now, -daysSinceMonday + (f.options.window === "next_week" ? 7 : 0));
+  return { from: monday, to: addDays(monday, 6) };
+}
+
 const maturities: ReportDefinition = {
   key: "maturities",
   title: "Plans at or near maturity",
   description: "Plans maturing soon or already matured, with what the member has contributed and whether a maturity letter has been issued.",
   basePath: "/administration",
   permission: "members.read",
-  dates: "none",
+  dates: "range",
   branchFilter: true,
   dimensionFilters: ["product"],
   options: [
@@ -129,6 +139,9 @@ const maturities: ReportDefinition = {
         { value: "60", label: "Matured or within 60 days" },
         { value: "30", label: "Matured or within 30 days" },
         { value: "90", label: "Matured or within 90 days" },
+        { value: "this_week", label: "This week (Monday to Sunday)" },
+        { value: "next_week", label: "Next week (Monday to Sunday)" },
+        { value: "custom", label: "Custom date range (below)" },
         { value: "matured", label: "Already matured" },
         { value: "all", label: "All plans" },
       ],
@@ -137,8 +150,13 @@ const maturities: ReportDefinition = {
   async run(supabase, f) {
     const branches = await branchNames(supabase);
     const [list, plans] = await Promise.all([planProgress(supabase, f, branches), planNames(supabase)]);
+    const range = maturityRange(f);
     const limit = f.options.window === "all" ? Infinity : f.options.window === "matured" ? 0 : Number(f.options.window);
-    const due = list.filter((p) => ["active", "matured"].includes(p.status) && p.days_to_maturity <= limit);
+    const due = list.filter(
+      (p) =>
+        ["active", "matured"].includes(p.status) &&
+        (range ? p.maturity_date >= range.from && p.maturity_date <= range.to : p.days_to_maturity <= limit),
+    );
 
     const memberIds = [...new Set(due.map((p) => p.member_id))];
     const letters = new Map<string, string | null>();

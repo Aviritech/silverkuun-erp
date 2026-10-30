@@ -12,8 +12,10 @@ import { ALLOWED_LOAN_UPLOAD_TYPES, MAX_LOAN_UPLOAD_BYTES } from "./constants";
 import { creditModule } from "./module";
 import {
   appraisalSchema,
+  businessDecisionSchema,
   collateralSchema,
   decisionSchema,
+  guarantorConfirmationSchema,
   guarantorSchema,
   loanDocumentSchema,
   loanSchema,
@@ -207,6 +209,18 @@ export async function decideLoan(id: string, _prev: ActionState, formData: FormD
     { p_loan_id: id, p_approve: approve, p_approved_amount: approve ? parsed.data.approved_amount : null, p_note: parsed.data.note },
     id,
   );
+}
+
+export async function businessDecideLoan(id: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = businessDecisionSchema.safeParse(formObject(formData, ["decision", "note"]));
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  return run("business_decide_loan", { p_loan_id: id, p_approve: parsed.data.decision === "approve", p_note: parsed.data.note }, id);
+}
+
+export async function confirmGuarantor(loanId: string, guarantorId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = guarantorConfirmationSchema.safeParse({ note: formData.get("note") ?? "" });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  return run("confirm_loan_guarantor", { p_guarantor_id: guarantorId, p_note: parsed.data.note }, loanId);
 }
 
 export async function cancelLoan(id: string, _prev: ActionState, formData: FormData): Promise<ActionState> {

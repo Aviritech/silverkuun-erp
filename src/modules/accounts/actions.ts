@@ -8,7 +8,7 @@ import { requireModule } from "@/lib/auth/session";
 import { friendlyDbError } from "@/lib/db-errors";
 import { createClient } from "@/lib/supabase/server";
 import { fieldErrors } from "@/modules/administration/schemas";
-import { ALLOWED_EVIDENCE_TYPES, MAX_EVIDENCE_BYTES, MAX_STATEMENT_BYTES, ROI_EXPENSE_ACCOUNT, ROI_PAYABLE_ACCOUNT } from "./constants";
+import { ALLOWED_EVIDENCE_TYPES, MAX_EVIDENCE_BYTES, MAX_STATEMENT_BYTES, INTEREST_EXPENSE_ACCOUNT, ROI_PAYABLE_ACCOUNT } from "./constants";
 import { accountsModule } from "./module";
 import {
   accrualSchema,
@@ -77,6 +77,7 @@ const TRANSACTION_FIELDS = [
   "amount",
   "interest_amount",
   "member_id",
+  "member_plan_id",
   "counterparty",
   "reference",
   "description",
@@ -168,6 +169,21 @@ export async function approveTransaction(id: string): Promise<ActionState> {
 
 export async function payTransaction(id: string): Promise<ActionState> {
   return runWorkflow("pay_finance_transaction", { p_id: id }, txnPath(id));
+}
+
+export async function auditApprovePayment(id: string): Promise<ActionState> {
+  return runWorkflow("audit_approve_payment", { p_id: id }, txnPath(id));
+}
+
+export async function auditDeclinePayment(
+  id: string,
+  outcome: "returned" | "rejected",
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const parsed = reasonSchema.safeParse({ reason: formData.get("reason") ?? "" });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  return runWorkflow("audit_decline_payment", { p_id: id, p_outcome: outcome, p_reason: parsed.data.reason }, txnPath(id));
 }
 
 export async function declineTransaction(
@@ -572,7 +588,7 @@ export async function declineBill(id: string, outcome: "returned" | "rejected", 
 // ROI accrual
 // ---------------------------------------------------------------------------
 
-/** Drafts the month's ROI accrual as a manual journal (Dr ROI expense, Cr ROI payable per member) for the controller to post. */
+/** Drafts the month's ROI accrual as a manual journal (Dr interest expense, Cr ROI payable per member) for the controller to post. */
 export async function createRoiAccrual(_prev: ActionState, formData: FormData): Promise<ActionState> {
   await requireModule(accountsModule);
   const members = formData
@@ -588,7 +604,7 @@ export async function createRoiAccrual(_prev: ActionState, formData: FormData): 
   const { data: entry, error } = await supabase.from("journal_entries").insert(header).select("id").single();
   if (error) return { error: friendlyDbError(error) };
   const { error: linesError } = await supabase.from("journal_lines").insert([
-    { entry_id: entry.id, line_no: 1, branch_id: header.branch_id, account_code: ROI_EXPENSE_ACCOUNT, debit: total, credit: 0, description: header.description },
+    { entry_id: entry.id, line_no: 1, branch_id: header.branch_id, account_code: INTEREST_EXPENSE_ACCOUNT, debit: total, credit: 0, description: header.description },
     ...lines.map((l, i) => ({
       entry_id: entry.id,
       line_no: i + 2,

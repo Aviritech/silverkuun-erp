@@ -1,7 +1,7 @@
 import "server-only";
 import type { PermissionSet } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import type { DocumentType, MemberStatus } from "./constants";
+import { MEMBER_STATUSES, type DocumentType, type MemberStatus } from "./constants";
 import { dbFailure } from "@/lib/db-errors";
 
 export type Branch = { id: string; code: string; name: string; region_id: string };
@@ -26,7 +26,20 @@ export type Member = {
   next_of_kin_name: string | null;
   next_of_kin_phone: string | null;
   next_of_kin_relationship: string | null;
+  /** Where monthly interest is paid. bank_code is null for a bank without a CBN code. */
+  bank_code: string | null;
+  bank_name: string | null;
+  bank_account_no: string | null;
+  /** Day of the month interest is paid; the last day in shorter months. */
+  interest_pay_day: number | null;
   return_reason: string | null;
+  returned_by: string | null;
+  sent_to_marketer_by: string | null;
+  sent_to_marketer_at: string | null;
+  /** The marketer who reviewed the file, with their note. */
+  marketer_id: string | null;
+  marketer_reviewed_at: string | null;
+  marketer_note: string | null;
   created_by: string;
   created_at: string;
   submitted_by: string | null;
@@ -36,6 +49,15 @@ export type Member = {
   /** PNG data URL drawn by the Branch Manager on approval. */
   approval_signature: string | null;
 };
+
+export type CbnBank = { code: string; name: string };
+
+export async function listCbnBanks(): Promise<CbnBank[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.from("cbn_banks").select("code, name").order("name");
+  if (error) throw dbFailure(error);
+  return data as CbnBank[];
+}
 
 export type MemberDocument = {
   id: string;
@@ -59,6 +81,8 @@ export type Plan = {
   start_date: string;
   maturity_date: string;
   status: string;
+  /** Annual interest rate (%), fixed from the plan type when the plan was opened. */
+  interest_rate: string;
 };
 
 export type PlanTotals = {
@@ -139,7 +163,17 @@ export async function getMemberBundle(memberId: string) {
   const urls = new Map((signed.data ?? []).map((s) => [s.path, s.signedUrl]));
 
   const staffIds = [
-    ...new Set([member.created_by, member.submitted_by, member.approved_by, ...docs.map((d) => d.issued_by)].filter(Boolean)),
+    ...new Set(
+      [
+        member.created_by,
+        member.sent_to_marketer_by,
+        member.marketer_id,
+        member.submitted_by,
+        member.approved_by,
+        member.returned_by,
+        ...docs.map((d) => d.issued_by),
+      ].filter(Boolean),
+    ),
   ];
   const { data: staff } = staffIds.length
     ? await supabase.rpc("staff_display_names", { p_ids: staffIds })
@@ -160,7 +194,7 @@ export async function getMemberBundle(memberId: string) {
 
 export async function memberCounts(): Promise<Record<MemberStatus, number>> {
   const supabase = await createClient();
-  const statuses: MemberStatus[] = ["draft", "pending_approval", "returned", "approved"];
+  const statuses = Object.keys(MEMBER_STATUSES) as MemberStatus[];
   const results = await Promise.all(
     statuses.map((s) => supabase.from("members").select("id", { count: "exact", head: true }).eq("status", s)),
   );

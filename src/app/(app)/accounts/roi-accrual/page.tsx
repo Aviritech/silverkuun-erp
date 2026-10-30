@@ -39,7 +39,7 @@ export default async function RoiAccrualPage({ searchParams }: { searchParams: P
     <div className="max-w-5xl space-y-4">
       <PageHeader
         title="ROI accrual"
-        description="Accrue members' returns as an expense: one debit to 5100 ROI expense and a credit to 2140 ROI payable per member. It saves as a draft journal for the Financial Controller to post."
+        description="Accrue members' returns as an expense: one debit to 5100 Interest expense and a credit to 2140 ROI payable per member. It saves as a draft journal for the Financial Controller to post."
       />
       <form className="flex items-end gap-3" role="search">
         <label className="w-56 text-sm">

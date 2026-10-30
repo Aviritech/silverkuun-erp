@@ -65,6 +65,18 @@ export function ReportView({
             </label>
           </>
         )}
+        {report.dates === "range" && (
+          <>
+            <label className="text-sm">
+              Custom from
+              <Input type="date" name="from" defaultValue={filters.from} />
+            </label>
+            <label className="text-sm">
+              Custom to
+              <Input type="date" name="to" defaultValue={filters.to} />
+            </label>
+          </>
+        )}
         {report.dates === "asAt" && (
           <label className="text-sm">
             As at
