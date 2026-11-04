@@ -117,7 +117,9 @@ export default async function TransactionPage({
     txn.direction === "payment" &&
     txn.status === "approved" &&
     !!txn.audited_at &&
-    can("accounts.payments.pay") &&
+    (can("accounts.payments.pay") ||
+      (staff.permissions.has("accounts.payments.pay") &&
+        staff.permissions.has("accounts.payments.all_branches"))) &&
     txn.approved_by !== staff.id;
   const status = financeStatus(txn);
   const supporting = attachments.filter((a) => a.kind === "supporting");

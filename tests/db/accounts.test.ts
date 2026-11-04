@@ -12,6 +12,7 @@ const ABUJA_RECEIPTS = "00000000-0000-0000-0000-0000000000e3";
 const CONTROLLER = "00000000-0000-0000-0000-0000000000f1";
 const AUDITOR = "00000000-0000-0000-0000-0000000000d1";
 const HEAD_OPS = "00000000-0000-0000-0000-0000000000c1";
+const ABUJA_PAYMENTS = "00000000-0000-0000-0000-0000000000e4";
 
 let db: PGlite;
 let lagos: string;
@@ -149,6 +150,7 @@ beforeAll(async () => {
   await addStaff(LAGOS_ACCOUNTANT, "accounts", "regional_accountant", lagos);
   await addStaff(LAGOS_ACCOUNTANT_2, "accounts", "regional_accountant", lagos);
   await addStaff(ABUJA_RECEIPTS, "accounts", "receipts_accountant", abuja);
+  await addStaff(ABUJA_PAYMENTS, "accounts", "payments_accountant", abuja);
   await addStaff(CONTROLLER, "accounts", "financial_controller", null);
   await addStaff(AUDITOR, "internal_audit", "internal_auditor", null);
   await addStaff(HEAD_OPS, "administration", "head_of_administration", null);
@@ -326,6 +328,44 @@ describe("payments", () => {
       { account_code: "5300", debit: "2500.00", credit: "0.00" },
       { account_code: "1131", debit: "0.00", credit: "2500.00" },
     ]);
+  });
+
+  it("are seen and paid by the Payments desk whatever the branch, without opening up other branches' receipts", async () => {
+    const txn = await draft(LAGOS_ACCOUNTANT, { direction: "payment", type: "admin_expense", amount: 700 });
+    await attach(LAGOS_ACCOUNTANT, txn);
+    const receipt = await draft(LAGOS_ACCOUNTANT, { direction: "receipt", type: "fee_income", amount: 5 });
+
+    const seen = await asUser(db, ABUJA_PAYMENTS, (tx) =>
+      tx.query<{ id: string }>("select id from finance_transactions where branch_id = $1", [lagos]),
+    );
+    expect(seen.rows.map((r) => r.id)).toContain(txn.id);
+    expect(seen.rows.map((r) => r.id)).not.toContain(receipt.id);
+    const evidence = await asUser(db, ABUJA_PAYMENTS, (tx) =>
+      tx.query("select id from finance_attachments where transaction_id = $1", [txn.id]),
+    );
+    expect(evidence.rows).toHaveLength(1);
+    const bank = await asUser(db, ABUJA_PAYMENTS, (tx) => tx.query("select id from bank_accounts where id = $1", [lagosBank]));
+    expect(bank.rows).toHaveLength(1);
+
+    // Still can't raise requests for another branch.
+    await expect(draft(ABUJA_PAYMENTS, { direction: "payment", type: "admin_expense", amount: 1 })).rejects.toThrow(/row-level security/);
+
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [txn.id]));
+    await commitAs(LAGOS_ACCOUNTANT_2, () => db.query("select approve_finance_transaction($1)", [txn.id]));
+    await commitAs(AUDITOR, () => db.query("select audit_approve_payment($1)", [txn.id]));
+    await commitAs(ABUJA_PAYMENTS, () =>
+      db.query("insert into storage.objects (bucket_id, name) values ('finance-evidence', $1)", [`${lagos}/${txn.id}/proof.pdf`]),
+    );
+    await attach(ABUJA_PAYMENTS, txn, "payment_proof");
+    await commitAs(ABUJA_PAYMENTS, () => db.query("select pay_finance_transaction($1)", [txn.id]));
+    expect((await txnRow(txn.id)).status).toBe("posted");
+
+    // A receipt's evidence folder stays closed to them.
+    await expect(
+      commitAs(ABUJA_PAYMENTS, () =>
+        db.query("insert into storage.objects (bucket_id, name) values ('finance-evidence', $1)", [`${lagos}/${receipt.id}/x.pdf`]),
+      ),
+    ).rejects.toThrow(/row-level security/);
   });
 
   it("can be returned with a reason and edited again by its owner only", async () => {
