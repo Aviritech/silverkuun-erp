@@ -26,6 +26,7 @@ import {
   qualificationSchema,
   reinstateSchema,
 } from "./schemas";
+import { formFile } from "@/lib/uploads/server";
 
 const PERSONAL_FIELDS = [
   "title",
@@ -242,7 +243,7 @@ export async function uploadDocument(employeeId: string, _prev: ActionState, for
   const parsed = documentSchema.safeParse({ document_type: formData.get("document_type") ?? "" });
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
 
-  const file = formData.get("file");
+  const file = await formFile(formData);
   if (!(file instanceof File) || file.size === 0) return { fieldErrors: { file: "Choose a file to upload" } };
   if (!(ALLOWED_UPLOAD_TYPES as readonly string[]).includes(file.type)) return { fieldErrors: { file: "Upload a PDF, JPEG or PNG" } };
   if (file.size > MAX_UPLOAD_BYTES) return { fieldErrors: { file: "Files can be at most 10 MB" } };

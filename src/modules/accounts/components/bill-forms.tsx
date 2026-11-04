@@ -5,6 +5,7 @@ import { Button, Field, FormError, Input, Select, Textarea } from "@/components/
 import { InlineForm } from "@/components/inline-form";
 import type { ActionState } from "@/lib/action-state";
 import type { LedgerAccount, Supplier, SupplierBill } from "../queries";
+import { withStagedUploads } from "@/lib/uploads/client";
 
 type Action = (prev: ActionState, formData: FormData) => Promise<ActionState>;
 
@@ -62,7 +63,7 @@ export function BillForm({
   withInvoice: boolean;
   submitLabel: string;
 }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useActionState(withStagedUploads(action), {});
   const e = state.fieldErrors ?? {};
   const today = new Date().toISOString().slice(0, 10);
   return (

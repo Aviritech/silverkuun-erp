@@ -5,6 +5,7 @@ import { InlineForm } from "@/components/inline-form";
 import { Button, Field, FormError, Input, Select, Textarea } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 import { APPROVAL_SCOPES, EVIDENCE_TYPES, GENDERS } from "../constants";
+import { withStagedUploads } from "@/lib/uploads/client";
 
 type Action = (prev: ActionState, formData: FormData) => Promise<ActionState>;
 
@@ -72,7 +73,7 @@ export function RequestLeaveForm({
   minDate?: string;
   submitLabel?: string;
 }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useActionState(withStagedUploads(action), {});
   const form = useRef<HTMLFormElement>(null);
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");

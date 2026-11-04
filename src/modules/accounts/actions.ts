@@ -25,6 +25,7 @@ import {
 } from "./schemas";
 import { parseStatement, parseStatementRows } from "./statement";
 import { readXlsxRows } from "@/lib/files/xlsx";
+import { formFile } from "@/lib/uploads/server";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -97,7 +98,7 @@ export async function saveTransaction(id: string | null, _prev: ActionState, for
   await requireModule(accountsModule);
   const parsed = transactionSchema.safeParse(formObject(formData, TRANSACTION_FIELDS));
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
-  const file = formData.get("file");
+  const file = await formFile(formData);
   const hasFile = file instanceof File && file.size > 0;
   if (hasFile) {
     const problem = evidenceFileError(file);
@@ -137,7 +138,7 @@ export async function uploadEvidence(
   formData: FormData,
 ): Promise<ActionState> {
   await requireModule(accountsModule);
-  const file = formData.get("file");
+  const file = await formFile(formData);
   const problem = evidenceFileError(file);
   if (problem) return { fieldErrors: { file: problem } };
   const supabase = await createClient();
@@ -298,7 +299,7 @@ export async function importStatement(bankAccountId: string, _prev: ActionState,
   await requireModule(accountsModule);
   const mapping = mappingSchema.safeParse(formObject(formData, ["date", "description", "reference", "debit", "credit", "balance"]));
   if (!mapping.success) return { fieldErrors: fieldErrors(mapping.error) };
-  const file = formData.get("file");
+  const file = await formFile(formData);
   if (!(file instanceof File) || file.size === 0) return { fieldErrors: { file: "Choose the statement file" } };
   if (file.size > MAX_STATEMENT_BYTES) return { fieldErrors: { file: "Statements can be at most 5 MB" } };
   const isXlsx = /\.xlsx$/i.test(file.name);
@@ -523,7 +524,7 @@ export async function saveBill(id: string | null, _prev: ActionState, formData: 
   await requireModule(accountsModule);
   const parsed = billSchema.safeParse(formObject(formData, BILL_FIELDS));
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
-  const file = formData.get("file");
+  const file = await formFile(formData);
   const hasFile = file instanceof File && file.size > 0;
   if (hasFile) {
     const problem = evidenceFileError(file);
@@ -558,7 +559,7 @@ export async function saveBill(id: string | null, _prev: ActionState, formData: 
 
 export async function uploadBillInvoice(billId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
   await requireModule(accountsModule);
-  const file = formData.get("file");
+  const file = await formFile(formData);
   const problem = evidenceFileError(file);
   if (problem) return { fieldErrors: { file: problem } };
   const supabase = await createClient();

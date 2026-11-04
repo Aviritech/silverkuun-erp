@@ -16,6 +16,7 @@ import {
   type LoanDocumentType,
 } from "../constants";
 import type { LoanProduct } from "../queries";
+import { withStagedUploads } from "@/lib/uploads/client";
 
 type Action = (prev: ActionState, formData: FormData) => Promise<ActionState>;
 
@@ -100,7 +101,7 @@ export function CollateralForm({ action }: { action: Action }) {
 }
 
 export function LoanDocumentUpload({ action, types }: { action: Action; types: LoanDocumentType[] }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useActionState(withStagedUploads(action), {});
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => {
     if (state.ok) form.current?.reset();

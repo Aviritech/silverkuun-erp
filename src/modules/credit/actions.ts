@@ -25,6 +25,7 @@ import {
   restructureDecisionSchema,
   restructureSchema,
 } from "./schemas";
+import { formFile } from "@/lib/uploads/server";
 
 function formObject(formData: FormData, keys: readonly string[]) {
   return Object.fromEntries(keys.map((k) => [k, (formData.get(k) as string | null) ?? ""]));
@@ -138,7 +139,7 @@ export async function uploadLoanDocument(loanId: string, _prev: ActionState, for
   await requireModule(creditModule);
   const parsed = loanDocumentSchema.safeParse({ document_type: formData.get("document_type") ?? "" });
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
-  const file = formData.get("file");
+  const file = await formFile(formData);
   if (!(file instanceof File) || file.size === 0) return { fieldErrors: { file: "Choose a file to upload" } };
   if (!(ALLOWED_LOAN_UPLOAD_TYPES as readonly string[]).includes(file.type)) return { fieldErrors: { file: "Upload a PDF, JPEG or PNG" } };
   if (file.size > MAX_LOAN_UPLOAD_BYTES) return { fieldErrors: { file: "Files can be at most 10 MB" } };

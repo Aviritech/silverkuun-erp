@@ -19,6 +19,7 @@ import type {
   PostingRule,
   Supplier,
 } from "../queries";
+import { withStagedUploads } from "@/lib/uploads/client";
 
 export type DimensionChoices = {
   departments: { code: string; name: string }[];
@@ -77,7 +78,7 @@ export function TransactionForm({
   withEvidence: boolean;
   submitLabel: string;
 }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useActionState(withStagedUploads(action), {});
   const [type, setType] = useState(defaults.transaction_type ?? "");
   const [bankId, setBankId] = useState(defaults.bank_account_id ?? "");
   const [amount, setAmount] = useState(defaults.amount ?? "");

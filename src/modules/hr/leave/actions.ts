@@ -21,6 +21,7 @@ import {
   recordLeaveSchema,
   requestLeaveSchema,
 } from "./schemas";
+import { formFile } from "@/lib/uploads/server";
 
 type Supabase = Awaited<ReturnType<typeof createClient>>;
 
@@ -47,7 +48,7 @@ async function attachEvidence(
   formData: FormData,
   documentType: "medical_report" | "other",
 ): Promise<{ documentId: string | null } | { failure: ActionState }> {
-  const file = formData.get("file");
+  const file = await formFile(formData);
   if (!(file instanceof File) || file.size === 0) return { documentId: null };
   if (!(ALLOWED_UPLOAD_TYPES as readonly string[]).includes(file.type)) return { failure: { fieldErrors: { file: "Upload a PDF, JPEG or PNG" } } };
   if (file.size > MAX_UPLOAD_BYTES) return { failure: { fieldErrors: { file: "Files can be at most 10 MB" } } };

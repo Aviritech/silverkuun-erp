@@ -4,6 +4,7 @@ import { useActionState, useEffect, useRef } from "react";
 import { Button, Field, FormError, Input, Select } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 import { DOCUMENT_TYPES, type DocumentType } from "../constants";
+import { withStagedUploads } from "@/lib/uploads/client";
 
 export function DocumentUpload({
   action,
@@ -13,7 +14,7 @@ export function DocumentUpload({
   /** The document types offered; letters and statements only make sense once a member is approved. */
   types: DocumentType[];
 }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useActionState(withStagedUploads(action), {});
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => {
     if (state.ok) form.current?.reset();

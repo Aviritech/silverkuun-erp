@@ -6,6 +6,7 @@ import { Button, Field, FormError, Input, Select, Textarea } from "@/components/
 import type { ActionState } from "@/lib/action-state";
 import { CONTRACT_TYPES, DOCUMENT_TYPES, EXIT_KINDS, JOB_CHANGES, QUALIFICATION_KINDS, RELATIONSHIPS } from "../constants";
 import type { Department, JobTitle } from "../queries";
+import { withStagedUploads } from "@/lib/uploads/client";
 
 type Action = (prev: ActionState, formData: FormData) => Promise<ActionState>;
 
@@ -238,7 +239,7 @@ export function QualificationForm({ action }: { action: Action }) {
 }
 
 export function DocumentUpload({ action }: { action: Action }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useActionState(withStagedUploads(action), {});
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => {
     if (state.ok) form.current?.reset();

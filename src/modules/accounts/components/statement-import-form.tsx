@@ -3,6 +3,7 @@
 import { useActionState, useEffect, useRef } from "react";
 import { Button, Field, FormError, Input } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
+import { withStagedUploads } from "@/lib/uploads/client";
 
 const COLUMNS = [
   ["date", "Date column", true],
@@ -21,7 +22,7 @@ export function StatementImportForm({
   action: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   mapping: Record<string, string>;
 }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useActionState(withStagedUploads(action), {});
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => {
     if (state.ok) form.current?.reset();

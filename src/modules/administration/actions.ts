@@ -23,6 +23,7 @@ import {
   reversalSchema,
   targetSchema,
 } from "./schemas";
+import { formFile } from "@/lib/uploads/server";
 
 export type { ActionState };
 
@@ -153,7 +154,7 @@ export async function uploadDocument(
   });
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
 
-  const file = formData.get("file");
+  const file = await formFile(formData);
   if (!(file instanceof File) || file.size === 0)
     return { fieldErrors: { file: "Choose a file to upload" } };
   if (!(ALLOWED_UPLOAD_TYPES as readonly string[]).includes(file.type)) {
