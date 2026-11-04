@@ -70,3 +70,14 @@ export const CONTRIBUTION_KINDS = {
 
 export const ALLOWED_UPLOAD_TYPES = ["application/pdf", "image/jpeg", "image/png"] as const;
 export const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
+
+/** Liquidation of a member's savings: Operations requests, the Branch Manager approves, Accounts pays. */
+export const LIQUIDATION_STATUSES = {
+  pending_approval: { label: "With the Branch Manager", tone: "amber" },
+  returned: { label: "Sent back to Operations", tone: "red" },
+  approved: { label: "Approved, with Accounts", tone: "blue" },
+  paid: { label: "Paid", tone: "green" },
+  rejected: { label: "Rejected", tone: "gray" },
+  cancelled: { label: "Cancelled", tone: "gray" },
+} as const;
+export type LiquidationStatus = keyof typeof LIQUIDATION_STATUSES;

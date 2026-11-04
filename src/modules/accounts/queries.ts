@@ -83,6 +83,8 @@ export type FinanceTransaction = {
   supplier_id: string | null;
   supplier_bill_id: string | null;
   loan_id: string | null;
+  /** A member's savings liquidation that the Branch Manager approved, when this payment pays it out. */
+  liquidation_id: string | null;
   currency: string;
   foreign_amount: string | null;
   fx_rate: string | null;

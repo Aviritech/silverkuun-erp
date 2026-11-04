@@ -43,7 +43,10 @@ import {
   REQUIRED_DOCUMENTS,
 } from "@/modules/administration/constants";
 import { administrationModule } from "@/modules/administration/module";
-import { fullName, getMemberBundle, listBranches } from "@/modules/administration/queries";
+import { fullName, getMemberBundle, listBranches, listCbnBanks, listLiquidations } from "@/modules/administration/queries";
+import { LiquidationForm } from "@/modules/administration/components/liquidation-form";
+import { LIQUIDATION_STATUSES } from "@/modules/administration/constants";
+import { requestLiquidation } from "@/modules/administration/actions";
 
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -109,7 +112,6 @@ export default async function MemberPage({
         .order("created_at", { ascending: false })
     : null;
   const loans = (loanQuery?.data ?? []) as MemberLoan[];
-
   // Once approved, the member's plans and contributions (and loans) each get their own tab.
   const tabs =
     member.status === "approved"
@@ -120,6 +122,11 @@ export default async function MemberPage({
         ]
       : [];
   const tab = tabs.some((t) => t.key === tabParam) ? tabParam! : "file";
+  // Liquidation requests on this member's plans, and the bank list for raising one (Plans tab only).
+  const canLiquidate = member.status === "approved" && can("liquidations.request");
+  const [liquidations, cbnBanks] =
+    tab === "plans" ? await Promise.all([listLiquidations(), canLiquidate ? listCbnBanks() : Promise.resolve([])]) : [[], []];
+  const memberLiquidations = liquidations.filter((l) => l.member_id === member.id);
   const stepIndex = STEPS.findIndex((s) => (s.statuses as readonly string[]).includes(member.status));
 
   return (
@@ -467,6 +474,40 @@ export default async function MemberPage({
                         <ContributionForm action={recordContribution.bind(null, member.id)} planId={plan.id} kind="top_up" />
                       </div>
                     )}
+                    {(() => {
+                      const planLiquidations = memberLiquidations.filter((l) => l.member_plan_id === plan.id);
+                      const open = planLiquidations.find((l) => ["pending_approval", "returned", "approved"].includes(l.status));
+                      const paid = planLiquidations.find((l) => l.status === "paid");
+                      if (open || paid) {
+                        const l = (open ?? paid)!;
+                        return (
+                          <p className="flex flex-wrap items-center gap-2 border-t border-zinc-100 p-4 text-sm">
+                            Liquidation <span className="font-mono text-xs">{l.liquidation_no}</span> · {formatMoney(l.amount)}
+                            <Badge tone={LIQUIDATION_STATUSES[l.status].tone}>{LIQUIDATION_STATUSES[l.status].label}</Badge>
+                            <Link href="/administration/liquidations" className="text-xs underline">
+                              Liquidations
+                            </Link>
+                          </p>
+                        );
+                      }
+                      if (!canLiquidate || !["active", "matured"].includes(plan.status)) return null;
+                      return (
+                        <div className="border-t border-zinc-100 p-4">
+                          <LiquidationForm
+                            action={requestLiquidation.bind(null, plan.id, null)}
+                            banks={cbnBanks}
+                            savings={t?.total_verified ?? "0"}
+                            defaults={{
+                              amount: t?.total_verified ? String(t.total_verified) : "",
+                              beneficiary_account_name: [member.first_name, member.middle_name, member.last_name].filter(Boolean).join(" "),
+                              bank_code: member.bank_code,
+                              bank_name: member.bank_name,
+                              bank_account_no: member.bank_account_no,
+                            }}
+                          />
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}

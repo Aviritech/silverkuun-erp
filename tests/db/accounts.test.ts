@@ -673,3 +673,140 @@ describe("monthly interest payment schedule", () => {
     expect(res.rows).toHaveLength(1);
   });
 });
+
+describe("liquidation of a member's savings", () => {
+  let member: string;
+  let plan: string;
+
+  async function savedPlan(amount: number): Promise<string> {
+    const p = await newPlan(member, "silver");
+    const c = await commitAs(OFFICER, () =>
+      db.query<{ id: string }>(
+        `insert into contributions (member_plan_id, member_id, branch_id, kind, amount, paid_on, payment_method)
+         values ($1, $2, $3, 'scheduled', $4, current_date - 20, 'bank_transfer') returning id`,
+        [p, member, lagos, amount],
+      ),
+    );
+    await commitAs(MANAGER, () => db.query("select verify_contribution($1)", [c.rows[0].id]));
+    return p;
+  }
+
+  async function request(planId: string, amount: number, id: string | null = null) {
+    return (
+      await commitAs(OFFICER, () =>
+        db.query<{ id: string; status: string; plan_savings: string; bank_name: string; liquidation_no: string }>(
+          "select * from request_liquidation($1, $2, $3, 'Ada Obi', '058', null, '0123456789', 'Plan has matured')",
+          [id, planId, amount],
+        ),
+      )
+    ).rows[0];
+  }
+
+  beforeAll(async () => {
+    member = await approvedMember();
+    plan = await savedPlan(80000);
+  });
+
+  it("goes from Operations to the Branch Manager, then Accounts pays it through the usual chain and the plan closes", async () => {
+    const liq = await request(plan, 80000);
+    expect(liq).toMatchObject({ status: "pending_approval", plan_savings: "80000.00", bank_name: "GTBank" });
+    expect(liq.liquidation_no).toMatch(/^LIQ-\d{6}$/);
+
+    // One open request per plan; nobody edits the row directly; Accounts can't pay it before the Branch Manager approves.
+    await expect(request(plan, 1000)).rejects.toThrow(/already has a liquidation request/);
+    const forged = await commitAs(MANAGER, () => db.query("update plan_liquidations set status = 'approved' where id = $1", [liq.id]));
+    expect(forged.affectedRows).toBe(0);
+    await expect(
+      commitAs(LAGOS_ACCOUNTANT, () => db.query("select raise_liquidation_payment($1, $2)", [liq.id, lagosBank])),
+    ).rejects.toThrow(/Branch Manager approved/);
+    await expect(commitAs(OFFICER, () => db.query("select decide_liquidation($1, true, null)", [liq.id]))).rejects.toThrow(/not found/);
+
+    await commitAs(MANAGER, () => db.query("select decide_liquidation($1, true, 'Member signed the request')", [liq.id]));
+
+    // Operations can read the queue with names; the payout goes in submitted, with the approval as its evidence.
+    const queue = await asUser(db, OFFICER, (tx) =>
+      tx.query<{ member_name: string; requested_by_name: string; status: string }>(
+        "select * from liquidation_requests(array['approved'])",
+      ),
+    );
+    expect(queue.rows).toHaveLength(1);
+    const txn = (
+      await commitAs(LAGOS_ACCOUNTANT, () =>
+        db.query<{ id: string; status: string; transaction_type: string; amount: string; counterparty: string; member_id: string }>(
+          "select * from raise_liquidation_payment($1, $2)",
+          [liq.id, lagosBank],
+        ),
+      )
+    ).rows[0];
+    expect(txn).toMatchObject({ status: "submitted", transaction_type: "savings_withdrawal", amount: "80000.00", counterparty: "Ada Obi", member_id: member });
+    await expect(
+      commitAs(LAGOS_ACCOUNTANT, () => db.query("select raise_liquidation_payment($1, $2)", [liq.id, lagosBank])),
+    ).rejects.toThrow(/already has a payment/);
+    // While the payment is in progress, Accounts can't send the request back to Operations.
+    await expect(commitAs(LAGOS_ACCOUNTANT, () => db.query("select return_liquidation($1, 'Wrong account number')", [liq.id]))).rejects.toThrow(
+      /in progress/,
+    );
+
+    await commitAs(LAGOS_ACCOUNTANT_2, () => db.query("select approve_finance_transaction($1)", [txn.id]));
+    await commitAs(AUDITOR, () => db.query("select audit_approve_payment($1)", [txn.id]));
+    await attach(LAGOS_ACCOUNTANT, { id: txn.id, status: "approved", branch_id: lagos, journal_entry_id: null }, "payment_proof");
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select pay_finance_transaction($1)", [txn.id]));
+
+    const after = await db.query("select l.status, l.payment_status, p.status as plan_status from plan_liquidations l join member_plans p on p.id = l.member_plan_id where l.id = $1", [liq.id]);
+    expect(after.rows[0]).toEqual({ status: "paid", payment_status: "posted", plan_status: "liquidated" });
+    expect(await journalLines((await txnRow(txn.id)).journal_entry_id!)).toEqual([
+      { account_code: "2110", debit: "80000.00", credit: "0.00" },
+      { account_code: "1131", debit: "0.00", credit: "80000.00" },
+    ]);
+  });
+
+  it("can be sent back for correction by the Branch Manager or by Accounts, and rejected with a reason", async () => {
+    const p = await savedPlan(30000);
+    const liq = await request(p, 30000);
+    await expect(commitAs(OFFICER, () => db.query("select return_liquidation($1, 'Check the account')", [liq.id]))).rejects.toThrow(/not found/);
+    await commitAs(MANAGER, () => db.query("select return_liquidation($1, 'Account name differs from the member')", [liq.id]));
+    let row = await db.query("select status, decision_note from plan_liquidations where id = $1", [liq.id]);
+    expect(row.rows[0]).toEqual({ status: "returned", decision_note: "Branch Manager: Account name differs from the member" });
+
+    await request(p, 29000, liq.id);
+    await commitAs(MANAGER, () => db.query("select decide_liquidation($1, true, null)", [liq.id]));
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select return_liquidation($1, 'Bank says the account is closed')", [liq.id]));
+    row = await db.query("select status, amount from plan_liquidations where id = $1", [liq.id]);
+    expect(row.rows[0]).toEqual({ status: "returned", amount: "29000.00" });
+
+    await request(p, 29000, liq.id);
+    await expect(commitAs(MANAGER, () => db.query("select decide_liquidation($1, false, '')", [liq.id]))).rejects.toThrow(/why/);
+    await commitAs(MANAGER, () => db.query("select decide_liquidation($1, false, 'Member withdrew the request in writing')", [liq.id]));
+    // Rejected, so the plan can have a new request.
+    const again = await request(p, 30000);
+    expect(again.status).toBe("pending_approval");
+    await commitAs(OFFICER, () => db.query("select cancel_liquidation($1, 'Raised by mistake')", [again.id]));
+  });
+});
+
+describe("the paying accountant checks a payment before paying it", () => {
+  it("sends an approved payment back to the requester, and it needs Accounts and Internal Audit approval again", async () => {
+    const txn = await draft(LAGOS_ACCOUNTANT, { direction: "payment", type: "admin_expense", amount: 4000 });
+    await attach(LAGOS_ACCOUNTANT, txn);
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [txn.id]));
+    await commitAs(LAGOS_ACCOUNTANT_2, () => db.query("select approve_finance_transaction($1)", [txn.id]));
+    await commitAs(AUDITOR, () => db.query("select audit_approve_payment($1)", [txn.id]));
+
+    await expect(commitAs(AUDITOR, () => db.query("select return_payment_before_paying($1, 'Wrong vendor account')", [txn.id]))).rejects.toThrow(
+      /not found/,
+    );
+    await expect(commitAs(LAGOS_ACCOUNTANT, () => db.query("select return_payment_before_paying($1, '')", [txn.id]))).rejects.toThrow(
+      /needs correcting/,
+    );
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select return_payment_before_paying($1, 'Vendor account number is wrong')", [txn.id]));
+    const row = await db.query("select status, decision_reason, approved_at, audited_at from finance_transactions where id = $1", [txn.id]);
+    expect(row.rows[0]).toEqual({ status: "returned", decision_reason: "Payments: Vendor account number is wrong", approved_at: null, audited_at: null });
+
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [txn.id]));
+    await commitAs(LAGOS_ACCOUNTANT_2, () => db.query("select approve_finance_transaction($1)", [txn.id]));
+    await attach(LAGOS_ACCOUNTANT, txn, "payment_proof");
+    await expect(commitAs(LAGOS_ACCOUNTANT, () => db.query("select pay_finance_transaction($1)", [txn.id]))).rejects.toThrow(
+      /Internal Audit has to approve/,
+    );
+  });
+});
