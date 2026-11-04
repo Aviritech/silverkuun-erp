@@ -31,14 +31,22 @@ const SUPABASE_STUB = `
   grant all on storage.objects to authenticated;
 `;
 
-export async function createTestDatabase(): Promise<PGlite> {
+export async function createTestDatabase(opts: { before?: string } = {}): Promise<PGlite> {
   const db = await PGlite.create();
   await db.exec(SUPABASE_STUB);
-  const files = readdirSync(MIGRATIONS_DIR).filter((f) => f.endsWith(".sql")).sort();
+  await applyMigrations(db, { before: opts.before });
+  return db;
+}
+
+/** Applies migrations in order. `from` starts at that file (inclusive); `before` stops ahead of it. */
+export async function applyMigrations(db: PGlite, opts: { from?: string; before?: string } = {}): Promise<void> {
+  const files = readdirSync(MIGRATIONS_DIR)
+    .filter((f) => f.endsWith(".sql"))
+    .sort()
+    .filter((f) => (!opts.from || f >= opts.from) && (!opts.before || f < opts.before));
   for (const file of files) {
     await db.exec(readFileSync(join(MIGRATIONS_DIR, file), "utf8"));
   }
-  return db;
 }
 
 /** Run `fn` as a signed-in staff member, the way PostgREST does for a request. Always rolls back. */

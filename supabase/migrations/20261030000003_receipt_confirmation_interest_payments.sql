@@ -347,7 +347,11 @@ update public.plan_types set interest_rate = case code when 'silver' then 10 whe
 -- Each plan keeps the rate it was opened at, so a later change to the plan type doesn't rewrite existing plans.
 alter table public.member_plans
   add column interest_rate numeric(5, 2) check (interest_rate between 0 and 100);
+-- The plan guard blocks direct updates (plans change only through the plan workflow), so step around it for the
+-- one-off backfill of plans that already exist.
+alter table public.member_plans disable trigger member_plans_guard;
 update public.member_plans p set interest_rate = t.interest_rate from public.plan_types t where t.code = p.plan_type;
+alter table public.member_plans enable trigger member_plans_guard;
 alter table public.member_plans alter column interest_rate set not null;
 
 create or replace function app.member_plans_rate()
