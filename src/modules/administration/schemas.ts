@@ -121,3 +121,14 @@ export function fieldErrors(error: z.ZodError): Record<string, string> {
   }
   return out;
 }
+
+export const liquidationSchema = z
+  .object({
+    amount: money,
+    beneficiary_account_name: z.string().trim().min(2, "Enter the name on the member's bank account").max(200),
+    bank_code: z.string().trim().transform((v) => v || null),
+    bank_name: z.string().trim().max(100).transform((v) => v || null),
+    bank_account_no: z.string().trim().regex(/^[0-9]{10}$/, "Enter the 10-digit account number"),
+    note: z.string().trim().max(1000, "Keep the note under 1,000 characters"),
+  })
+  .refine((v) => v.bank_code || v.bank_name, { path: ["bank_code"], message: "Choose the bank" });

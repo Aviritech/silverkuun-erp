@@ -18,6 +18,7 @@ import {
   auditDeclinePayment,
   declineTransaction,
   payTransaction,
+  returnPaymentBeforePaying,
   submitTransaction,
   uploadEvidence,
 } from "@/modules/accounts/actions";
@@ -127,6 +128,7 @@ export default async function TransactionPage({
     !txn.contribution_id &&
     !txn.statement_line_id &&
     !(txn.transaction_type === "loan_disbursement" && txn.loan_id) &&
+    !txn.liquidation_id &&
     supporting.length === 0;
 
   return (
@@ -406,6 +408,15 @@ export default async function TransactionPage({
               Approved by Accounts. Internal Audit must approve it before it can
               be paid.
             </p>
+          )}
+          {canPay && (
+            <ReasonForm
+              action={returnPaymentBeforePaying.bind(null, txn.id)}
+              openLabel="Don't pay: send back"
+              submitLabel="Send back to the requester"
+              question="What needs correcting before this can be paid (approval, amount, beneficiary, account or documents)?"
+              variant="secondary"
+            />
           )}
           {canPay &&
             (attachments.some((a) => a.kind === "payment_proof") ? (

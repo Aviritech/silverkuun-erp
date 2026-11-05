@@ -1,7 +1,7 @@
 import "server-only";
 import type { PermissionSet } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
-import { MEMBER_STATUSES, type DocumentType, type MemberStatus } from "./constants";
+import { MEMBER_STATUSES, type DocumentType, type LiquidationStatus, type MemberStatus } from "./constants";
 import { dbFailure } from "@/lib/db-errors";
 
 export type Branch = { id: string; code: string; name: string; region_id: string };
@@ -200,4 +200,45 @@ export async function memberCounts(): Promise<Record<MemberStatus, number>> {
   );
   for (const r of results) if (r.error) throw dbFailure(r.error);
   return Object.fromEntries(statuses.map((s, i) => [s, results[i].count ?? 0])) as Record<MemberStatus, number>;
+}
+
+export type Liquidation = {
+  id: string;
+  liquidation_no: string;
+  branch_id: string;
+  branch_name: string;
+  status: LiquidationStatus;
+  amount: string;
+  plan_savings: string;
+  member_id: string;
+  member_name: string;
+  membership_no: string | null;
+  member_plan_id: string;
+  plan_name: string;
+  start_date: string;
+  maturity_date: string;
+  beneficiary_account_name: string;
+  bank_code: string | null;
+  bank_name: string;
+  bank_account_no: string;
+  note: string | null;
+  requested_by: string;
+  requested_by_name: string;
+  requested_at: string;
+  decided_by: string | null;
+  decided_by_name: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  payment_txn_id: string | null;
+  payment_txn_no: string | null;
+  payment_status: string | null;
+  paid_at: string | null;
+};
+
+/** Liquidation requests in the caller's branches, newest first, with names (Operations and Accounts both use it). */
+export async function listLiquidations(statuses?: string[]): Promise<Liquidation[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("liquidation_requests", { p_status: statuses ?? null });
+  if (error) throw dbFailure(error);
+  return data as Liquidation[];
 }

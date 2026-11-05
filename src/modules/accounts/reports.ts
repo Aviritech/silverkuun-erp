@@ -673,7 +673,7 @@ const interestPayments: ReportDefinition = {
         { beneficiary_name: `Total (${list.length} payments)`, amount: total, _kind: "total" },
       ],
       notes: [
-        `${f.to}: ${list.length} payment${list.length === 1 ? "" : "s"} totalling ${naira(total)}.`,
+        `Payment date: ${f.to.split("-").reverse().join("/")} · Number of payments: ${list.length} · Total: ${naira(total)}`,
         ...(missingBank ? [`${missingBank} member${missingBank === 1 ? " has" : "s have"} no bank details yet; Operations adds them on the member's file.`] : []),
         "Amount is a placeholder until Kuun confirms its formula: each active plan's verified savings at the date times the plan's yearly rate, divided by 12.",
         "Members whose pay day is later than the month's last day are paid on the last day. Banks without a CBN code have a blank code.",

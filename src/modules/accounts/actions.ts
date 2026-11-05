@@ -624,3 +624,26 @@ export async function createRoiAccrual(_prev: ActionState, formData: FormData): 
   revalidatePath("/accounts/journals");
   redirect(`/accounts/journals/${entry.id}`);
 }
+
+// ---------------------------------------------------------------------------
+// Liquidations approved by the Branch Manager, and sending a payment back before paying it
+// ---------------------------------------------------------------------------
+
+/** Raises the payout for an approved liquidation from the chosen account and sends it for approval. */
+export async function raiseLiquidationPayment(liquidationId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireModule(accountsModule);
+  const bank = String(formData.get("bank_account_id") ?? "");
+  if (!bank) return { fieldErrors: { bank_account_id: "Choose the account the money goes out of" } };
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("raise_liquidation_payment", { p_id: liquidationId, p_bank_account_id: bank });
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/accounts", "layout");
+  redirect(txnPath((data as { id: string }).id));
+}
+
+/** The person paying found a problem: back to the requester, unpaid, with the reason. */
+export async function returnPaymentBeforePaying(id: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = reasonSchema.safeParse({ reason: formData.get("reason") ?? "" });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  return runWorkflow("return_payment_before_paying", { p_id: id, p_reason: parsed.data.reason }, txnPath(id));
+}

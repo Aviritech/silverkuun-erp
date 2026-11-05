@@ -16,6 +16,7 @@ import {
   documentSchema,
   fieldErrors,
   issueSchema,
+  liquidationSchema,
   marketerReviewSchema,
   memberSchema,
   planSchema,
@@ -522,4 +523,81 @@ export async function saveBranchTarget(
   if (!data?.length) return { error: "You can't set targets for this branch." };
   revalidatePath("/administration/targets");
   return { ok: true, message: "Target saved." };
+}
+
+// ---------------------------------------------------------------------------
+// Liquidation of a member's savings: Operations requests, the Branch Manager approves, Accounts pays.
+// ---------------------------------------------------------------------------
+
+const LIQUIDATION_FIELDS = ["amount", "beneficiary_account_name", "bank_code", "bank_name", "bank_account_no", "note"] as const;
+
+function liquidationDone() {
+  revalidatePath("/administration", "layout");
+  revalidatePath("/accounts/liquidations");
+  return { ok: true };
+}
+
+/** Raises a request for a plan, or (with `liquidationId`) corrects and resends one that was sent back. */
+export async function requestLiquidation(
+  planId: string | null,
+  liquidationId: string | null,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireModule(administrationModule);
+  const parsed = liquidationSchema.safeParse(formObject(formData, LIQUIDATION_FIELDS));
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  const v = parsed.data;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("request_liquidation", {
+    p_id: liquidationId,
+    p_plan_id: planId,
+    p_amount: v.amount,
+    p_account_name: v.beneficiary_account_name,
+    p_bank_code: v.bank_code,
+    p_bank_name: v.bank_code ? null : v.bank_name,
+    p_account_no: v.bank_account_no,
+    p_note: v.note,
+  });
+  if (error) return { error: friendlyDbError(error) };
+  return liquidationDone();
+}
+
+/** The Branch Manager approves (optional note) or rejects (reason required). */
+export async function decideLiquidation(
+  liquidationId: string,
+  approve: boolean,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireModule(administrationModule);
+  const parsed = approve
+    ? marketerReviewSchema.safeParse({ note: formData.get("note") ?? "" })
+    : returnSchema.safeParse({ reason: formData.get("reason") ?? "" });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  const note = "note" in parsed.data ? parsed.data.note : parsed.data.reason;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("decide_liquidation", { p_id: liquidationId, p_approve: approve, p_note: note });
+  if (error) return { error: friendlyDbError(error) };
+  return liquidationDone();
+}
+
+/** Back to the officer for correction (Branch Manager before deciding, or Accounts before paying). */
+export async function returnLiquidation(liquidationId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = returnSchema.safeParse({ reason: formData.get("reason") ?? "" });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("return_liquidation", { p_id: liquidationId, p_reason: parsed.data.reason });
+  if (error) return { error: friendlyDbError(error) };
+  return liquidationDone();
+}
+
+export async function cancelLiquidation(liquidationId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireModule(administrationModule);
+  const parsed = returnSchema.safeParse({ reason: formData.get("reason") ?? "" });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("cancel_liquidation", { p_id: liquidationId, p_reason: parsed.data.reason });
+  if (error) return { error: friendlyDbError(error) };
+  return liquidationDone();
 }
