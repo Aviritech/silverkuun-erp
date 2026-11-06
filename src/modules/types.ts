@@ -7,6 +7,8 @@ export type ModuleNavItem = {
   href: string;
   /** Hide the link unless the staff member holds this permission (or, given a list, any of them). */
   permission?: string | readonly string[];
+  /** A sub-heading the link sits under in the sidebar (for example "Finance"); consecutive links share it. */
+  section?: string;
 };
 
 export type DepartmentModule = {

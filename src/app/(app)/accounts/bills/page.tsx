@@ -1,8 +1,10 @@
 import Link from "next/link";
+import { ControlNote, StatCard, StatGrid } from "@/components/dashboard";
 import { Badge, ButtonLink, EmptyState, PageHeader, Select } from "@/components/ui";
 import { requireModule, requirePermission } from "@/lib/auth/session";
 import { dbFailure } from "@/lib/db-errors";
-import { formatDate, formatMoney } from "@/lib/format";
+import { formatDate, formatMoney, formatMoneyShort } from "@/lib/format";
+import { addDays } from "@/lib/reports/filters";
 import { listOrg } from "@/lib/org";
 import { createClient } from "@/lib/supabase/server";
 import { BILL_STATUSES, type BillStatus } from "@/modules/accounts/constants";
@@ -24,8 +26,16 @@ export default async function BillsPage({ searchParams }: { searchParams: Promis
   if (status === "unpaid") query = query.eq("status", "posted").gt("outstanding", 0);
   else if (status && status in BILL_STATUSES) query = query.eq("status", status);
   if (supplier && UUID.test(supplier)) query = query.eq("supplier_id", supplier);
-  const [{ data, error }, org, suppliers] = await Promise.all([query, listOrg(), listSuppliers()]);
+  const [{ data, error }, org, suppliers, open, waiting] = await Promise.all([
+    query,
+    listOrg(),
+    listSuppliers(),
+    supabase.from("supplier_bill_balances").select("due_date, outstanding").eq("status", "posted").gt("outstanding", 0).limit(10000),
+    supabase.from("supplier_bills").select("amount").eq("status", "submitted").limit(10000),
+  ]);
   if (error) throw dbFailure(error);
+  if (open.error) throw dbFailure(open.error);
+  if (waiting.error) throw dbFailure(waiting.error);
   const branchName = new Map(org.branches.map((b) => [b.id, b.name]));
   type Row = {
     id: string; bill_no: string; supplier_name: string; branch_id: string; bill_date: string; due_date: string;
@@ -33,12 +43,20 @@ export default async function BillsPage({ searchParams }: { searchParams: Promis
   };
   const list = data as Row[];
   const today = new Date().toISOString().slice(0, 10);
+  const weekOut = addDays(today, 7);
+  const owed = (pick: (b: { due_date: string }) => boolean) => open.data.filter(pick).reduce((s, b) => s + Number(b.outstanding), 0);
+  const overdueTotal = owed((b) => b.due_date < today);
+  const age = (due: string) => {
+    const days = Math.round((Date.parse(`${due}T00:00:00Z`) - Date.parse(`${today}T00:00:00Z`)) / 86_400_000);
+    return days < 0 ? `${-days} day${days === -1 ? "" : "s"} overdue` : days === 0 ? "Due today" : `Due in ${days} day${days === 1 ? "" : "s"}`;
+  };
 
   return (
-    <div className="max-w-6xl">
+    <div className="max-w-6xl space-y-6">
       <PageHeader
-        title="Supplier bills"
-        description="Invoices from suppliers. Approving a bill posts it to supplier payables; paying it is a supplier payment against the bill."
+        eyebrow="Supplier ledger"
+        title="Payables"
+        description="Supplier bills from receipt and coding through approval, payment and bank match. Approving a bill posts it to supplier payables; paying it is a supplier payment against the bill."
         actions={
           <>
             {staff.permissions.has("accounts.payments.request") && <ButtonLink href="/accounts/bills/new">Record bill</ButtonLink>}
@@ -48,7 +66,19 @@ export default async function BillsPage({ searchParams }: { searchParams: Promis
           </>
         }
       />
-      <form className="mb-4 flex flex-wrap gap-3" role="search">
+      <StatGrid>
+        <StatCard label="Total outstanding" icon="bill" value={formatMoneyShort(owed(() => true))} hint={`${open.data.length} approved bill${open.data.length === 1 ? "" : "s"} not fully paid`} href="/accounts/bills?status=unpaid" />
+        <StatCard label="Due in 7 days" icon="clock" tone="warn" value={formatMoneyShort(owed((b) => b.due_date >= today && b.due_date <= weekOut))} hint="Plan and request these payments" />
+        <StatCard label="Overdue" icon="alert" tone={overdueTotal > 0 ? "bad" : "neutral"} value={formatMoneyShort(overdueTotal)} hint="Past the supplier's due date" href="/accounts/reports/payables-aging" />
+        <StatCard
+          label="Awaiting approval"
+          icon="check"
+          value={`${waiting.data.length} bill${waiting.data.length === 1 ? "" : "s"}`}
+          hint={formatMoney(waiting.data.reduce((s, b) => s + Number(b.amount), 0))}
+          href="/accounts/bills?status=submitted"
+        />
+      </StatGrid>
+      <form className="flex flex-wrap gap-3" role="search">
         <div className="w-56">
           <Select name="status" defaultValue={status ?? ""} aria-label="Status">
             <option value="">All statuses</option>
@@ -86,6 +116,7 @@ export default async function BillsPage({ searchParams }: { searchParams: Promis
                 <th className="px-4 py-2 font-medium">Invoice</th>
                 <th className="px-4 py-2 font-medium">Branch</th>
                 <th className="px-4 py-2 font-medium">Due</th>
+                <th className="px-4 py-2 font-medium">Age</th>
                 <th className="px-4 py-2 text-right font-medium">Amount</th>
                 <th className="px-4 py-2 text-right font-medium">Owed</th>
                 <th className="px-4 py-2 font-medium">Status</th>
@@ -96,7 +127,7 @@ export default async function BillsPage({ searchParams }: { searchParams: Promis
                 const overdue = b.status === "posted" && Number(b.outstanding) > 0 && b.due_date < today;
                 return (
                   <tr key={b.id} className="border-b border-zinc-100 last:border-0 hover:bg-zinc-50">
-                    <td className="px-4 py-2 font-mono text-xs">
+                    <td className="whitespace-nowrap px-4 py-2 font-mono text-xs">
                       <Link href={`/accounts/bills/${b.id}`} className="hover:underline">
                         {b.bill_no}
                       </Link>
@@ -106,7 +137,10 @@ export default async function BillsPage({ searchParams }: { searchParams: Promis
                       {b.supplier_reference} <span className="text-xs text-zinc-500">{formatDate(b.bill_date)}</span>
                     </td>
                     <td className="px-4 py-2">{branchName.get(b.branch_id)}</td>
-                    <td className={`px-4 py-2 ${overdue ? "font-medium text-red-700" : ""}`}>{formatDate(b.due_date)}</td>
+                    <td className={`whitespace-nowrap px-4 py-2 ${overdue ? "font-medium text-red-700" : ""}`}>{formatDate(b.due_date)}</td>
+                    <td className={`whitespace-nowrap px-4 py-2 text-xs ${overdue ? "text-red-700" : "text-zinc-600"}`}>
+                      {b.status === "posted" && Number(b.outstanding) > 0 ? age(b.due_date) : "—"}
+                    </td>
                     <td className="px-4 py-2 text-right tabular-nums">{formatMoney(b.amount)}</td>
                     <td className="px-4 py-2 text-right tabular-nums">{b.status === "posted" ? formatMoney(b.outstanding) : "—"}</td>
                     <td className="px-4 py-2">
@@ -124,9 +158,14 @@ export default async function BillsPage({ searchParams }: { searchParams: Promis
           </table>
         )}
       </div>
-      <p className="mt-2 text-xs text-zinc-500">
-        See <Link href="/accounts/reports/payables-aging" className="underline">payables aging</Link> for what is owed by how overdue it is.
-      </p>
+      <ControlNote title="Payables control">
+        Each bill links to the supplier, the expense or asset account, branch, due date and approval. The supplier payment goes through Internal
+        Audit before it is paid, and is matched to the bank statement on reconciliation. See{" "}
+        <Link href="/accounts/reports/payables-aging" className="underline">
+          payables aging
+        </Link>{" "}
+        for what is owed by how overdue it is.
+      </ControlNote>
     </div>
   );
 }
