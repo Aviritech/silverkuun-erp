@@ -2,6 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import { dbFailure } from "@/lib/db-errors";
 import type { ReportDefinition, ReportFilters, Row } from "@/lib/reports/types";
 import { FINANCE_STATUSES } from "./constants";
+import { locationSummary, receivablesAging } from "./position-reports";
 
 type Balance = {
   code: string;
@@ -636,7 +637,7 @@ const payablesAging: ReportDefinition = {
       ],
       rows: [...rows, total],
       notes: [
-        "Receivables aging needs invoices raised to customers, which the Society doesn't issue today. Member loan arrears are in the loan portfolio report.",
+        "Member loan receivables are in the receivables aging report.",
       ],
     };
   },
@@ -683,6 +684,7 @@ const interestPayments: ReportDefinition = {
 };
 
 export const accountsReports: ReportDefinition[] = [
+  locationSummary,
   profitAndLoss,
   balanceSheet,
   cashFlow,
@@ -691,6 +693,7 @@ export const accountsReports: ReportDefinition[] = [
   memberBalances,
   interestPayments,
   transactionRegister,
+  receivablesAging,
   payablesAging,
   bankReconciliations,
 ];

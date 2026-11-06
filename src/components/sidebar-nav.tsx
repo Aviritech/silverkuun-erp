@@ -47,10 +47,16 @@ export function SidebarNav({ modules }: { modules: NavModule[] }) {
           <div key={m.department}>
             <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-silver-500">{m.name}</p>
             <ul className="mt-2 space-y-0.5">
-              {m.nav.map((item) => {
+              {m.nav.map((item, i) => {
                 const isActive = item.href === active;
+                const heading = item.section && item.section !== m.nav[i - 1]?.section ? item.section : null;
                 return (
                   <li key={item.href}>
+                    {heading && (
+                      <p className={`px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.16em] text-silver-500/80 ${i > 0 ? "pt-3" : ""}`}>
+                        {heading}
+                      </p>
+                    )}
                     <Link
                       href={item.href}
                       onClick={() => setOpen(false)}

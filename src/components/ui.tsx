@@ -1,10 +1,22 @@
 import Link from "next/link";
 import type { ComponentProps, ReactNode } from "react";
 
-export function PageHeader({ title, description, actions }: { title: string; description?: ReactNode; actions?: ReactNode }) {
+export function PageHeader({
+  title,
+  description,
+  actions,
+  eyebrow,
+}: {
+  title: string;
+  description?: ReactNode;
+  actions?: ReactNode;
+  /** A small line above the title, such as the date or the area of work. */
+  eyebrow?: ReactNode;
+}) {
   return (
     <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
       <div>
+        {eyebrow && <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-silver-500">{eyebrow}</p>}
         <h1 className="text-2xl font-semibold tracking-tight text-ink">{title}</h1>
         {description && <div className="mt-1.5 text-sm text-zinc-600">{description}</div>}
       </div>

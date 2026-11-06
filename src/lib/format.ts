@@ -18,3 +18,15 @@ export function formatDate(value: string | null | undefined): string {
 export function formatDateTime(value: string | null | undefined): string {
   return value ? dateTime.format(new Date(value)) : "—";
 }
+
+/** Short naira amounts for dashboard figures: ₦84.6m, ₦320k, ₦950. */
+export function formatMoneyShort(value: number | string | null | undefined): string {
+  const n = Number(value ?? 0);
+  const abs = Math.abs(n);
+  const sign = n < 0 ? "-" : "";
+  const fixed = (v: number) => (v >= 100 ? v.toFixed(0) : v.toFixed(1).replace(/\.0$/, ""));
+  if (abs >= 1e9) return `${sign}₦${fixed(abs / 1e9)}bn`;
+  if (abs >= 1e6) return `${sign}₦${fixed(abs / 1e6)}m`;
+  if (abs >= 1e3) return `${sign}₦${fixed(abs / 1e3)}k`;
+  return `${sign}₦${abs.toFixed(0)}`;
+}

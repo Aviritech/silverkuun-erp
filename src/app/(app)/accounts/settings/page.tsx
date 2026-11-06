@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Badge, Card, PageHeader } from "@/components/ui";
 import { requireModule, requirePermission } from "@/lib/auth/session";
 import { dbFailure } from "@/lib/db-errors";
@@ -8,7 +9,6 @@ import { formatDateTime } from "@/lib/format";
 import {
   addBankAccount,
   addCategorisationRule,
-  addLedgerAccount,
   approvePostingRuleChange,
   proposePostingRuleChange,
   rejectPostingRuleChange,
@@ -16,11 +16,9 @@ import {
 import {
   BankAccountForm,
   CategorisationRuleForm,
-  LedgerAccountForm,
   PostingRuleForm,
   RejectChangeForm,
 } from "@/modules/accounts/components/settings-forms";
-import { ACCOUNT_TYPES, CASH_FLOW_CLASSES } from "@/modules/accounts/constants";
 import { accountsModule } from "@/modules/accounts/module";
 import { listBankAccounts, listLedgerAccounts, listPostingRules, staffNameLookup } from "@/modules/accounts/queries";
 
@@ -176,33 +174,14 @@ export default async function AccountsSettingsPage() {
         </ul>
       </Card>
 
-      <Card title="Chart of accounts" actions={canConfigure && <LedgerAccountForm action={addLedgerAccount} groups={accounts.filter((a) => a.is_group)} />}>
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="text-zinc-500">
-              <tr>
-                <th className="py-1 pr-3 font-medium">Code</th>
-                <th className="py-1 pr-3 font-medium">Account</th>
-                <th className="py-1 pr-3 font-medium">Type</th>
-                <th className="py-1 pr-3 font-medium">Cash flow</th>
-                <th className="py-1 font-medium">What goes here</th>
-              </tr>
-            </thead>
-            <tbody>
-              {accounts.map((a) => (
-                <tr key={a.code} className={`border-t border-zinc-100 ${a.is_group ? "bg-zinc-50 font-medium" : ""}`}>
-                  <td className="py-1.5 pr-3 font-mono text-xs">{a.code}</td>
-                  <td className={`py-1.5 pr-3 ${a.parent_code && !a.is_group ? "pl-4" : ""}`}>
-                    {a.name} {!a.is_active && <Badge>Inactive</Badge>}
-                  </td>
-                  <td className="py-1.5 pr-3">{ACCOUNT_TYPES[a.account_type]}</td>
-                  <td className="py-1.5 pr-3">{a.is_group ? "" : CASH_FLOW_CLASSES[a.cash_flow_class as keyof typeof CASH_FLOW_CLASSES]}</td>
-                  <td className="py-1.5 text-zinc-600">{a.is_group ? "Heading" : a.description}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <Card title="Chart of accounts">
+        <p className="text-sm text-zinc-600">
+          The ledger accounts, their balances and adding new ones are on the{" "}
+          <Link href="/accounts/chart" className="underline">
+            chart of accounts
+          </Link>{" "}
+          page.
+        </p>
       </Card>
     </div>
   );
