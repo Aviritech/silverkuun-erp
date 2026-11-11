@@ -100,7 +100,8 @@ export const planSchema = z
 
 export const contributionSchema = z.object({
   member_plan_id: z.guid(),
-  kind: z.enum(["scheduled", "top_up"]),
+  // Top-ups come from Accounts and are logged from the branch's top up queue, never recorded here.
+  kind: z.enum(["scheduled"], "Top ups come from Accounts"),
   amount: money,
   paid_on: isoDate.refine((d) => d <= new Date().toISOString().slice(0, 10), "Payment date can't be in the future"),
   payment_method: z.enum(Object.keys(PAYMENT_METHODS) as [keyof typeof PAYMENT_METHODS], "Choose how it was paid"),
@@ -132,3 +133,9 @@ export const liquidationSchema = z
     note: z.string().trim().max(1000, "Keep the note under 1,000 characters"),
   })
   .refine((v) => v.bank_code || v.bank_name, { path: ["bank_code"], message: "Choose the bank" });
+
+/** The branch officer logs a top up Accounts sent against one of the member's plans. */
+export const logTopUpSchema = z.object({
+  member_plan_id: z.guid("Choose the member's savings plan"),
+  note: z.string().trim().max(1000, "Keep the note under 1,000 characters"),
+});

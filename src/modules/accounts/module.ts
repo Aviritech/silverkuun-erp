@@ -9,6 +9,7 @@ export const accountsModule: DepartmentModule = {
   nav: [
     { section: "Workspace", label: "Overview", href: "/accounts" },
     { section: "Workspace", label: "Savings pay-ins", href: "/accounts/contributions", permission: "accounts.receipts.record" },
+    { section: "Workspace", label: "Member top ups", href: "/accounts/top-ups", permission: "accounts.receipts.record" },
     { section: "Workspace", label: "Receivables aging", href: "/accounts/receivables", permission: "accounts.read" },
     { section: "Workspace", label: "Payables", href: "/accounts/bills", permission: "accounts.read" },
     { section: "Workspace", label: "Suppliers", href: "/accounts/suppliers", permission: "accounts.read" },

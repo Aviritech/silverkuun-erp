@@ -84,22 +84,15 @@ export function PlanForm({ action, planTypes }: { action: Action; planTypes: { c
   );
 }
 
-export function ContributionForm({
-  action,
-  planId,
-  kind,
-}: {
-  action: Action;
-  planId: string;
-  kind: "scheduled" | "top_up";
-}) {
-  const label = kind === "top_up" ? "Record top-up" : "Record contribution";
+/** A scheduled contribution. Top-ups aren't recorded here: they come from Accounts (see the Top ups from Accounts queue). */
+export function ContributionForm({ action, planId }: { action: Action; planId: string }) {
+  const label = "Record contribution";
   return (
-    <InlineForm action={action} openLabel={label} submitLabel={label} variant={kind === "top_up" ? "secondary" : "primary"}>
+    <InlineForm action={action} openLabel={label} submitLabel={label} variant="primary">
       {(e) => (
         <div className="grid gap-3 sm:grid-cols-4">
           <input type="hidden" name="member_plan_id" value={planId} />
-          <input type="hidden" name="kind" value={kind} />
+          <input type="hidden" name="kind" value="scheduled" />
           <Field label="Amount (₦)" error={e.amount}>
             <Input name="amount" type="number" min="0.01" step="0.01" required />
           </Field>

@@ -123,13 +123,24 @@ insert into public.member_plans (id, member_id, branch_id, plan_type, contributi
   ('60000000-0000-0000-0000-000000000002', '50000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'silver', 20000, 'monthly', current_date - 30, current_date + 335);
 insert into public.contributions (id, member_plan_id, member_id, branch_id, kind, amount, paid_on, payment_method, reference) values
   ('70000000-0000-0000-0000-000000000001', '60000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'scheduled', 50000, current_date - 10, 'bank_transfer', 'TRF-ADA-001'),
-  ('70000000-0000-0000-0000-000000000002', '60000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'top_up', 25000, current_date - 5, 'bank_transfer', 'TRF-ADA-002'),
   ('70000000-0000-0000-0000-000000000003', '60000000-0000-0000-0000-000000000002', '50000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'scheduled', 20000, current_date - 8, 'bank_transfer', 'TRF-CHI-001'),
   ('70000000-0000-0000-0000-000000000004', '60000000-0000-0000-0000-000000000002', '50000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'scheduled', 20000, current_date - 1, 'cash', null);
 
+-- Top ups start in Accounts, who picks the branch; the branch officer logs them against the member's plan.
+-- Ada's has been logged; a second one is waiting in the Lagos officer's queue.
+select pg_temp.act_as('accountant.lagos@kuun.test');
+select public.initiate_top_up(null, '20000000-0000-0000-0000-000000000001', 25000, current_date - 5, 'bank_transfer', 'TRF-ADA-002',
+  '40000000-0000-0000-0000-000000000001', 'Ada Obi', null);
+select public.initiate_top_up(null, '20000000-0000-0000-0000-000000000001', 40000, current_date - 1, 'bank_transfer', 'TRF-CHI-009',
+  '40000000-0000-0000-0000-000000000001', 'Chinedu Okeke', 'Member says it is for his Silver plan');
+select pg_temp.act_as('officer.lagos@kuun.test');
+select public.log_top_up(id, '60000000-0000-0000-0000-000000000001', 'Ada confirmed by phone')
+from public.top_up_requests where reference = 'TRF-ADA-002';
+
 select pg_temp.act_as('manager.lagos@kuun.test');
 select public.verify_contribution(id) from public.contributions
-where id in ('70000000-0000-0000-0000-000000000001', '70000000-0000-0000-0000-000000000002', '70000000-0000-0000-0000-000000000003');
+where id in ('70000000-0000-0000-0000-000000000001', '70000000-0000-0000-0000-000000000003')
+   or id = (select contribution_id from public.top_up_requests where reference = 'TRF-ADA-002');
 
 -- Opening balances, prepared by an accountant and posted by the Financial Controller.
 select pg_temp.act_as('accountant.lagos@kuun.test');

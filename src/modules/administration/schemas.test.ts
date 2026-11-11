@@ -68,7 +68,7 @@ describe("contributionSchema", () => {
   it("rejects future payment dates and non-positive amounts", () => {
     const result = contributionSchema.safeParse({
       member_plan_id: "20000000-0000-4000-8000-000000000001",
-      kind: "top_up",
+      kind: "scheduled",
       amount: "0",
       paid_on: "2999-01-01",
       payment_method: "cash",
