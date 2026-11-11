@@ -11,6 +11,7 @@ export type CurrentStaff = {
   fullName: string;
   email: string;
   departmentCode: string;
+  homeBranchId: string | null;
   permissions: PermissionSet;
 };
 
@@ -25,7 +26,7 @@ export const getCurrentStaff = cache(async (): Promise<CurrentStaff> => {
   const [{ data: staff }, { data: grants, error }] = await Promise.all([
     supabase
       .from("staff")
-      .select("id, full_name, email, department_code, is_active, must_change_password")
+      .select("id, full_name, email, department_code, home_branch_id, is_active, must_change_password")
       .eq("id", user.id)
       .maybeSingle(),
     supabase.rpc("my_permissions"),
@@ -42,6 +43,7 @@ export const getCurrentStaff = cache(async (): Promise<CurrentStaff> => {
     fullName: staff.full_name,
     email: staff.email,
     departmentCode: staff.department_code,
+    homeBranchId: staff.home_branch_id,
     permissions: new PermissionSet((grants ?? []) as PermissionGrant[]),
   };
 });
