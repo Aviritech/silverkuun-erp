@@ -15,7 +15,7 @@ export function LoginForm({ initialError }: { initialError?: string }) {
           type="email"
           autoComplete="username"
           required
-          className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 shadow-sm outline-none transition-colors focus:border-ink focus:ring-2 focus:ring-silver-200"
+          className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 shadow-sm outline-none transition-colors focus:border-ink focus:ring-2 focus:ring-neutral-200"
         />
       </label>
       <label className="block">
@@ -25,7 +25,7 @@ export function LoginForm({ initialError }: { initialError?: string }) {
           type="password"
           autoComplete="current-password"
           required
-          className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 shadow-sm outline-none transition-colors focus:border-ink focus:ring-2 focus:ring-silver-200"
+          className="mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 shadow-sm outline-none transition-colors focus:border-ink focus:ring-2 focus:ring-neutral-200"
         />
       </label>
       {state.error && (
@@ -36,7 +36,7 @@ export function LoginForm({ initialError }: { initialError?: string }) {
       <button
         type="submit"
         disabled={pending}
-        className="w-full rounded-lg bg-ink px-3 py-2.5 font-medium text-white shadow-sm transition-colors hover:bg-ink-700 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-400"
+        className="w-full rounded-lg bg-brand px-3 py-2.5 font-medium text-ink shadow-sm transition-colors hover:bg-brand-300 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-400"
       >
         {pending ? "Signing in…" : "Sign in"}
       </button>

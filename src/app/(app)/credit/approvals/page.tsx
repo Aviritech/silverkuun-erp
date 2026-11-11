@@ -122,7 +122,7 @@ export default async function ApprovalsPage() {
                       <td className={`py-1.5 text-right tabular-nums ${daysSince(since) > 7 ? "text-red-700" : ""}`}>{daysSince(since)} days</td>
                       <td className="py-1.5 text-right">
                         {action && (
-                          <Link href={`/credit/loans/${l.id}`} className="rounded-md bg-ink px-2.5 py-1 text-xs font-medium text-white">
+                          <Link href={`/credit/loans/${l.id}`} className="rounded-md bg-brand px-2.5 py-1 text-xs font-medium text-ink hover:bg-brand-300">
                             {action}
                           </Link>
                         )}
@@ -150,7 +150,7 @@ export default async function ApprovalsPage() {
                   <span className="block text-xs text-zinc-500">{r.reason}</span>
                 </span>
                 {staff.permissions.has("credit.approve") && r.requested_by !== staff.id && (
-                  <Link href={`/credit/loans/${r.loan_id}`} className="rounded-md bg-ink px-2.5 py-1 text-xs font-medium text-white">
+                  <Link href={`/credit/loans/${r.loan_id}`} className="rounded-md bg-brand px-2.5 py-1 text-xs font-medium text-ink hover:bg-brand-300">
                     Decide
                   </Link>
                 )}

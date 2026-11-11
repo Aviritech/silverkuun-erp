@@ -188,7 +188,7 @@ export default async function PayrollRunPage({ params }: { params: Promise<{ id:
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-zinc-200 bg-silver-50/60 text-xs uppercase tracking-wide text-zinc-500">
+              <thead className="border-b border-zinc-200 bg-neutral-50/60 text-xs uppercase tracking-wide text-zinc-500">
                 <tr>
                   <th className="px-3 py-2 font-medium">No.</th>
                   <th className="px-3 py-2 font-medium">Name</th>
@@ -206,7 +206,7 @@ export default async function PayrollRunPage({ params }: { params: Promise<{ id:
                 {lines.map((l) => {
                   const p = person(l.employee_id);
                   return (
-                    <tr key={l.id} className="border-b border-zinc-100 last:border-0 hover:bg-silver-50/60">
+                    <tr key={l.id} className="border-b border-zinc-100 last:border-0 hover:bg-neutral-50/60">
                       <td className="px-3 py-2 font-mono text-xs">{p?.employee_no ?? "—"}</td>
                       <td className="px-3 py-2">
                         <Link href={`/hr/payroll/${run.id}/payslips/${l.id}`} className="font-medium text-ink underline-offset-4 hover:underline">
@@ -299,7 +299,7 @@ export default async function PayrollRunPage({ params }: { params: Promise<{ id:
               ))}
             </ul>
           )}
-          <div className="mt-4 rounded-lg bg-silver-50 p-3 text-sm text-zinc-700">
+          <div className="mt-4 rounded-lg bg-neutral-50 p-3 text-sm text-zinc-700">
             <p className="font-medium">For Accounts</p>
             <p>
               Pay net salaries ({formatMoney(totals.net)}) with the &ldquo;Net salaries paid&rdquo; payment type. Remit PAYE (

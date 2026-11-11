@@ -132,7 +132,7 @@ export default async function CasePage({ params }: { params: Promise<{ id: strin
                     key={m.id}
                     className={`max-w-md rounded-lg px-3 py-2 text-sm ${m.from_reporter ? "bg-zinc-100 text-zinc-900" : "ml-auto bg-ink text-white"}`}
                   >
-                    <p className={`text-xs ${m.from_reporter ? "text-zinc-500" : "text-silver-200"}`}>
+                    <p className={`text-xs ${m.from_reporter ? "text-zinc-500" : "text-neutral-200"}`}>
                       {m.from_reporter ? "Reporter" : staffName(m.author_id)} · {formatDate(m.sent_on)}
                     </p>
                     <p className="mt-0.5 whitespace-pre-wrap">{m.body}</p>

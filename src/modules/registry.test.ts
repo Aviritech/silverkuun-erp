@@ -12,19 +12,19 @@ describe("visibleModules", () => {
 
   it("hides nav links that need a permission the staff member lacks", () => {
     const visible = visibleModules(new PermissionSet([grant("module.internal_audit")]));
-    expect(visible[0].nav.map((n) => n.label)).toEqual(["Dashboard", "Exceptions", "Customer register", "Branch reports"]);
+    expect(visible[0].nav.map((n) => n.label)).toEqual(["Overview", "Exceptions", "Customer register", "Branch reports"]);
   });
 
   it("gives System Administrators their own module, and HR officers theirs", () => {
     const admin = visibleModules(new PermissionSet([grant("module.system"), grant("staff.read"), grant("system.manage")]));
     expect(admin.map((m) => m.department)).toEqual(["system"]);
     const hr = visibleModules(new PermissionSet([grant("module.hr"), grant("hr.read")]));
-    expect(hr[0].nav.map((n) => n.label)).toEqual(["Overview", "Employees", "Leave", "Training", "Commission", "Reports", "Settings"]);
+    expect(hr[0].nav.map((n) => n.label)).toEqual(["Overview", "Employees", "Leave", "Commission", "Training", "Reports", "Settings"]);
     // The Financial Controller opens HR for payroll and commission only.
     const controller = visibleModules(
       new PermissionSet([grant("module.hr"), grant("payroll.read"), grant("commission.approve"), grant("performance.read")]),
     );
-    expect(controller[0].nav.map((n) => n.label)).toEqual(["Payroll", "Performance", "Training", "Commission", "Reports"]);
+    expect(controller[0].nav.map((n) => n.label)).toEqual(["Payroll", "Commission", "Performance", "Training", "Reports"]);
   });
 
   it("gives every module a unique department, path and permission", () => {

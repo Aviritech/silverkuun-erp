@@ -58,7 +58,7 @@ export function ConfirmDialog({
           <span
             aria-hidden="true"
             className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-lg font-semibold ${
-              tone === "danger" ? "bg-red-50 text-red-700 ring-1 ring-red-200" : "bg-ink text-silver-200"
+              tone === "danger" ? "bg-red-50 text-red-700 ring-1 ring-red-200" : "bg-ink text-brand"
             }`}
           >
             {tone === "danger" ? "!" : "?"}
@@ -71,7 +71,7 @@ export function ConfirmDialog({
           </div>
         </div>
       </div>
-      <div className="flex flex-col-reverse gap-2 rounded-b-2xl border-t border-zinc-100 bg-silver-50 px-6 py-4 sm:flex-row sm:justify-end">
+      <div className="flex flex-col-reverse gap-2 rounded-b-2xl border-t border-zinc-100 bg-neutral-50 px-6 py-4 sm:flex-row sm:justify-end">
         <Button type="button" variant="secondary" onClick={onCancel} autoFocus>
           Cancel
         </Button>

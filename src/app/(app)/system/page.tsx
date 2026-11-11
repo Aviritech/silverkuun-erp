@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AttentionPanel, StatCard, StatGrid, firstName, greeting, workspaceEyebrow } from "@/components/dashboard";
 import { Badge, ButtonLink, Card, EmptyState, PageHeader } from "@/components/ui";
 import { requireModule } from "@/lib/auth/session";
 import { listOrg } from "@/lib/org";
@@ -14,29 +15,28 @@ export default async function SystemOverviewPage() {
   const temporary = active.filter((s) => s.must_change_password);
 
   return (
-    <div className="max-w-5xl space-y-6">
+    <div className="max-w-6xl space-y-6">
       <PageHeader
-        title="System Administration"
+        eyebrow={workspaceEyebrow("System Administration")}
+        title={`${greeting()}, ${firstName(me.fullName)}`}
         description="Who can sign in, what they can do, and how the organisation is set up."
         actions={me.permissions.has("staff.manage") && <ButtonLink href="/system/staff/new">New login</ButtonLink>}
       />
-      <div className="grid gap-4 sm:grid-cols-4">
-        {[
-          ["Active logins", active.length, "/system/staff"],
-          ["Switched off", staff.length - active.length, "/system/staff?show=inactive"],
-          ["Branches", branches.length, "/system/organisation"],
-          ["Regions", regions.length, "/system/organisation"],
-        ].map(([label, value, href]) => (
-          <Link
-            key={label}
-            href={href as string}
-            className="rounded-xl border border-zinc-200 bg-white p-4 transition hover:border-silver-300 hover:shadow-sm"
-          >
-            <p className="text-xs text-zinc-500">{label}</p>
-            <p className="mt-1 text-2xl font-semibold tabular-nums text-ink">{value}</p>
-          </Link>
-        ))}
-      </div>
+      <StatGrid>
+        <StatCard label="Active logins" icon="key" value={active.length} href="/system/staff" hint={`${staff.length - active.length} switched off`} />
+        <StatCard label="Waiting for a role" icon="users" tone={noAccess.length ? "warn" : "neutral"} value={noAccess.length} href="/system/staff" hint="Can sign in but have no access yet" />
+        <StatCard label="Branches" icon="bank" value={branches.length} href="/system/organisation" />
+        <StatCard label="Regions" icon="map" value={regions.length} href="/system/organisation" />
+      </StatGrid>
+
+      <AttentionPanel
+        count={noAccess.length}
+        title={noAccess.length ? "People waiting for access" : "Everyone has a role"}
+        href="/system/staff"
+        cta="Open staff access"
+      >
+        {noAccess.length ? "Give each of them the role and branch they work in. HR creates the login; you decide what it can do." : "New logins from HR appear here until they are given a role."}
+      </AttentionPanel>
 
       <Card title="Waiting for access">
         <p className="mb-3 text-sm text-zinc-600">

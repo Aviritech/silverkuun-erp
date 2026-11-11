@@ -466,7 +466,7 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
               </thead>
               <tbody>
                 {schedule.map((i) => (
-                  <tr key={i.id} className={`border-t border-zinc-100 ${i.id === nextDue?.id ? "bg-silver-50/70" : ""}`}>
+                  <tr key={i.id} className={`border-t border-zinc-100 ${i.id === nextDue?.id ? "bg-neutral-50/70" : ""}`}>
                     <td className="py-1.5">{i.installment_no}</td>
                     <td className="py-1.5">{formatDate(i.due_date)}</td>
                     <td className="py-1.5 text-right tabular-nums">{formatMoney(i.principal_due)}</td>

@@ -16,7 +16,7 @@ export function PageHeader({
   return (
     <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
       <div>
-        {eyebrow && <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-silver-500">{eyebrow}</p>}
+        {eyebrow && <p className="mb-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-brand-700">{eyebrow}</p>}
         <h1 className="text-2xl font-semibold tracking-tight text-ink">{title}</h1>
         {description && <div className="mt-1.5 text-sm text-zinc-600">{description}</div>}
       </div>
@@ -42,14 +42,14 @@ export function Card({ title, actions, children }: { title?: string; actions?: R
 // Disabled buttons turn grey and ignore hover, so it's clear they can't be used yet.
 const buttonStyles = {
   primary:
-    "bg-ink text-white shadow-sm hover:bg-ink-700 disabled:bg-zinc-200 disabled:text-zinc-400 disabled:shadow-none",
+    "bg-brand text-ink shadow-sm hover:bg-brand-300 disabled:bg-zinc-200 disabled:text-zinc-400 disabled:shadow-none",
   secondary:
-    "border border-zinc-300 bg-white text-zinc-900 shadow-sm hover:bg-silver-50 disabled:border-zinc-200 disabled:bg-zinc-50 disabled:text-zinc-400 disabled:shadow-none",
+    "border border-zinc-300 bg-white text-zinc-900 shadow-sm hover:border-ink hover:bg-white disabled:border-zinc-200 disabled:bg-zinc-50 disabled:text-zinc-400 disabled:shadow-none",
   danger:
     "border border-red-300 bg-white text-red-700 hover:bg-red-50 disabled:border-zinc-200 disabled:bg-zinc-50 disabled:text-zinc-400",
 };
 const buttonBase =
-  "inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-silver-400 focus-visible:ring-offset-2 disabled:cursor-not-allowed";
+  "inline-flex items-center justify-center gap-2 rounded-lg px-3.5 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 focus-visible:ring-offset-2 disabled:cursor-not-allowed";
 
 export function Button({
   variant = "primary",
@@ -73,7 +73,7 @@ export function ButtonLink({
 }
 
 const inputClass =
-  "mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm shadow-sm outline-none transition-colors placeholder:text-zinc-400 focus:border-ink focus:ring-2 focus:ring-silver-200 disabled:bg-zinc-50 disabled:text-zinc-500";
+  "mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm shadow-sm outline-none transition-colors placeholder:text-zinc-400 focus:border-ink focus:ring-2 focus:ring-brand-200 disabled:bg-zinc-50 disabled:text-zinc-500";
 
 export function Field({
   label,
@@ -150,7 +150,7 @@ export function Tabs({ tabs, current }: { tabs: { key: string; label: string; hr
             scroll={false}
             aria-current={active ? "page" : undefined}
             className={`-mb-px whitespace-nowrap border-b-2 px-3 py-2 text-sm font-medium transition-colors ${
-              active ? "border-ink text-ink" : "border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-800"
+              active ? "border-brand text-ink" : "border-transparent text-zinc-500 hover:border-zinc-300 hover:text-zinc-800"
             }`}
           >
             {t.label}

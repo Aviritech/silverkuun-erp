@@ -12,13 +12,13 @@ export default async function HomePage() {
       <section className="relative overflow-hidden rounded-2xl bg-ink px-8 py-9 text-white">
         <div
           aria-hidden="true"
-          className="pointer-events-none absolute -right-24 -top-32 h-80 w-80 rounded-full bg-[radial-gradient(circle_at_30%_30%,rgba(236,238,242,0.16),rgba(236,238,242,0)_65%)]"
+          className="pointer-events-none absolute -right-24 -top-32 h-80 w-80 rounded-full bg-[radial-gradient(circle_at_30%_30%,rgba(255,200,0,0.2),rgba(255,200,0,0)_65%)]"
         />
-        <p className="relative text-xs font-medium uppercase tracking-[0.18em] text-silver-400">{today}</p>
+        <p className="relative text-xs font-medium uppercase tracking-[0.18em] text-neutral-400">{today}</p>
         <h1 className="relative mt-2 text-3xl font-semibold tracking-tight">
-          Welcome, <span className="silver-text">{staff.fullName.split(" ")[0]}</span>
+          Welcome, <span className="brand-text">{staff.fullName.split(" ")[0]}</span>
         </h1>
-        <p className="relative mt-2 max-w-xl text-sm text-silver-300">
+        <p className="relative mt-2 max-w-xl text-sm text-neutral-300">
           Pick a department to carry on with your work. You only see the departments you have access to.
         </p>
       </section>
@@ -30,14 +30,14 @@ export default async function HomePage() {
             <Link
               key={m.department}
               href={m.basePath}
-              className="group flex flex-col rounded-xl border border-zinc-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(16,17,20,0.04),0_1px_3px_rgba(16,17,20,0.06)] transition hover:-translate-y-0.5 hover:border-silver-300 hover:shadow-md"
+              className="group flex flex-col rounded-xl border border-zinc-200/80 bg-white p-5 shadow-[0_1px_2px_rgba(16,17,20,0.04),0_1px_3px_rgba(16,17,20,0.06)] transition hover:-translate-y-0.5 hover:border-brand hover:shadow-md"
             >
-              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-ink text-sm font-semibold text-silver-200">
+              <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-ink text-sm font-semibold text-brand">
                 {m.name[0]}
               </span>
               <h2 className="mt-4 font-semibold text-ink">{m.name}</h2>
               <p className="mt-1 flex-1 text-sm text-zinc-600">{m.description}</p>
-              <span className="mt-4 text-sm font-medium text-ink">
+              <span className="mt-4 text-sm font-medium text-brand-700">
                 Open <span className="inline-block transition-transform group-hover:translate-x-0.5">→</span>
               </span>
             </Link>

@@ -22,7 +22,7 @@ function Detail({ label, children }: { label: string; children: ReactNode }) {
 
 function Stat({ label, value, href, note }: { label: string; value: ReactNode; href: string; note?: string }) {
   return (
-    <Link href={href} className="rounded-xl border border-zinc-200 bg-white p-4 transition hover:border-silver-300 hover:shadow-sm">
+    <Link href={href} className="rounded-xl border border-zinc-200 bg-white p-4 transition hover:border-brand hover:shadow-sm">
       <p className="text-xs text-zinc-500">{label}</p>
       <p className="mt-1 text-2xl font-semibold tabular-nums text-ink">{value}</p>
       {note && <p className="mt-0.5 text-xs text-zinc-500">{note}</p>}

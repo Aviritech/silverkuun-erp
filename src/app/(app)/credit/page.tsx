@@ -1,9 +1,22 @@
 import Link from "next/link";
-import { ButtonLink, Card, Input, PageHeader, Select } from "@/components/ui";
+import {
+  ActivityList,
+  AttentionPanel,
+  StatCard,
+  StatGrid,
+  WorkQueues,
+  firstName,
+  greeting,
+  workspaceEyebrow,
+  type Tone,
+  type WorkQueue,
+} from "@/components/dashboard";
+import { Badge, ButtonLink, Card, Input, PageHeader, Select } from "@/components/ui";
+import { dbFailure } from "@/lib/db-errors";
 import { requireModule } from "@/lib/auth/session";
-import { formatMoney } from "@/lib/format";
+import { formatDate, formatMoney, formatMoneyShort } from "@/lib/format";
 import { listOrg } from "@/lib/org";
-import { startOfYear, today } from "@/lib/reports/filters";
+import { addDays, startOfYear, today } from "@/lib/reports/filters";
 import { createClient } from "@/lib/supabase/server";
 import { inPeriod, isDisbursed, isPending, loadBook, loadOfficerNames, n, pct, portfolio, round2, wasApproved } from "@/modules/credit/book";
 import { CUSTOMER_CATEGORIES, LOAN_STATUSES, type LoanStatus } from "@/modules/credit/constants";
@@ -16,25 +29,24 @@ const UUID = /^[0-9a-f-]{36}$/i;
 type Search = { from?: string; to?: string; branch?: string; officer?: string; product?: string; category?: string };
 
 function Stat({ label, value, sub, href, tone }: { label: string; value: string; sub?: string; href?: string; tone?: "red" }) {
-  const body = (
-    <>
-      <p className="text-sm text-zinc-600">{label}</p>
-      <p className={`mt-1 text-2xl font-semibold tabular-nums ${tone === "red" ? "text-red-700" : ""}`}>{value}</p>
-      {sub && <p className="mt-0.5 text-xs text-zinc-500">{sub}</p>}
-    </>
-  );
-  return href ? (
-    <Link href={href} className="rounded-xl border border-zinc-200 bg-white p-4 hover:border-zinc-400">
-      {body}
-    </Link>
-  ) : (
-    <div className="rounded-xl border border-zinc-200 bg-white p-4">{body}</div>
-  );
+  const t: Tone = tone === "red" ? "bad" : "neutral";
+  return <StatCard label={label} value={<span className={tone === "red" ? "text-red-700" : undefined}>{value}</span>} hint={sub} href={href} tone={t} />;
 }
+
+type Pending = {
+  id: string;
+  branch_id: string;
+  status: LoanStatus;
+  created_by: string;
+  submitted_by: string | null;
+  account_officer_id: string;
+  appraised_by: string | null;
+  approved_by: string | null;
+};
 
 function Breakdown({ title, rows, href }: { title: string; rows: { name: string; disbursed: number; principal: number; overdue: number; par30: string }[]; href: string }) {
   return (
-    <Card title={title} actions={<Link href={href} className="text-sm underline">Full report</Link>}>
+    <Card title={title} actions={<Link href={href} className="text-xs font-medium text-brand-700 underline">Full report</Link>}>
       {rows.length === 0 ? (
         <p className="text-sm text-zinc-600">No loans yet.</p>
       ) : (
@@ -84,7 +96,17 @@ export default async function CreditDashboard({ searchParams }: { searchParams: 
   }
 
   const supabase = await createClient();
-  const [loans, org, officers, products] = await Promise.all([loadBook(supabase, filters), listOrg(), loadOfficerNames(supabase), listProducts()]);
+  const [loans, org, officers, products, pendingRes] = await Promise.all([
+    loadBook(supabase, filters),
+    listOrg(),
+    loadOfficerNames(supabase),
+    listProducts(),
+    supabase
+      .from("loans")
+      .select("id, branch_id, status, created_by, submitted_by, account_officer_id, appraised_by, approved_by")
+      .in("status", ["submitted", "appraised", "credit_approved", "returned"]),
+  ]);
+  if (pendingRes.error) throw dbFailure(pendingRes.error);
   const branchName = new Map(org.branches.map((b) => [b.id, b.name]));
   const query = new URLSearchParams(Object.entries({ from, to, branch: branch ?? "", officer: filters.officer, loan_product: filters.product, category: filters.category }).filter(([, v]) => v)).toString();
 
@@ -94,6 +116,34 @@ export default async function CreditDashboard({ searchParams }: { searchParams: 
   const book = portfolio(loans);
   const count = (s: LoanStatus) => loans.filter((l) => l.status === s).length;
   const awaiting = loans.filter((l) => l.status === "approved");
+
+  // The same rules as the Approvals page: each step is done by someone other than the people before it.
+  const branchOf = new Map(org.branches.map((b) => [b.id, b]));
+  const can = (perm: string, branchId: string) => {
+    const b = branchOf.get(branchId);
+    return !!b && staff.permissions.hasForBranch(perm, b);
+  };
+  const pending = pendingRes.data as Pending[];
+  const mine = (l: Pending) => [l.created_by, l.submitted_by, l.account_officer_id].includes(staff.id);
+  const toAppraise = pending.filter((l) => l.status === "submitted" && can("credit.appraise", l.branch_id) && !mine(l)).length;
+  const toDecide = pending.filter((l) => l.status === "appraised" && can("credit.approve", l.branch_id) && !mine(l) && l.appraised_by !== staff.id).length;
+  const toApprove = pending.filter(
+    (l) => l.status === "credit_approved" && can("credit.business_approve", l.branch_id) && !mine(l) && ![l.appraised_by, l.approved_by].includes(staff.id),
+  ).length;
+  const returnedToMe = pending.filter((l) => l.status === "returned" && can("credit.manage", l.branch_id) && mine(l)).length;
+  const weekEnd = addDays(to, 7);
+  const dueThisWeek = loans.filter((l) => l.status === "active" && l.next_due_date && l.next_due_date <= weekEnd).length;
+  const inArrears = loans.filter((l) => l.status === "active" && l.days_past_due > 0).length;
+  const waiting = toAppraise + toDecide + toApprove;
+  const queues: WorkQueue[] = [
+    staff.permissions.has("credit.appraise") && { label: "Applications to appraise", value: toAppraise, href: "/credit/approvals" },
+    staff.permissions.has("credit.approve") && { label: "Waiting for Head of Credit", value: toDecide, href: "/credit/approvals" },
+    staff.permissions.has("credit.business_approve") && { label: "Waiting for Head of Business", value: toApprove, href: "/credit/approvals" },
+    staff.permissions.has("credit.manage") && { label: "Returned to you", value: returnedToMe, href: "/credit/loans?status=returned" },
+    { label: "Repayments due in 7 days", value: dueThisWeek, href: "/credit/reminders" },
+    { label: "Loans in arrears", value: inArrears, href: `/credit/reports/overdue-loans?${new URLSearchParams({ from, to }).toString()}` },
+  ].filter((q): q is WorkQueue => !!q);
+  const recentLoans = [...loans].sort((a, b) => b.created_at.localeCompare(a.created_at)).slice(0, 6);
 
   function breakdown(key: (l: LoanBookRow) => string) {
     const groups = new Map<string, LoanBookRow[]>();
@@ -115,10 +165,61 @@ export default async function CreditDashboard({ searchParams }: { searchParams: 
   return (
     <div className="max-w-6xl space-y-6">
       <PageHeader
-        title="Credit"
+        eyebrow={workspaceEyebrow("Credit")}
+        title={`${greeting()}, ${firstName(staff.fullName)}`}
         description="Loan pipeline, disbursements, repayments and the portfolio at risk for the branches you cover."
-        actions={staff.permissions.has("credit.manage") && <ButtonLink href="/credit/loans/new">New application</ButtonLink>}
+        actions={
+          <>
+            <ButtonLink href="/credit/reminders" variant="secondary">
+              Repayments due
+            </ButtonLink>
+            {staff.permissions.has("credit.manage") && <ButtonLink href="/credit/loans/new">New application</ButtonLink>}
+          </>
+        }
       />
+
+      <StatGrid>
+        <StatCard label="Loan book" icon="loan" value={formatMoneyShort(book.principal)} hint={`${book.loans} active loans · ${book.customers} customers`} href={`/credit/reports/loan-portfolio?${query}`} />
+        <StatCard
+          label="Overdue"
+          icon="alert"
+          tone={book.overdue > 0 ? "bad" : "neutral"}
+          value={formatMoneyShort(book.overdue)}
+          hint={`${book.overdueLoans} loans · PAR 30 ${pct(book.par30, book.principal)}`}
+          href={`/credit/reports/overdue-loans?${query}`}
+        />
+        <StatCard label="Disbursed in the period" icon="bank" value={formatMoneyShort(disbursedInPeriod.reduce((s, l) => s + n(l.approved_amount), 0))} hint={`${disbursedInPeriod.length} loans since ${formatDate(from)}`} href={`/credit/reports/loan-disbursements?${query}`} />
+        <StatCard label="In the pipeline" icon="clock" value={String(loans.filter(isPending).length)} hint={`${awaiting.length} approved, waiting for Accounts to pay out`} href="/credit/approvals" />
+      </StatGrid>
+
+      <WorkQueues queues={queues} />
+
+      <div className="grid gap-6 lg:grid-cols-3">
+        <div className="lg:col-span-2">
+          <Card title="Latest applications" actions={<Link href="/credit/loans" className="text-xs font-medium text-brand-700 underline">All loans</Link>}>
+            <ActivityList
+              empty="No loan applications yet."
+              items={recentLoans.map((l) => ({
+                key: l.id,
+                title: l.member_name,
+                href: `/credit/loans/${l.id}`,
+                meta: `${l.loan_no} · ${l.product_name} · ${branchName.get(l.branch_id) ?? "Branch"} · ${officers.get(l.account_officer_id) ?? "Former officer"}`,
+                aside: (
+                  <>
+                    <Badge tone={LOAN_STATUSES[l.status].tone}>{LOAN_STATUSES[l.status].label}</Badge>
+                    <p className="mt-1 text-xs tabular-nums text-zinc-600">{formatMoney(l.approved_amount ?? l.amount_requested)}</p>
+                  </>
+                ),
+              }))}
+            />
+          </Card>
+        </div>
+        <AttentionPanel count={waiting} title={waiting ? "Applications waiting for you" : "Nothing waiting for you"} href="/credit/approvals" cta="Open approvals">
+          {waiting ? "Appraise, decide or give final approval. Nobody approves a loan they raised or already passed." : "When an application needs your appraisal or approval, it appears here."}
+        </AttentionPanel>
+      </div>
+
+      <h2 className="pt-2 text-[15px] font-semibold text-ink">Drill down by period, branch and officer</h2>
 
       <form className="flex flex-wrap items-end gap-3" role="search">
         <label className="text-sm">
@@ -173,14 +274,14 @@ export default async function CreditDashboard({ searchParams }: { searchParams: 
             ))}
           </Select>
         </label>
-        <button type="submit" className="rounded-md border border-zinc-300 bg-white px-3 py-2 text-sm">
+        <button type="submit" className="rounded-lg bg-brand px-3.5 py-2 text-sm font-medium text-ink hover:bg-brand-300">
           Apply
         </button>
       </form>
 
       <div>
-        <h2 className="mb-2 text-sm font-semibold text-zinc-700">Applications in the period</h2>
-        <div className="grid gap-4 sm:grid-cols-4">
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">Applications in the period</h2>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Stat label="Received" value={String(received.length)} sub={formatMoney(received.reduce((s, l) => s + n(l.amount_requested), 0))} href={`/credit/reports/loan-applications?${query}`} />
           <Stat
             label="Pending"
@@ -194,8 +295,8 @@ export default async function CreditDashboard({ searchParams }: { searchParams: 
       </div>
 
       <div>
-        <h2 className="mb-2 text-sm font-semibold text-zinc-700">Disbursements in the period</h2>
-        <div className="grid gap-4 sm:grid-cols-4">
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">Disbursements in the period</h2>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Stat label="Disbursed" value={formatMoney(disbursedInPeriod.reduce((s, l) => s + n(l.approved_amount), 0))} sub={`${disbursedInPeriod.length} loans`} href={`/credit/reports/loan-disbursements?${query}`} />
           <Stat label="Customers funded" value={String(new Set(disbursedInPeriod.map((l) => l.member_id)).size)} />
           <Stat label="Awaiting disbursement" value={String(awaiting.length)} sub={formatMoney(awaiting.reduce((s, l) => s + n(l.approved_amount), 0))} href="/credit/loans?status=approved" />
@@ -204,8 +305,8 @@ export default async function CreditDashboard({ searchParams }: { searchParams: 
       </div>
 
       <div>
-        <h2 className="mb-2 text-sm font-semibold text-zinc-700">Loan book today</h2>
-        <div className="grid gap-4 sm:grid-cols-4">
+        <h2 className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-zinc-500">Loan book today</h2>
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <Stat label="Outstanding principal" value={formatMoney(book.principal)} sub={`${book.loans} active loans, ${book.customers} customers`} href={`/credit/reports/loan-portfolio?${query}`} />
           <Stat label="Outstanding interest" value={formatMoney(book.interest)} />
           <Stat
@@ -235,7 +336,7 @@ export default async function CreditDashboard({ searchParams }: { searchParams: 
       <Card title="Pipeline (all dates)">
         <div className="flex flex-wrap gap-3 text-sm">
           {(Object.keys(LOAN_STATUSES) as LoanStatus[]).map((s) => (
-            <Link key={s} href={`/credit/loans?status=${s}`} className="rounded-lg border border-zinc-200 px-3 py-2 hover:border-zinc-400">
+            <Link key={s} href={`/credit/loans?status=${s}`} className="rounded-lg border border-zinc-200 bg-white px-3 py-2 hover:border-brand">
               <span className="text-zinc-600">{LOAN_STATUSES[s].label}</span> <span className="ml-1 font-semibold tabular-nums">{count(s)}</span>
             </Link>
           ))}

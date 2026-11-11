@@ -48,7 +48,7 @@ export default async function MyPerformancePage() {
                     {g.description && <p className="mt-1 text-zinc-600">{g.description}</p>}
                     <div className="mt-2 flex items-center gap-2">
                       <div className="h-2 w-32 overflow-hidden rounded-full bg-zinc-100">
-                        <div className="h-full bg-ink" style={{ width: `${g.progress}%` }} />
+                        <div className="h-full bg-brand" style={{ width: `${g.progress}%` }} />
                       </div>
                       <span className="tabular-nums">{g.progress}%</span>
                       {g.progress_note && <span className="text-xs text-zinc-500">{g.progress_note}</span>}
