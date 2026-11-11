@@ -94,9 +94,27 @@ export const planSchema = z
     contribution_amount: money,
     contribution_frequency: z.enum(Object.keys(FREQUENCIES) as [keyof typeof FREQUENCIES], "Choose how often"),
     start_date: isoDate,
-    maturity_date: isoDate,
+    // Plans with fixed tenures (Target and Child savings) send a tenure instead, and the maturity date is worked out.
+    maturity_date: z.preprocess((v) => (v === "" ? undefined : v), isoDate.optional()),
+    tenure_months: z.preprocess(
+      (v) => (v === "" ? undefined : v),
+      z.coerce.number("Choose a tenure").int().positive("Choose a tenure").optional(),
+    ),
   })
-  .refine((v) => v.maturity_date > v.start_date, { path: ["maturity_date"], message: "Maturity must be after the start date" });
+  .refine((v) => v.maturity_date || v.tenure_months, { path: ["maturity_date"], message: "Enter a maturity date" })
+  .refine((v) => !v.maturity_date || v.maturity_date > v.start_date, {
+    path: ["maturity_date"],
+    message: "Maturity must be after the start date",
+  });
+
+/** The date `months` months after an ISO date, kept to the month's last day when it's shorter (as Postgres does). */
+export function addMonths(isoDay: string, months: number): string {
+  const [y, m, d] = isoDay.split("-").map(Number);
+  const target = new Date(Date.UTC(y, m - 1 + months, 1));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(d, lastDay));
+  return target.toISOString().slice(0, 10);
+}
 
 export const contributionSchema = z.object({
   member_plan_id: z.guid(),

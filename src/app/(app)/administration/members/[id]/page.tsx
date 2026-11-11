@@ -77,7 +77,7 @@ export default async function MemberPage({
   const { tab: tabParam } = await searchParams;
   const bundle = await getMemberBundle(id);
   if (!bundle) notFound();
-  const { member, documents, plans, totals, progress, contributions, planTypes, staffName } = bundle;
+  const { member, documents, plans, totals, progress, contributions, planTypes, accruedDividends, staffName } = bundle;
 
   const branch = (await listBranches()).find((b) => b.id === member.branch_id)!;
   const can = (permission: string) => staff.permissions.hasForBranch(permission, branch);
@@ -392,6 +392,9 @@ export default async function MemberPage({
                         <p className="text-xs text-zinc-500">
                           {formatDate(plan.start_date)} to {formatDate(plan.maturity_date)} · {Number(plan.interest_rate)}% a year · {plan.status}
                         </p>
+                        {plan.dividends_at_maturity && (
+                          <p className="text-xs text-zinc-500">Dividends build up and are paid with the savings at maturity.</p>
+                        )}
                       </div>
                       <dl className="grid grid-cols-3 gap-x-6 gap-y-2 text-right">
                         <Detail label="Total contributed">{formatMoney(t?.total_contributed)}</Detail>
@@ -408,6 +411,14 @@ export default async function MemberPage({
                         <Detail label="Matures">
                           {p && p.days_to_maturity >= 0 ? `in ${p.days_to_maturity} days` : "Matured"}
                         </Detail>
+                        {plan.dividends_at_maturity && (
+                          <>
+                            <Detail label="Dividends so far">{formatMoney(accruedDividends.get(plan.id))}</Detail>
+                            <Detail label="Due at maturity so far">
+                              {formatMoney(Number(t?.total_verified ?? 0) + Number(accruedDividends.get(plan.id) ?? 0))}
+                            </Detail>
+                          </>
+                        )}
                       </dl>
                     </div>
                     {rows.length > 0 && (

@@ -83,6 +83,19 @@ export type Plan = {
   status: string;
   /** Annual interest rate (%), fixed from the plan type when the plan was opened. */
   interest_rate: string;
+  /** True when dividends build up and are paid with the principal at maturity (Target savings), not monthly. */
+  dividends_at_maturity: boolean;
+};
+
+/** A plan type members can open, with the rules the database enforces on new plans. */
+export type PlanType = {
+  code: string;
+  name: string;
+  /** Allowed tenures in months; null means any maturity date. */
+  tenure_months: number[] | null;
+  /** Smallest plan amount in naira; null means no minimum. */
+  min_amount: string | null;
+  dividends_at_maturity: boolean;
 };
 
 export type PlanTotals = {
@@ -148,13 +161,24 @@ export async function getMemberBundle(memberId: string) {
     supabase.from("member_plans").select("*").eq("member_id", memberId).order("start_date"),
     supabase.from("member_plan_totals").select("*").eq("member_id", memberId),
     supabase.from("contributions").select("*").eq("member_id", memberId).order("paid_on").order("recorded_at"),
-    supabase.from("plan_types").select("code, name").eq("is_active", true).order("sort_order"),
+    supabase
+      .from("plan_types")
+      .select("code, name, tenure_months, min_amount, dividends_at_maturity")
+      .eq("is_active", true)
+      .order("sort_order"),
     supabase
       .from("plan_progress")
       .select("plan_id, installments_due, expected_to_date, scheduled_paid, outstanding, last_paid_on, days_to_maturity")
       .eq("member_id", memberId),
   ]);
   for (const r of [documents, plans, totals, contributions, plansCatalog, progress]) if (r.error) throw dbFailure(r.error);
+
+  // Dividends built up so far on plans that pay them at maturity, to show what the member will get at the end.
+  const atMaturity = ((plans.data ?? []) as Plan[]).filter((p) => p.dividends_at_maturity);
+  const accrued = await Promise.all(
+    atMaturity.map((p) => supabase.rpc("plan_accrued_dividends", { p_plan_id: p.id })),
+  );
+  for (const r of accrued) if (r.error) throw dbFailure(r.error);
 
   const docs = (documents.data ?? []) as MemberDocument[];
   const signed = docs.length
@@ -187,7 +211,8 @@ export async function getMemberBundle(memberId: string) {
     totals: new Map(((totals.data ?? []) as PlanTotals[]).map((t) => [t.member_plan_id, t])),
     progress: new Map(((progress.data ?? []) as PlanProgress[]).map((p) => [p.plan_id, p])),
     contributions: (contributions.data ?? []) as Contribution[],
-    planTypes: (plansCatalog.data ?? []) as { code: string; name: string }[],
+    accruedDividends: new Map(atMaturity.map((p, i) => [p.id, String(accrued[i].data ?? 0)])),
+    planTypes: (plansCatalog.data ?? []) as PlanType[],
     staffName: (id: string | null) => (id ? (staffNames.get(id) ?? "Another staff member") : "—"),
   };
 }

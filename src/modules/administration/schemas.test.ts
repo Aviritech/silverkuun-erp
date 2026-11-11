@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contributionSchema, fieldErrors, memberSchema, planSchema } from "./schemas";
+import { addMonths, contributionSchema, fieldErrors, memberSchema, planSchema } from "./schemas";
 
 const validMember = {
   branch_id: "20000000-0000-4000-8000-000000000001",
@@ -61,6 +61,38 @@ describe("planSchema", () => {
     });
     expect(result.success).toBe(false);
     if (!result.success) expect(fieldErrors(result.error).maturity_date).toMatch(/after the start/);
+  });
+});
+
+describe("plans with a fixed tenure", () => {
+  it("take a tenure instead of a maturity date", () => {
+    const result = planSchema.safeParse({
+      plan_type: "target",
+      contribution_amount: "50000",
+      contribution_frequency: "monthly",
+      start_date: "2026-05-01",
+      maturity_date: "",
+      tenure_months: "6",
+    });
+    expect(result.success && result.data).toMatchObject({ tenure_months: 6, maturity_date: undefined });
+  });
+
+  it("need a maturity date or a tenure", () => {
+    const result = planSchema.safeParse({
+      plan_type: "gold",
+      contribution_amount: "50000",
+      contribution_frequency: "monthly",
+      start_date: "2026-05-01",
+      maturity_date: "",
+      tenure_months: "",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("mature that many months on, kept to the end of a shorter month", () => {
+    expect(addMonths("2026-05-01", 3)).toBe("2026-08-01");
+    expect(addMonths("2026-11-30", 3)).toBe("2027-02-28");
+    expect(addMonths("2026-10-15", 12)).toBe("2027-10-15");
   });
 });
 
