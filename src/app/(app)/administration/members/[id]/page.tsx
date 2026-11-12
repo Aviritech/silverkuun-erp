@@ -4,7 +4,8 @@ import { Badge, ButtonLink, Card, EmptyState, PageHeader, Tabs } from "@/compone
 import { requireModule } from "@/lib/auth/session";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
-import { LOAN_STATUSES, type LoanStatus } from "@/modules/credit/constants";
+import { LOAN_STATUSES, RATE_BASES, REPAYMENT_FREQUENCIES, type LoanStatus, type RateBasis, type RepaymentFrequency } from "@/modules/credit/constants";
+import { FINANCE_STATUSES } from "@/modules/accounts/constants";
 import {
   addPlan,
   approveMember,
@@ -43,7 +44,15 @@ import {
   REQUIRED_DOCUMENTS,
 } from "@/modules/administration/constants";
 import { administrationModule } from "@/modules/administration/module";
-import { fullName, getMemberBundle, listBranches, listCbnBanks, listLiquidations } from "@/modules/administration/queries";
+import {
+  fullName,
+  getMemberBundle,
+  getMemberHistory,
+  getMemberMoney,
+  listBranches,
+  listCbnBanks,
+  listLiquidations,
+} from "@/modules/administration/queries";
 import { LiquidationForm } from "@/modules/administration/components/liquidation-form";
 import { LIQUIDATION_STATUSES } from "@/modules/administration/constants";
 import { requestLiquidation } from "@/modules/administration/actions";
@@ -55,6 +64,31 @@ function Detail({ label, children }: { label: string; children: React.ReactNode 
       <dd className="mt-0.5 text-sm">{children || "—"}</dd>
     </div>
   );
+}
+
+const RECORD_NAMES: Record<string, string> = {
+  members: "Member file",
+  member_plans: "Plan",
+  contributions: "Contribution",
+  member_documents: "Document",
+  plan_liquidations: "Liquidation",
+  loans: "Loan",
+};
+
+/** "Member file: approved", "Plan added", "Contribution changed"... */
+function historyLabel(h: { record_type: string; action: string; status: string | null }) {
+  const name = RECORD_NAMES[h.record_type] ?? h.record_type;
+  if (h.action === "INSERT") return `${name} added${h.status ? ` (${h.status.replaceAll("_", " ")})` : ""}`;
+  if (h.action === "DELETE") return `${name} removed`;
+  return h.status ? `${name}: ${h.status.replaceAll("_", " ")}` : `${name} changed`;
+}
+
+/** Which record a history line is about: loan number, document or plan name, contribution amount. */
+function historyDetail(recordType: string, detail: string) {
+  if (recordType === "member_documents") return DOCUMENT_TYPES[detail as keyof typeof DOCUMENT_TYPES] ?? detail;
+  if (recordType === "contributions") return formatMoney(detail);
+  if (recordType === "member_plans") return detail.charAt(0).toUpperCase() + detail.slice(1);
+  return detail;
 }
 
 /** The four hand-offs a new member file goes through. */
@@ -93,6 +127,8 @@ export default async function MemberPage({
   const planName = new Map(planTypes.map((p) => [p.code, p.name]));
   const reversed = new Set(contributions.filter((c) => c.reverses_id).map((c) => c.reverses_id));
   const seesLoans = can("credit.read");
+  // Branch Managers (and Head of Administration, Internal Audit) also see the member's money and the file's history.
+  const fullView = can("members.full_view");
   type MemberLoan = {
     id: string;
     loan_no: string;
@@ -103,11 +139,33 @@ export default async function MemberPage({
     outstanding_principal: string;
     outstanding_interest: string;
     days_past_due: number;
+    interest_rate: string;
+    rate_basis: RateBasis;
+    tenor_months: number;
+    repayment_frequency: RepaymentFrequency;
+    overdue_amount: string;
+    next_due_date: string | null;
+    next_due_amount: string;
+    disbursed_on: string | null;
+    maturity_date: string | null;
+  };
+  type LoanGuarantor = {
+    id: string;
+    loan_id: string;
+    full_name: string;
+    phone: string;
+    relationship: string | null;
+    occupation: string | null;
+    monthly_income: string | null;
+    is_member: boolean;
+    confirmed_at: string | null;
   };
   const loanQuery = seesLoans
     ? await (await createClient())
         .from("loan_book")
-        .select("id, loan_no, status, product_name, amount_requested, approved_amount, outstanding_principal, outstanding_interest, days_past_due")
+        .select(
+          "id, loan_no, status, product_name, amount_requested, approved_amount, outstanding_principal, outstanding_interest, days_past_due, interest_rate, rate_basis, tenor_months, repayment_frequency, overdue_amount, next_due_date, next_due_amount, disbursed_on, maturity_date",
+        )
         .eq("member_id", member.id)
         .order("created_at", { ascending: false })
     : null;
@@ -119,6 +177,12 @@ export default async function MemberPage({
           { key: "file", label: "Member file", href: `/administration/members/${member.id}` },
           { key: "plans", label: `Plans and contributions (${plans.length})`, href: `/administration/members/${member.id}?tab=plans` },
           ...(seesLoans ? [{ key: "loans", label: `Loans (${loans.length})`, href: `/administration/members/${member.id}?tab=loans` }] : []),
+          ...(fullView
+            ? [
+                { key: "money", label: "Money in and out", href: `/administration/members/${member.id}?tab=money` },
+                { key: "history", label: "History", href: `/administration/members/${member.id}?tab=history` },
+              ]
+            : []),
         ]
       : [];
   const tab = tabs.some((t) => t.key === tabParam) ? tabParam! : "file";
@@ -127,6 +191,33 @@ export default async function MemberPage({
   const [liquidations, cbnBanks] =
     tab === "plans" ? await Promise.all([listLiquidations(), canLiquidate ? listCbnBanks() : Promise.resolve([])]) : [[], []];
   const memberLiquidations = liquidations.filter((l) => l.member_id === member.id);
+  const approved = member.status === "approved";
+  const [money, history, guarantors] = await Promise.all([
+    approved && fullView && ["file", "money"].includes(tab) ? getMemberMoney(member.id) : Promise.resolve([]),
+    approved && fullView && tab === "history" ? getMemberHistory(member.id) : Promise.resolve([]),
+    tab === "loans" && loans.length > 0
+      ? (await createClient())
+          .from("loan_guarantors")
+          .select("id, loan_id, full_name, phone, relationship, occupation, monthly_income, is_member, confirmed_at")
+          .in(
+            "loan_id",
+            loans.map((l) => l.id),
+          )
+          .order("created_at")
+          .then((r) => (r.data ?? []) as LoanGuarantor[])
+      : Promise.resolve([] as LoanGuarantor[]),
+  ]);
+  // Placeholder formula until Kuun confirms it, the same one the interest payment schedule uses:
+  // verified savings times the plan's annual rate, divided by 12.
+  const monthlyInterest = (planId: string, rate: string | number) =>
+    (Number(totals.get(planId)?.total_verified ?? 0) * Number(rate)) / 100 / 12;
+  const livePlans = plans.filter((p) => ["active", "matured"].includes(p.status));
+  const verifiedSavings = livePlans.reduce((sum, p) => sum + Number(totals.get(p.id)?.total_verified ?? 0), 0);
+  const interestPaid = money
+    .filter((m) => m.transaction_type === "roi_payment" && m.status === "posted")
+    .reduce((sum, m) => sum + Number(m.amount), 0);
+  const activeLoans = loans.filter((l) => l.status === "active");
+  const loanOwed = activeLoans.reduce((sum, l) => sum + Number(l.outstanding_principal) + Number(l.outstanding_interest), 0);
   const stepIndex = STEPS.findIndex((s) => (s.statuses as readonly string[]).includes(member.status));
 
   return (
@@ -272,6 +363,43 @@ export default async function MemberPage({
             </Card>
           )}
 
+          {/* At a glance: what the member holds with Kuun, for whoever reviews the file. */}
+          {approved && (
+            <Card title="At a glance">
+              <dl className="grid gap-4 sm:grid-cols-4">
+                <Detail label="Verified savings">
+                  <span className="text-base font-semibold tabular-nums">{formatMoney(verifiedSavings)}</span>
+                </Detail>
+                <Detail label={`Open plans (${livePlans.length})`}>
+                  {livePlans.length > 0 &&
+                    livePlans.map((p) => (
+                      <span key={p.id} className="block">
+                        {planName.get(p.plan_type) ?? p.plan_type} · {Number(p.interest_rate)}% a year
+                      </span>
+                    ))}
+                </Detail>
+                <Detail label="Monthly interest (estimate)">
+                  {formatMoney(livePlans.reduce((sum, p) => sum + monthlyInterest(p.id, p.interest_rate), 0))}
+                  {fullView && <span className="block text-xs text-zinc-500">Paid to date: {formatMoney(interestPaid)}</span>}
+                </Detail>
+                {seesLoans && (
+                  <Detail label={`Loans (${activeLoans.length} active)`}>
+                    {activeLoans.length > 0 && (
+                      <>
+                        Owes {formatMoney(loanOwed)}
+                        {activeLoans.some((l) => l.days_past_due > 0) && (
+                          <span className="block text-xs text-red-700">
+                            {Math.max(...activeLoans.map((l) => l.days_past_due))} days overdue
+                          </span>
+                        )}
+                      </>
+                    )}
+                  </Detail>
+                )}
+              </dl>
+            </Card>
+          )}
+
           {/* Details */}
           <Card title="Member details">
             <dl className="grid gap-4 sm:grid-cols-3">
@@ -408,6 +536,8 @@ export default async function MemberPage({
                         <Detail label="Matures">
                           {p && p.days_to_maturity >= 0 ? `in ${p.days_to_maturity} days` : "Matured"}
                         </Detail>
+                        <Detail label="Interest rate">{Number(plan.interest_rate)}% a year</Detail>
+                        <Detail label="Monthly interest (estimate)">{formatMoney(monthlyInterest(plan.id, plan.interest_rate))}</Detail>
                       </dl>
                     </div>
                     {rows.length > 0 && (
@@ -530,25 +660,157 @@ export default async function MemberPage({
           {loans.length === 0 ? (
             <EmptyState>No loans yet.</EmptyState>
           ) : (
-            <ul className="divide-y divide-zinc-100 text-sm">
-              {loans.map((l) => (
-                <li key={l.id} className="flex items-center justify-between gap-4 py-2">
-                  <span>
-                    <Link href={`/credit/loans/${l.id}`} className="font-mono text-xs underline">
-                      {l.loan_no}
-                    </Link>{" "}
-                    · {l.product_name} · {formatMoney(l.approved_amount ?? l.amount_requested)}
+            <div className="space-y-4">
+              {loans.map((l) => {
+                const lg = guarantors.filter((g) => g.loan_id === l.id);
+                return (
+                  <div key={l.id} className="rounded-lg border border-zinc-200 text-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-4 border-b border-zinc-100 p-4">
+                      <div>
+                        <p className="font-medium">
+                          <Link href={`/credit/loans/${l.id}`} className="font-mono text-xs underline">
+                            {l.loan_no}
+                          </Link>{" "}
+                          · {l.product_name} · {formatMoney(l.approved_amount ?? l.amount_requested)}
+                        </p>
+                        <p className="text-xs text-zinc-500">
+                          {Number(l.interest_rate)}
+                          {RATE_BASES[l.rate_basis]} · {l.tenor_months} months · repaid{" "}
+                          {REPAYMENT_FREQUENCIES[l.repayment_frequency]?.toLowerCase() ?? l.repayment_frequency}
+                          {l.disbursed_on && <> · paid out {formatDate(l.disbursed_on)}</>}
+                          {l.maturity_date && <> · ends {formatDate(l.maturity_date)}</>}
+                        </p>
+                      </div>
+                      <Badge tone={LOAN_STATUSES[l.status].tone}>{LOAN_STATUSES[l.status].label}</Badge>
+                    </div>
                     {l.status === "active" && (
-                      <span className="block text-xs text-zinc-500">
-                        Owes {formatMoney(Number(l.outstanding_principal) + Number(l.outstanding_interest))}
-                        {l.days_past_due > 0 && <span className="text-red-700"> · {l.days_past_due} days overdue</span>}
-                      </span>
+                      <dl className="grid grid-cols-2 gap-4 border-b border-zinc-100 p-4 sm:grid-cols-4">
+                        <Detail label="Principal owed">{formatMoney(l.outstanding_principal)}</Detail>
+                        <Detail label="Interest owed">{formatMoney(l.outstanding_interest)}</Detail>
+                        <Detail label="Overdue">
+                          <span className={Number(l.overdue_amount) > 0 ? "font-medium text-red-700" : undefined}>
+                            {formatMoney(l.overdue_amount)}
+                            {l.days_past_due > 0 && ` · ${l.days_past_due} days`}
+                          </span>
+                        </Detail>
+                        <Detail label="Next repayment">
+                          {l.next_due_date && `${formatMoney(l.next_due_amount)} on ${formatDate(l.next_due_date)}`}
+                        </Detail>
+                      </dl>
                     )}
+                    <div className="p-4">
+                      <p className="mb-2 text-xs font-medium text-zinc-500">Guarantors</p>
+                      {lg.length === 0 ? (
+                        <p className="text-zinc-500">None</p>
+                      ) : (
+                        <ul className="space-y-1">
+                          {lg.map((g) => (
+                            <li key={g.id} className="flex flex-wrap items-center gap-2">
+                              <span className="font-medium">{g.full_name}</span>
+                              <span className="text-zinc-500">
+                                {[g.relationship, g.occupation, g.phone, g.monthly_income && `earns ${formatMoney(g.monthly_income)} a month`]
+                                  .filter(Boolean)
+                                  .join(" · ")}
+                              </span>
+                              {g.is_member && <Badge tone="blue">Member</Badge>}
+                              {g.confirmed_at ? <Badge tone="green">Confirmed</Badge> : <Badge tone="amber">Not confirmed</Badge>}
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+      )}
+
+      {tab === "money" && (
+        <Card title="Money in and out">
+          <p className="mb-4 text-sm text-zinc-600">
+            Everything Accounts has recorded for this member past draft: savings received, interest paid, liquidation payouts, loan
+            disbursements and repayments.
+          </p>
+          {money.length === 0 ? (
+            <EmptyState>Nothing recorded yet.</EmptyState>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-sm">
+                <thead className="text-xs text-zinc-500">
+                  <tr>
+                    <th className="px-3 py-2 font-medium">Date</th>
+                    <th className="px-3 py-2 font-medium">Reference</th>
+                    <th className="px-3 py-2 font-medium">What</th>
+                    <th className="px-3 py-2 text-right font-medium">In</th>
+                    <th className="px-3 py-2 text-right font-medium">Out</th>
+                    <th className="px-3 py-2 font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {money.map((m) => (
+                    <tr key={m.id} className="border-t border-zinc-100 align-top">
+                      <td className="whitespace-nowrap px-3 py-2">{formatDate(m.txn_date)}</td>
+                      <td className="px-3 py-2">
+                        <span className="font-mono text-xs">{m.txn_no}</span>
+                        {m.reference && <div className="font-mono text-xs text-zinc-500">{m.reference}</div>}
+                      </td>
+                      <td className="px-3 py-2">
+                        {m.type_name}
+                        <div className="text-xs text-zinc-500">
+                          {[
+                            m.plan_name && `${m.plan_name} plan`,
+                            m.loan_no && `Loan ${m.loan_no}`,
+                            m.liquidation_no && `Liquidation ${m.liquidation_no}`,
+                            Number(m.interest_amount) > 0 && `of which interest ${formatMoney(m.interest_amount)}`,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
+                        {m.direction === "receipt" ? formatMoney(m.amount) : ""}
+                      </td>
+                      <td className="whitespace-nowrap px-3 py-2 text-right tabular-nums">
+                        {m.direction === "payment" ? formatMoney(m.amount) : ""}
+                      </td>
+                      <td className="px-3 py-2">
+                        <Badge tone={FINANCE_STATUSES[m.status].tone}>{FINANCE_STATUSES[m.status].label}</Badge>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {tab === "history" && (
+        <Card title="History">
+          <p className="mb-4 text-sm text-zinc-600">
+            Every change to this member&apos;s file, plans, contributions, documents, liquidations
+            {seesLoans ? " and loans" : ""}, newest first.
+          </p>
+          {history.length === 0 ? (
+            <EmptyState>No changes recorded.</EmptyState>
+          ) : (
+            <ol className="divide-y divide-zinc-100 text-sm">
+              {history.map((h, i) => (
+                <li key={`${h.record_id}-${h.occurred_at}-${i}`} className="flex flex-wrap items-baseline justify-between gap-2 py-2">
+                  <span>
+                    <span className="font-medium">{historyLabel(h)}</span>
+                    {h.detail && <span className="text-zinc-500"> · {historyDetail(h.record_type, h.detail)}</span>}
+                    {h.action === "UPDATE" && h.changed_fields && h.changed_fields.length > 0 && !h.status && (
+                      <span className="text-zinc-500"> · changed {h.changed_fields.map((f) => f.replaceAll("_", " ")).join(", ")}</span>
+                    )}
+                    <span className="block text-xs text-zinc-500">by {h.actor_name ?? "the system"}</span>
                   </span>
-                  <Badge tone={LOAN_STATUSES[l.status].tone}>{LOAN_STATUSES[l.status].label}</Badge>
+                  <span className="whitespace-nowrap text-xs text-zinc-500">{formatDateTime(h.occurred_at)}</span>
                 </li>
               ))}
-            </ul>
+            </ol>
           )}
         </Card>
       )}
