@@ -1,6 +1,7 @@
 import { DataTable } from "@/components/data-table";
 import { Card, Input, PageHeader } from "@/components/ui";
 import { requireModule, requirePermission } from "@/lib/auth/session";
+import { reportBranches } from "@/lib/reports/branch-scope";
 import { createClient } from "@/lib/supabase/server";
 import { saveBranchTarget } from "@/modules/administration/actions";
 import { TargetForm } from "@/modules/administration/components/forms";
@@ -20,7 +21,9 @@ export default async function TargetsPage({ searchParams }: { searchParams: Prom
     branchesWith(staff.permissions, "members.read"),
     branchesWith(staff.permissions, "targets.manage"),
   ]);
-  const visible = new Set(branches.map((b) => b.id));
+  // Like the reports, everyone but the Head of Operations sees only their own branch.
+  const own = reportBranches({ basePath: "/administration", permission: "members.read" }, staff, branches);
+  const visible = new Set((own ?? branches).map((b) => b.id));
 
   return (
     <div className="max-w-5xl space-y-6">
