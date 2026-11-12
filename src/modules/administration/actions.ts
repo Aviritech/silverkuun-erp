@@ -6,10 +6,12 @@ import { redirect } from "next/navigation";
 import type { ActionState } from "@/lib/action-state";
 import { requireModule } from "@/lib/auth/session";
 import { friendlyDbError } from "@/lib/db-errors";
+import { formatMoney } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { ALLOWED_UPLOAD_TYPES, MAX_UPLOAD_BYTES } from "./constants";
 import { administrationModule } from "./module";
 import {
+  addMonths,
   amendmentSchema,
   approvalSchema,
   contributionSchema,
@@ -355,9 +357,11 @@ export async function addPlan(
       "contribution_frequency",
       "start_date",
       "maturity_date",
+      "tenure_months",
     ]),
   );
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  const { tenure_months, ...plan } = parsed.data;
 
   const supabase = await createClient();
   const { data: member } = await supabase
@@ -367,10 +371,31 @@ export async function addPlan(
     .maybeSingle();
   if (!member) return { error: "Member not found." };
 
+  // Fixed-tenure plans (Target and Child savings) mature that many months after they start. The database checks the
+  // tenure and minimum amount again.
+  const { data: planType } = await supabase
+    .from("plan_types")
+    .select("tenure_months, min_amount")
+    .eq("code", plan.plan_type)
+    .maybeSingle();
+  if (!planType) return { fieldErrors: { plan_type: "Choose a plan" } };
+  const tenures = planType.tenure_months as number[] | null;
+  if (tenures) {
+    if (!tenure_months || !tenures.includes(tenure_months)) {
+      return { fieldErrors: { tenure_months: `Choose ${tenures.join(", ")} months` } };
+    }
+    plan.maturity_date = addMonths(plan.start_date, tenure_months);
+  } else if (!plan.maturity_date) {
+    return { fieldErrors: { maturity_date: "Enter a maturity date" } };
+  }
+  if (planType.min_amount && plan.contribution_amount < Number(planType.min_amount)) {
+    return { fieldErrors: { contribution_amount: `At least ${formatMoney(planType.min_amount)} for this plan` } };
+  }
+
   const { error } = await supabase
     .from("member_plans")
     .insert({
-      ...parsed.data,
+      ...plan,
       member_id: member.id,
       branch_id: member.branch_id,
     });
