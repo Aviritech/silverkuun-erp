@@ -10,6 +10,7 @@ export const administrationModule: DepartmentModule = {
     { section: "Workspace", label: "Overview", href: "/administration" },
     { section: "Workspace", label: "Approvals", href: "/administration/approvals", permission: ["members.approve", "members.endorse"] },
     { section: "Workspace", label: "Receipts to check", href: "/administration/receipts", permission: "receipts.confirm" },
+    { section: "Workspace", label: "Top ups from Accounts", href: "/administration/top-ups", permission: "members.read" },
     { section: "Workspace", label: "Liquidations", href: "/administration/liquidations", permission: ["liquidations.request", "liquidations.approve"] },
     { section: "Members", label: "Members", href: "/administration/members", permission: "members.read" },
     { section: "Members", label: "Maturities", href: "/administration/reports/maturities", permission: "members.read" },

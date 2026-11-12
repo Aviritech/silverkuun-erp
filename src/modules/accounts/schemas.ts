@@ -173,3 +173,15 @@ export const reconciliationSchema = z.object({
   statement_balance: z.coerce.number("Enter the statement balance").multipleOf(0.01, "Use at most two decimal places"),
   notes: optionalText,
 });
+
+/** A member top up Accounts received and sends to a branch for the officer to log against the member. */
+export const topUpSchema = z.object({
+  branch_id: z.guid("Choose the branch it goes to"),
+  amount: money,
+  paid_on: notFuture,
+  payment_method: z.enum(["bank_transfer", "cash", "pos", "cheque"], "Choose how it was paid"),
+  reference: optionalText,
+  bank_account_id: optionalId,
+  paid_by: z.string().trim().min(2, "Say who paid it, so the branch can find the member"),
+  note: optionalText,
+});

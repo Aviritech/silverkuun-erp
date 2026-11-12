@@ -19,6 +19,7 @@ import {
   mappingSchema,
   postingRuleSchema,
   reasonSchema,
+  topUpSchema,
   reconciliationSchema,
   supplierSchema,
   transactionSchema,
@@ -235,6 +236,41 @@ export async function postContribution(contributionId: string, _prev: ActionStat
   if (submitted.error) return { error: friendlyDbError(submitted.error) };
   revalidatePath("/accounts", "layout");
   return { ok: true };
+}
+
+// ---------------------------------------------------------------------------
+// Member top ups: Accounts records the money and picks the branch; the branch officer logs it for the member.
+// ---------------------------------------------------------------------------
+
+const TOP_UP_FIELDS = ["branch_id", "amount", "paid_on", "payment_method", "reference", "bank_account_id", "paid_by", "note"] as const;
+
+/** Sends a new top up to a branch, or (with an id) sends one the branch returned to the same or another branch. */
+export async function initiateTopUp(id: string | null, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireModule(accountsModule);
+  const parsed = topUpSchema.safeParse(formObject(formData, TOP_UP_FIELDS));
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  const v = parsed.data;
+  return runWorkflow(
+    "initiate_top_up",
+    {
+      p_id: id,
+      p_branch_id: v.branch_id,
+      p_amount: v.amount,
+      p_paid_on: v.paid_on,
+      p_payment_method: v.payment_method,
+      p_reference: v.reference,
+      p_bank_account_id: v.bank_account_id,
+      p_paid_by: v.paid_by,
+      p_note: v.note,
+    },
+    "/accounts/top-ups",
+  );
+}
+
+export async function cancelTopUp(id: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = reasonSchema.safeParse({ reason: formData.get("reason") ?? "" });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  return runWorkflow("cancel_top_up", { p_id: id, p_reason: parsed.data.reason }, "/accounts/top-ups");
 }
 
 // ---------------------------------------------------------------------------

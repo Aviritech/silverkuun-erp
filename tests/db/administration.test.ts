@@ -322,13 +322,15 @@ describe("plans and contributions", () => {
   }
 
   async function record(planId: string, kind: string, amount: number, extra: { reverses?: string; notes?: string } = {}) {
-    return commitAs(OFFICER, () =>
-      db.query<{ id: string }>(
+    return commitAs(OFFICER, async () => {
+      // Top-ups are only created by logging one Accounts sent (see top-ups.test.ts); stand in for that workflow here.
+      if (kind === "top_up") await db.query("select set_config('app.workflow', 'on', true)");
+      return db.query<{ id: string }>(
         `insert into contributions (member_plan_id, member_id, branch_id, kind, amount, paid_on, payment_method, reverses_id, notes)
          values ($1, $2, $3, $4, $5, '2026-02-01', 'bank_transfer', $6, $7) returning id`,
         [planId, "00000000-0000-0000-0000-000000000000", lagos, kind, amount, extra.reverses ?? null, extra.notes ?? null],
-      ),
-    );
+      );
+    });
   }
 
   it("only adds plans to approved members", async () => {

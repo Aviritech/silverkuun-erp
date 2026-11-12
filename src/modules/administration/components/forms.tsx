@@ -1,9 +1,12 @@
 "use client";
 
+import { useState } from "react";
 import { Field, Input, Select, Textarea } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 import { FREQUENCIES, ISSUE_CHANNELS, PAYMENT_METHODS } from "../constants";
 import { InlineForm } from "@/components/inline-form";
+import { formatMoney } from "@/lib/format";
+import type { PlanType } from "../queries";
 
 type Action = (prev: ActionState, formData: FormData) => Promise<ActionState>;
 
@@ -45,61 +48,89 @@ export function ConfirmReceiptForm({ action }: { action: Action }) {
   );
 }
 
-export function PlanForm({ action, planTypes }: { action: Action; planTypes: { code: string; name: string }[] }) {
+export function PlanForm({ action, planTypes }: { action: Action; planTypes: PlanType[] }) {
+  const [code, setCode] = useState("");
+  const type = planTypes.find((p) => p.code === code);
+  const tenures = type?.tenure_months ?? null;
   return (
     <InlineForm action={action} openLabel="Add plan" submitLabel="Add plan" variant="primary">
       {(e) => (
-        <div className="grid gap-3 sm:grid-cols-5">
-          <Field label="Plan" error={e.plan_type}>
-            <Select name="plan_type" required defaultValue="">
-              <option value="">Choose</option>
-              {planTypes.map((p) => (
-                <option key={p.code} value={p.code}>
-                  {p.name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Amount (₦)" error={e.contribution_amount}>
-            <Input name="contribution_amount" type="number" min="0.01" step="0.01" required />
-          </Field>
-          <Field label="How often" error={e.contribution_frequency}>
-            <Select name="contribution_frequency" required defaultValue="monthly">
-              {Object.entries(FREQUENCIES).map(([v, l]) => (
-                <option key={v} value={v}>
-                  {l}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Start date" error={e.start_date}>
-            <Input name="start_date" type="date" defaultValue={today()} required />
-          </Field>
-          <Field label="Maturity date" error={e.maturity_date}>
-            <Input name="maturity_date" type="date" required />
-          </Field>
+        <div className="space-y-2">
+          <div className="grid gap-3 sm:grid-cols-5">
+            <Field label="Plan" error={e.plan_type}>
+              <Select name="plan_type" required value={code} onChange={(ev) => setCode(ev.target.value)}>
+                <option value="">Choose</option>
+                {planTypes.map((p) => (
+                  <option key={p.code} value={p.code}>
+                    {p.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Amount (₦)" error={e.contribution_amount}>
+              <Input
+                name="contribution_amount"
+                type="number"
+                min={type?.min_amount ?? "0.01"}
+                step="0.01"
+                required
+              />
+            </Field>
+            <Field label="How often" error={e.contribution_frequency}>
+              <Select name="contribution_frequency" required defaultValue="monthly">
+                {Object.entries(FREQUENCIES).map(([v, l]) => (
+                  <option key={v} value={v}>
+                    {l}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Start date" error={e.start_date}>
+              <Input name="start_date" type="date" defaultValue={today()} required />
+            </Field>
+            {tenures ? (
+              <Field label="Tenure" error={e.tenure_months}>
+                <Select key={code} name="tenure_months" required defaultValue={tenures.length === 1 ? String(tenures[0]) : ""}>
+                  {tenures.length > 1 && <option value="">Choose</option>}
+                  {tenures.map((m) => (
+                    <option key={m} value={m}>
+                      {m} months
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+            ) : (
+              <Field label="Maturity date" error={e.maturity_date}>
+                <Input name="maturity_date" type="date" required />
+              </Field>
+            )}
+          </div>
+          {type && (type.min_amount || type.dividends_at_maturity || tenures) && (
+            <p className="text-xs text-zinc-500">
+              {[
+                tenures && `Runs for ${tenures.join(", ")} months; matures that long after the start date.`,
+                type.min_amount && `Minimum ${formatMoney(type.min_amount)}.`,
+                type.dividends_at_maturity && "No monthly interest: the savings and all dividends are paid together at maturity.",
+              ]
+                .filter(Boolean)
+                .join(" ")}
+            </p>
+          )}
         </div>
       )}
     </InlineForm>
   );
 }
 
-export function ContributionForm({
-  action,
-  planId,
-  kind,
-}: {
-  action: Action;
-  planId: string;
-  kind: "scheduled" | "top_up";
-}) {
-  const label = kind === "top_up" ? "Record top-up" : "Record contribution";
+/** A scheduled contribution. Top-ups aren't recorded here: they come from Accounts (see the Top ups from Accounts queue). */
+export function ContributionForm({ action, planId }: { action: Action; planId: string }) {
+  const label = "Record contribution";
   return (
-    <InlineForm action={action} openLabel={label} submitLabel={label} variant={kind === "top_up" ? "secondary" : "primary"}>
+    <InlineForm action={action} openLabel={label} submitLabel={label} variant="primary">
       {(e) => (
         <div className="grid gap-3 sm:grid-cols-4">
           <input type="hidden" name="member_plan_id" value={planId} />
-          <input type="hidden" name="kind" value={kind} />
+          <input type="hidden" name="kind" value="scheduled" />
           <Field label="Amount (₦)" error={e.amount}>
             <Input name="amount" type="number" min="0.01" step="0.01" required />
           </Field>

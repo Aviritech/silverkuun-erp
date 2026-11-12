@@ -714,6 +714,79 @@ describe("monthly interest payment schedule", () => {
   });
 });
 
+describe("target and child savings", () => {
+  let saver: string;
+
+  async function openPlan(planType: string, amount: number, start: string, maturity: string) {
+    return commitAs(OFFICER, () =>
+      db.query<{ id: string; interest_rate: string; dividends_at_maturity: boolean }>(
+        `insert into member_plans (member_id, branch_id, plan_type, contribution_amount, contribution_frequency, start_date, maturity_date)
+         values ($1, $2, $3, $4, 'monthly', ${start}, ${maturity}) returning id, interest_rate, dividends_at_maturity`,
+        [saver, lagos, planType, amount],
+      ),
+    );
+  }
+
+  beforeAll(async () => {
+    saver = await approvedMember();
+    await commitAs(HEAD_OPS, () =>
+      db.query(
+        `update members set bank_code = '058', bank_account_no = '0123456789', interest_pay_day = $2,
+           amendment_reason = 'Bank details from the client' where id = $1`,
+        [saver, new Date().getDate()],
+      ),
+    );
+  });
+
+  it("runs target savings for 3, 6 or 12 months only", async () => {
+    await expect(openPlan("target", 10000, "current_date", "(current_date + interval '4 months')::date")).rejects.toThrow(
+      /3, 6, 12 months/,
+    );
+    for (const months of [3, 6, 12]) {
+      const res = await openPlan("target", 10000, "current_date", `(current_date + interval '${months} months')::date`);
+      expect(res.rows[0].dividends_at_maturity).toBe(true);
+    }
+  });
+
+  it("runs child savings for 3 months with at least 200,000 naira", async () => {
+    await expect(openPlan("child", 199999.99, "current_date", "(current_date + interval '3 months')::date")).rejects.toThrow(
+      /at least 200,000\.00/,
+    );
+    await expect(openPlan("child", 200000, "current_date", "(current_date + interval '6 months')::date")).rejects.toThrow(
+      /3 months/,
+    );
+    const res = await openPlan("child", 200000, "current_date", "(current_date + interval '3 months')::date");
+    expect(res.rows[0].dividends_at_maturity).toBe(false);
+  });
+
+  it("keeps target savings off the monthly schedule and builds up its dividends for maturity", async () => {
+    const plan = await openPlan("target", 100000, "current_date - 70", "(current_date - 70 + interval '3 months')::date");
+    const c = await commitAs(OFFICER, () =>
+      db.query<{ id: string }>(
+        `insert into contributions (member_plan_id, member_id, branch_id, kind, amount, paid_on, payment_method)
+         values ($1, $2, $3, 'scheduled', 100000, current_date - 70, 'bank_transfer') returning id`,
+        [plan.rows[0].id, saver, lagos],
+      ),
+    );
+    await commitAs(MANAGER, () => db.query("select verify_contribution($1)", [c.rows[0].id]));
+
+    const schedule = await asUser(db, LAGOS_ACCOUNTANT, (tx) =>
+      tx.query("select * from interest_payment_schedule(current_date) where member_id = $1", [saver]),
+    );
+    expect(schedule.rows).toHaveLength(0);
+
+    // 100,000 at the placeholder 12% a year is 1,000 a month: 2 full months held so far, 3 by maturity, and no more after.
+    const accrued = await asUser(db, OFFICER, (tx) =>
+      tx.query<{ now: string; at_maturity: string; later: string }>(
+        `select plan_accrued_dividends($1) as now, plan_accrued_dividends($1, current_date + 30) as at_maturity,
+                plan_accrued_dividends($1, current_date + 400) as later`,
+        [plan.rows[0].id],
+      ),
+    );
+    expect(accrued.rows[0]).toEqual({ now: "2000.00", at_maturity: "3000.00", later: "3000.00" });
+  });
+});
+
 describe("liquidation of a member's savings", () => {
   let member: string;
   let plan: string;

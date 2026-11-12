@@ -94,13 +94,32 @@ export const planSchema = z
     contribution_amount: money,
     contribution_frequency: z.enum(Object.keys(FREQUENCIES) as [keyof typeof FREQUENCIES], "Choose how often"),
     start_date: isoDate,
-    maturity_date: isoDate,
+    // Plans with fixed tenures (Target and Child savings) send a tenure instead, and the maturity date is worked out.
+    maturity_date: z.preprocess((v) => (v === "" ? undefined : v), isoDate.optional()),
+    tenure_months: z.preprocess(
+      (v) => (v === "" ? undefined : v),
+      z.coerce.number("Choose a tenure").int().positive("Choose a tenure").optional(),
+    ),
   })
-  .refine((v) => v.maturity_date > v.start_date, { path: ["maturity_date"], message: "Maturity must be after the start date" });
+  .refine((v) => v.maturity_date || v.tenure_months, { path: ["maturity_date"], message: "Enter a maturity date" })
+  .refine((v) => !v.maturity_date || v.maturity_date > v.start_date, {
+    path: ["maturity_date"],
+    message: "Maturity must be after the start date",
+  });
+
+/** The date `months` months after an ISO date, kept to the month's last day when it's shorter (as Postgres does). */
+export function addMonths(isoDay: string, months: number): string {
+  const [y, m, d] = isoDay.split("-").map(Number);
+  const target = new Date(Date.UTC(y, m - 1 + months, 1));
+  const lastDay = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth() + 1, 0)).getUTCDate();
+  target.setUTCDate(Math.min(d, lastDay));
+  return target.toISOString().slice(0, 10);
+}
 
 export const contributionSchema = z.object({
   member_plan_id: z.guid(),
-  kind: z.enum(["scheduled", "top_up"]),
+  // Top-ups come from Accounts and are logged from the branch's top up queue, never recorded here.
+  kind: z.enum(["scheduled"], "Top ups come from Accounts"),
   amount: money,
   paid_on: isoDate.refine((d) => d <= new Date().toISOString().slice(0, 10), "Payment date can't be in the future"),
   payment_method: z.enum(Object.keys(PAYMENT_METHODS) as [keyof typeof PAYMENT_METHODS], "Choose how it was paid"),
@@ -132,3 +151,9 @@ export const liquidationSchema = z
     note: z.string().trim().max(1000, "Keep the note under 1,000 characters"),
   })
   .refine((v) => v.bank_code || v.bank_name, { path: ["bank_code"], message: "Choose the bank" });
+
+/** The branch officer logs a top up Accounts sent against one of the member's plans. */
+export const logTopUpSchema = z.object({
+  member_plan_id: z.guid("Choose the member's savings plan"),
+  note: z.string().trim().max(1000, "Keep the note under 1,000 characters"),
+});

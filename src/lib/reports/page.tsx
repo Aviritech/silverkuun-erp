@@ -4,6 +4,7 @@ import { ReportView } from "@/components/report-view";
 import { requirePermission } from "@/lib/auth/session";
 import { listDimensions, listOrg } from "@/lib/org";
 import { createClient } from "@/lib/supabase/server";
+import { limitFiltersToBranches, reportBranches } from "./branch-scope";
 import { parseFilters } from "./filters";
 import { findReport, withLoadedOptions } from "./registry";
 import type { ReportDefinition } from "./types";
@@ -20,18 +21,23 @@ export async function ReportPage({
 }) {
   const found = findReport(reportKey, basePath);
   if (!found) notFound();
-  await requirePermission(found.permission);
+  const staff = await requirePermission(found.permission);
   const supabase = await createClient();
-  const report = await withLoadedOptions(found, supabase);
-  const filters = parseFilters(report, searchParams);
-  const [result, org, dimensions] = await Promise.all([report.run(supabase, filters), listOrg(), listDimensions()]);
+  const [report, org, dimensions] = await Promise.all([withLoadedOptions(found, supabase), listOrg(), listDimensions()]);
+  // Operations reports are limited to the reader's own branch unless they may see every branch.
+  const allowed = reportBranches(report, staff, org.branches);
+  const filters = limitFiltersToBranches(parseFilters(report, searchParams), allowed);
+  const result = filters
+    ? await report.run(supabase, filters)
+    : { columns: [], rows: [], notes: ["Your account has no branch, so there is nothing to show. Ask a System Administrator to set your home branch."] };
   return (
     <ReportView
       report={report}
-      filters={filters}
+      filters={filters ?? parseFilters(report, {})}
       result={result}
-      branches={org.branches}
-      regions={org.regions}
+      branches={allowed ?? org.branches}
+      regions={allowed ? [] : org.regions}
+      ownBranchOnly={allowed !== null}
       departments={dimensions.departments}
       products={dimensions.products}
     />
