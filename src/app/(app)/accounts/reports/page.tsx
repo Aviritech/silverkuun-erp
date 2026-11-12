@@ -46,7 +46,7 @@ export default async function AccountsReportsPage() {
             </thead>
             <tbody>
               {rollup.map((r) => (
-                <tr key={String(r.name)} className={`border-b border-zinc-100 last:border-0 ${r._kind === "total" ? "bg-silver-50 font-semibold" : ""}`}>
+                <tr key={String(r.name)} className={`border-b border-zinc-100 last:border-0 ${r._kind === "total" ? "bg-neutral-50 font-semibold" : ""}`}>
                   <td className="px-5 py-2.5">{String(r.name).replace(/ total$/, "")}</td>
                   {money.map((c) => (
                     <td key={c.key} className="px-5 py-2.5 text-right tabular-nums">

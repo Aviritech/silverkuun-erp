@@ -118,7 +118,7 @@ export default async function GoalsPage({ searchParams }: { searchParams: Promis
                     <td className="px-4 py-2">
                       <div className="flex items-center gap-2">
                         <div className="h-2 w-20 overflow-hidden rounded-full bg-zinc-100">
-                          <div className="h-full bg-ink" style={{ width: `${g.progress}%` }} />
+                          <div className="h-full bg-brand" style={{ width: `${g.progress}%` }} />
                         </div>
                         <span className="tabular-nums">{g.progress}%</span>
                       </div>

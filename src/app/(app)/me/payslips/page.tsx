@@ -18,7 +18,7 @@ export default async function MyPayslipsPage() {
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-left text-sm">
-              <thead className="border-b border-zinc-200 bg-silver-50/60 text-xs uppercase tracking-wide text-zinc-500">
+              <thead className="border-b border-zinc-200 bg-neutral-50/60 text-xs uppercase tracking-wide text-zinc-500">
                 <tr>
                   <th className="px-3 py-2 font-medium">Month</th>
                   <th className="px-3 py-2 text-right font-medium">Gross</th>
@@ -28,7 +28,7 @@ export default async function MyPayslipsPage() {
               </thead>
               <tbody>
                 {payslips.map((p) => (
-                  <tr key={p.id} className="border-b border-zinc-100 last:border-0 hover:bg-silver-50/60">
+                  <tr key={p.id} className="border-b border-zinc-100 last:border-0 hover:bg-neutral-50/60">
                     <td className="px-3 py-2">
                       <Link href={`/me/payslips/${p.id}`} className="font-medium text-ink underline-offset-4 hover:underline">
                         {monthLabel(p.payroll_runs.period)}

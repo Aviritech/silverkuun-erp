@@ -212,7 +212,7 @@ export function FollowUp() {
                 key={i}
                 className={`max-w-xl rounded-lg px-3 py-2 text-sm ${m.from_reporter ? "ml-auto bg-ink text-white" : "bg-zinc-100 text-zinc-900"}`}
               >
-                <p className={`text-xs ${m.from_reporter ? "text-silver-200" : "text-zinc-500"}`}>
+                <p className={`text-xs ${m.from_reporter ? "text-neutral-200" : "text-zinc-500"}`}>
                   {m.from_reporter ? "You" : "Internal Audit"} · {formatDate(m.sent_on)}
                 </p>
                 <p className="mt-0.5 whitespace-pre-wrap">{m.body}</p>

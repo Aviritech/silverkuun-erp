@@ -95,7 +95,7 @@ export default async function EmployeePage({ params }: { params: Promise<{ id: s
           // eslint-disable-next-line @next/next/no-img-element -- a short-lived signed URL from private storage
           <img src={photoUrl} alt="" className="h-20 w-20 rounded-xl object-cover ring-1 ring-zinc-200" />
         ) : (
-          <span className="flex h-20 w-20 items-center justify-center rounded-xl bg-ink text-xl font-semibold text-silver-200">
+          <span className="flex h-20 w-20 items-center justify-center rounded-xl bg-ink text-xl font-semibold text-brand">
             {e.first_name[0]}
             {e.last_name[0]}
           </span>

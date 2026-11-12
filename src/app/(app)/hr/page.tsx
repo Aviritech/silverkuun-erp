@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { AttentionPanel, StatCard, StatGrid, WorkQueues, firstName, greeting, workspaceEyebrow, type IconName, type WorkQueue } from "@/components/dashboard";
 import { ButtonLink, Card, EmptyState, PageHeader } from "@/components/ui";
 import { requireModule } from "@/lib/auth/session";
 import { dbFailure } from "@/lib/db-errors";
@@ -16,13 +17,8 @@ function addDays(days: number) {
   return d.toISOString().slice(0, 10);
 }
 
-function Stat({ label, value, href }: { label: string; value: number; href: string }) {
-  return (
-    <Link href={href} className="rounded-xl border border-zinc-200 bg-white p-4 transition hover:border-silver-300 hover:shadow-sm">
-      <p className="text-xs text-zinc-500">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tabular-nums text-ink">{value.toLocaleString("en-NG")}</p>
-    </Link>
-  );
+function Stat({ label, value, href, icon, hint }: { label: string; value: number; href: string; icon: IconName; hint?: string }) {
+  return <StatCard label={label} value={value.toLocaleString("en-NG")} href={href} icon={icon} hint={hint} />;
 }
 
 export default async function HrOverviewPage() {
@@ -56,6 +52,17 @@ export default async function HrOverviewPage() {
   ]);
   for (const r of [counts, probation, contracts, joiners, leavers]) if (r.error) throw dbFailure(r.error);
 
+  const p = staff.permissions;
+  const head = { count: "exact" as const, head: true };
+  const zero = Promise.resolve({ count: 0, error: null });
+  const [leavePending, runsSubmitted, runsDraft, salariesPending] = await Promise.all([
+    supabase.from("leave_requests").select("id", head).eq("status", "pending"),
+    p.has("payroll.read") ? supabase.from("payroll_runs").select("id", head).eq("status", "submitted") : zero,
+    p.has("payroll.prepare") ? supabase.from("payroll_runs").select("id", head).eq("status", "draft") : zero,
+    p.has("payroll.approve") ? supabase.from("employee_salaries").select("id", head).eq("status", "pending") : zero,
+  ]);
+  for (const r of [leavePending, runsSubmitted, runsDraft, salariesPending]) if (r.error) throw dbFailure(r.error);
+
   // Professional certifications that have lapsed or lapse in the next 60 days, for current staff.
   const certifications = await supabase
     .from("employee_qualifications")
@@ -78,20 +85,34 @@ export default async function HrOverviewPage() {
   );
   type ContractRow = { id: string; contract_type: ContractType; end_date: string; employees: Row };
 
+  const queues: WorkQueue[] = [
+    { label: "Leave requests pending", value: leavePending.count ?? 0, href: "/hr/leave" },
+    p.has("payroll.prepare") && { label: "Payroll runs in draft", value: runsDraft.count ?? 0, href: "/hr/payroll" },
+    p.has("payroll.approve") && { label: "Payroll runs to approve", value: runsSubmitted.count ?? 0, href: "/hr/payroll" },
+    p.has("payroll.approve") && { label: "Salary changes to approve", value: salariesPending.count ?? 0, href: "/hr/payroll" },
+    { label: `Probations ending in ${WATCH_DAYS} days`, value: (probation.data ?? []).length, href: "/hr/employees?status=probation" },
+    { label: `Contracts ending in ${WATCH_DAYS} days`, value: (contracts.data ?? []).length, href: "/hr/employees" },
+  ].filter((q): q is WorkQueue => !!q);
+  const toApprove = p.has("payroll.approve") ? (runsSubmitted.count ?? 0) + (salariesPending.count ?? 0) : 0;
+  const waiting = toApprove + (p.has("hr.approve") ? (leavePending.count ?? 0) : 0);
+
   return (
-    <div className="max-w-5xl space-y-6">
+    <div className="max-w-6xl space-y-6">
       <PageHeader
-        title="HR/Admin"
+        eyebrow={workspaceEyebrow("HR/Admin")}
+        title={`${greeting()}, ${firstName(staff.fullName)}`}
         description="Who works here, and what needs attention in the next 30 days."
         actions={staff.permissions.has("hr.manage") && <ButtonLink href="/hr/employees/new">New employee</ButtonLink>}
       />
 
-      <div className="grid gap-4 sm:grid-cols-4">
-        <Stat label="Current staff" value={current} href="/hr/employees" />
-        <Stat label={EMPLOYEE_STATUSES.probation.label} value={byStatus.get("probation") ?? 0} href="/hr/employees?status=probation" />
-        <Stat label="Joined this month" value={(joiners.data ?? []).length} href="/hr/employees" />
-        <Stat label="Left this month" value={(leavers.data ?? []).length} href="/hr/employees?status=left" />
-      </div>
+      <StatGrid>
+        <Stat label="Current staff" icon="users" value={current} href="/hr/employees" hint="Active and on probation" />
+        <Stat label={EMPLOYEE_STATUSES.probation.label} icon="clock" value={byStatus.get("probation") ?? 0} href="/hr/employees?status=probation" />
+        <Stat label="Joined this month" icon="check" value={(joiners.data ?? []).length} href="/hr/employees" />
+        <Stat label="Left this month" icon="swap" value={(leavers.data ?? []).length} href="/hr/employees?status=left" />
+      </StatGrid>
+
+      <WorkQueues queues={queues} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Card title="Probation ending">
@@ -132,6 +153,15 @@ export default async function HrOverviewPage() {
             </ul>
           )}
         </Card>
+
+        <AttentionPanel
+          count={waiting}
+          title={waiting ? "Items waiting for you" : "Nothing waiting for you"}
+          href={toApprove ? "/hr/payroll" : "/hr/leave"}
+          cta={toApprove ? "Open payroll" : "Open leave"}
+        >
+          {waiting ? "Payroll runs, salary changes or leave requests to approve. Nobody approves their own." : "When payroll or leave needs your approval, it appears here."}
+        </AttentionPanel>
 
         <Card title="Certifications expiring">
           {(certifications.data ?? []).length === 0 ? (

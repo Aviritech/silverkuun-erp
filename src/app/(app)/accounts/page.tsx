@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { AttentionPanel, MoneyChart, ProgressRing, StatCard, StatGrid } from "@/components/dashboard";
+import { AttentionPanel, MoneyChart, ProcessSteps, ProgressRing, StatCard, StatGrid, WorkQueues, firstName, greeting, workspaceEyebrow } from "@/components/dashboard";
 import { Badge, ButtonLink, Card, EmptyState, PageHeader } from "@/components/ui";
 import { requireModule } from "@/lib/auth/session";
 import { dbFailure } from "@/lib/db-errors";
@@ -13,11 +13,6 @@ import { activeLoans, endOfPreviousMonth, ledgerFigures, monthlyMovement } from 
 import { accountsModule } from "@/modules/accounts/module";
 import { listBankAccounts, staffNameLookup } from "@/modules/accounts/queries";
 import { listLiquidations } from "@/modules/administration/queries";
-
-function greeting() {
-  const hour = Number(new Intl.DateTimeFormat("en-GB", { hour: "numeric", hour12: false, timeZone: "Africa/Lagos" }).format(new Date()));
-  return hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
-}
 
 const STEPS = [
   { title: "Capture", text: "Member, amount, date and evidence" },
@@ -109,8 +104,8 @@ export default async function AccountsPage() {
   return (
     <div className="max-w-6xl space-y-6">
       <PageHeader
-        eyebrow={`${new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Africa/Lagos" }).format(new Date())} · Accounts`}
-        title={`${greeting()}, ${staff.fullName.split(/\s+/)[0]}`}
+        eyebrow={workspaceEyebrow("Accounts")}
+        title={`${greeting()}, ${firstName(staff.fullName)}`}
         description={`Figures cover ${scope}.`}
         actions={
           <>
@@ -157,16 +152,7 @@ export default async function AccountsPage() {
         <StatCard label="ROI owed to members" icon="clock" value={formatMoneyShort(now.roiPayable)} hint="ROI payable (2140) after accruals" href="/accounts/roi-accrual" />
       </StatGrid>
 
-      <Card title="Your work">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
-          {queues.map((q) => (
-            <Link key={q.label} href={q.href} className="rounded-lg border border-zinc-100 bg-silver-50 px-4 py-3 transition-colors hover:border-zinc-300">
-              <p className="text-xs text-zinc-600">{q.label}</p>
-              <p className="mt-1 text-xl font-semibold tabular-nums text-ink">{q.value}</p>
-            </Link>
-          ))}
-        </div>
-      </Card>
+      <WorkQueues queues={queues} />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
@@ -180,7 +166,7 @@ export default async function AccountsPage() {
               ? "Approve, pay or post them. Nobody approves their own request."
               : "When someone sends you a request to approve, pay or post, it appears here."}
           </AttentionPanel>
-          <Card title="Bank reconciliation" actions={<Link href="/accounts/bank" className="text-xs font-medium text-ink underline">Open</Link>}>
+          <Card title="Bank reconciliation" actions={<Link href="/accounts/bank" className="text-xs font-medium text-brand-700 underline">Open</Link>}>
             {focusBank && focus && focusTotal > 0 ? (
               <Link href={`/accounts/bank/${focusBank.id}`} className="flex items-center gap-4">
                 <ProgressRing percent={matchedPct} />
@@ -199,7 +185,7 @@ export default async function AccountsPage() {
         </div>
       </div>
 
-      <Card title="Recent activity" actions={<Link href="/accounts/transactions" className="text-xs font-medium text-ink underline">All receipts and payments</Link>}>
+      <Card title="Recent activity" actions={<Link href="/accounts/transactions" className="text-xs font-medium text-brand-700 underline">All receipts and payments</Link>}>
         {recentRows.length === 0 ? (
           <EmptyState>No receipts or payments yet.</EmptyState>
         ) : (
@@ -247,21 +233,7 @@ export default async function AccountsPage() {
         )}
       </Card>
 
-      <section>
-        <div className="mb-3 flex items-baseline justify-between">
-          <h2 className="text-[15px] font-semibold text-ink">How a transaction moves through the ERP</h2>
-          <p className="text-xs text-zinc-500">Every step is in the audit trail</p>
-        </div>
-        <ol className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
-          {STEPS.map((s, i) => (
-            <li key={s.title} className="rounded-xl border border-zinc-200/80 bg-white p-4">
-              <p className="text-[11px] font-semibold tracking-[0.14em] text-silver-500">{String(i + 1).padStart(2, "0")}</p>
-              <p className="mt-1.5 text-sm font-semibold text-ink">{s.title}</p>
-              <p className="mt-1 text-xs leading-relaxed text-zinc-500">{s.text}</p>
-            </li>
-          ))}
-        </ol>
-      </section>
+      <ProcessSteps title="How a transaction moves through the ERP" note="Every step is in the audit trail" steps={STEPS} />
     </div>
   );
 }

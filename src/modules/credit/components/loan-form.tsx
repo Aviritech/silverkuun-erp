@@ -253,7 +253,7 @@ export function LoanForm({
       </fieldset>
 
       {schedule.length > 0 && (
-        <div className="rounded-xl border border-zinc-200 bg-silver-50/60 p-4 text-sm">
+        <div className="rounded-xl border border-zinc-200 bg-neutral-50/60 p-4 text-sm">
           <p className="font-medium text-ink">Estimated repayments</p>
           <dl className="mt-2 grid gap-3 sm:grid-cols-4">
             <div>

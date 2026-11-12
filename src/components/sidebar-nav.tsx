@@ -29,7 +29,7 @@ export function SidebarNav({ modules }: { modules: NavModule[] }) {
         type="button"
         onClick={() => setOpen((o) => !o)}
         aria-expanded={open}
-        className="absolute right-4 top-4 rounded-md border border-ink-600 px-3 py-1.5 text-xs font-medium text-silver-200 md:hidden"
+        className="absolute right-4 top-4 rounded-md border border-ink-600 px-3 py-1.5 text-xs font-medium text-neutral-200 md:hidden"
       >
         {open ? "Close" : "Menu"}
       </button>
@@ -38,14 +38,14 @@ export function SidebarNav({ modules }: { modules: NavModule[] }) {
           href="/"
           onClick={() => setOpen(false)}
           className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm transition-colors ${
-            pathname === "/" ? "bg-ink-700 font-medium text-white" : "text-silver-300 hover:bg-ink-800 hover:text-white"
+            pathname === "/" ? "bg-ink-700 font-medium text-brand" : "text-neutral-300 hover:bg-ink-800 hover:text-white"
           }`}
         >
           Home
         </Link>
         {modules.map((m) => (
           <div key={m.department}>
-            <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-silver-500">{m.name}</p>
+            <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.14em] text-neutral-500">{m.name}</p>
             <ul className="mt-2 space-y-0.5">
               {m.nav.map((item, i) => {
                 const isActive = item.href === active;
@@ -53,7 +53,7 @@ export function SidebarNav({ modules }: { modules: NavModule[] }) {
                 return (
                   <li key={item.href}>
                     {heading && (
-                      <p className={`px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.16em] text-silver-500/80 ${i > 0 ? "pt-3" : ""}`}>
+                      <p className={`px-3 pb-1 text-[10px] font-medium uppercase tracking-[0.16em] text-neutral-500/80 ${i > 0 ? "pt-3" : ""}`}>
                         {heading}
                       </p>
                     )}
@@ -63,8 +63,8 @@ export function SidebarNav({ modules }: { modules: NavModule[] }) {
                       aria-current={isActive ? "page" : undefined}
                       className={`relative block rounded-lg px-3 py-2 text-sm transition-colors ${
                         isActive
-                          ? "bg-ink-700 font-medium text-white before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-silver-300"
-                          : "text-silver-300 hover:bg-ink-800 hover:text-white"
+                          ? "bg-ink-700 font-medium text-brand before:absolute before:inset-y-2 before:left-0 before:w-0.5 before:rounded-full before:bg-brand"
+                          : "text-neutral-300 hover:bg-ink-800 hover:text-white"
                       }`}
                     >
                       {item.label}

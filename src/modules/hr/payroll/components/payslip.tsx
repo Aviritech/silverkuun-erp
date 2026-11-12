@@ -107,7 +107,7 @@ export function Payslip({ slip }: { slip: PayslipData }) {
         </section>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg bg-silver-50 px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-4 rounded-lg bg-neutral-50 px-4 py-3">
         <span className="text-sm font-medium">Net pay</span>
         <span className="text-xl font-semibold tabular-nums text-ink">{formatMoney(l.net)}</span>
       </div>

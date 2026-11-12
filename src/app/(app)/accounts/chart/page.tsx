@@ -66,7 +66,7 @@ export default async function ChartOfAccountsPage() {
                 </thead>
                 <tbody>
                   {list.map((a) => (
-                    <tr key={a.code} className={`border-b border-zinc-100 last:border-0 ${a.is_group ? "bg-silver-50 font-medium" : "hover:bg-zinc-50"}`}>
+                    <tr key={a.code} className={`border-b border-zinc-100 last:border-0 ${a.is_group ? "bg-neutral-50 font-medium" : "hover:bg-zinc-50"}`}>
                       <td className="px-5 py-2 font-mono text-xs">{a.code}</td>
                       <td className="px-5 py-2" style={{ paddingLeft: `${1.25 + Math.max(0, depth(a) - 1) * 1}rem` }}>
                         {a.is_group ? (

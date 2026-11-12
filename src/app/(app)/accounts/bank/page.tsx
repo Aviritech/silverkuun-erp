@@ -119,8 +119,8 @@ function MatchBar({ total, unmatched }: { total: number; unmatched: number }) {
   const pct = Math.round(((total - unmatched) / total) * 100);
   return (
     <div className="flex items-center gap-2">
-      <div className="h-1.5 w-20 overflow-hidden rounded-full bg-silver-100">
-        <div className="h-full rounded-full bg-ink" style={{ width: `${pct}%` }} />
+      <div className="h-1.5 w-20 overflow-hidden rounded-full bg-neutral-100">
+        <div className="h-full rounded-full bg-brand" style={{ width: `${pct}%` }} />
       </div>
       <span className="text-xs tabular-nums text-zinc-600">{pct}%</span>
     </div>

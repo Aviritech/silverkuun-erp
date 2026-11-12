@@ -91,7 +91,7 @@ export default async function PaymentsAwaitingAuditPage() {
                       {workedOnIt ? (
                         <span className="text-xs text-zinc-500">Another auditor</span>
                       ) : (
-                        <Link href={`/accounts/transactions/${t.id}`} className="rounded-md bg-ink px-2.5 py-1 text-xs font-medium text-white">
+                        <Link href={`/accounts/transactions/${t.id}`} className="rounded-md bg-brand px-2.5 py-1 text-xs font-medium text-ink hover:bg-brand-300">
                           Review
                         </Link>
                       )}

@@ -263,7 +263,7 @@ export default async function MemberPage({
                     i === stepIndex
                       ? "bg-ink text-white ring-ink"
                       : i < stepIndex
-                        ? "bg-silver-50 text-zinc-700 ring-zinc-200"
+                        ? "bg-neutral-50 text-zinc-700 ring-zinc-200"
                         : "bg-white text-zinc-500 ring-zinc-200"
                   }`}
                 >

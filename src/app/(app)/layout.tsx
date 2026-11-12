@@ -43,7 +43,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             </div>
             <span
               aria-hidden="true"
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-xs font-semibold tracking-wide text-silver-200 ring-2 ring-silver-200"
+              className="flex h-9 w-9 items-center justify-center rounded-full bg-ink text-xs font-semibold tracking-wide text-brand ring-2 ring-brand"
             >
               {initials(staff.fullName)}
             </span>

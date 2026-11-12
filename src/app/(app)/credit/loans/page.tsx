@@ -60,7 +60,7 @@ export default async function LoansPage({ searchParams }: { searchParams: Promis
           <EmptyState>No loans match.</EmptyState>
         ) : (
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-zinc-200 bg-silver-50/60 text-xs uppercase tracking-wide text-zinc-500">
+            <thead className="border-b border-zinc-200 bg-neutral-50/60 text-xs uppercase tracking-wide text-zinc-500">
               <tr>
                 <th className="px-4 py-2 font-medium">Loan</th>
                 <th className="px-4 py-2 font-medium">Customer</th>
@@ -74,7 +74,7 @@ export default async function LoansPage({ searchParams }: { searchParams: Promis
             </thead>
             <tbody>
               {loans.map((l) => (
-                <tr key={l.id} className="border-b border-zinc-100 last:border-0 hover:bg-silver-50/60">
+                <tr key={l.id} className="border-b border-zinc-100 last:border-0 hover:bg-neutral-50/60">
                   <td className="px-4 py-2">
                     <Link href={`/credit/loans/${l.id}`} className="font-mono text-xs font-medium text-ink hover:underline">
                       {l.loan_no}
