@@ -19,6 +19,7 @@ import {
   fieldErrors,
   issueSchema,
   liquidationSchema,
+  logTopUpSchema,
   marketerReviewSchema,
   memberSchema,
   planSchema,
@@ -625,4 +626,33 @@ export async function cancelLiquidation(liquidationId: string, _prev: ActionStat
   const { error } = await supabase.rpc("cancel_liquidation", { p_id: liquidationId, p_reason: parsed.data.reason });
   if (error) return { error: friendlyDbError(error) };
   return liquidationDone();
+}
+
+// ---------------------------------------------------------------------------
+// Top ups from Accounts: the branch logs each one against the member's plan, or sends it back.
+// ---------------------------------------------------------------------------
+
+export async function logTopUp(topUpId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireModule(administrationModule);
+  const parsed = logTopUpSchema.safeParse({ member_plan_id: formData.get("member_plan_id") ?? "", note: formData.get("note") ?? "" });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .rpc("log_top_up", { p_id: topUpId, p_plan_id: parsed.data.member_plan_id, p_note: parsed.data.note })
+    .single<{ member_id: string }>();
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/administration", "layout");
+  revalidatePath(memberPath(data.member_id));
+  return { ok: true };
+}
+
+export async function returnTopUp(topUpId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireModule(administrationModule);
+  const parsed = returnSchema.safeParse({ reason: formData.get("reason") ?? "" });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("return_top_up", { p_id: topUpId, p_reason: parsed.data.reason });
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/administration", "layout");
+  return { ok: true };
 }

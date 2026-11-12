@@ -141,13 +141,15 @@ async function plan(memberId: string, startMonthsAgo: number, amount = 1000): Pr
 
 async function contribute(planId: string, kind: "scheduled" | "top_up", amount: number) {
   return (
-    await commitAs(OFFICER, () =>
-      db.query<{ id: string }>(
+    await commitAs(OFFICER, async () => {
+      // Top-ups are only created by logging one Accounts sent (see top-ups.test.ts); stand in for that workflow here.
+      if (kind === "top_up") await db.query("select set_config('app.workflow', 'on', true)");
+      return db.query<{ id: string }>(
         `insert into contributions (member_plan_id, member_id, branch_id, kind, amount, paid_on, payment_method)
          select id, member_id, branch_id, $2, $3, current_date, 'bank_transfer' from member_plans where id = $1 returning id`,
         [planId, kind, amount],
-      ),
-    )
+      );
+    })
   ).rows[0].id;
 }
 

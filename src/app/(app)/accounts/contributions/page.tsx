@@ -83,6 +83,14 @@ export default async function SavingsPayInsPage() {
     lines = lineRes.data.map((l) => ({ ...l, amount: Number(l.amount) }));
     receipts = receiptRes.data.filter((r) => r.member_id).map((r) => ({ ...r, member_id: r.member_id!, amount: Number(r.amount) }));
   }
+  // Top ups Accounts sent to the branch: show their number, and default to the account Accounts said it went into.
+  const topUps = new Map<string, { top_up_no: string; bank_account_id: string | null }>();
+  const topUpIds = list.filter((c) => c.kind === "top_up").map((c) => c.id);
+  if (topUpIds.length) {
+    const res = await supabase.from("top_up_requests").select("contribution_id, top_up_no, bank_account_id").in("contribution_id", topUpIds);
+    if (res.error) throw dbFailure(res.error);
+    for (const r of res.data) if (r.contribution_id) topUps.set(r.contribution_id, r);
+  }
   const checks = checkPayIns(
     list.map((c) => ({ ...c, amount: Number(c.amount) })),
     lines,
@@ -140,8 +148,10 @@ export default async function SavingsPayInsPage() {
                 {list.map((c) => {
                   const check = checks.get(c.id)!;
                   const choices = banks.filter((b) => b.is_active && b.branch_id === c.branch_id);
+                  const topUp = topUps.get(c.id);
                   const preferred =
-                    (check.line && choices.find((b) => b.id === check.line!.bank_account_id)) ??
+                    (topUp?.bank_account_id && choices.find((b) => b.id === topUp.bank_account_id)) ||
+                    (check.line && choices.find((b) => b.id === check.line!.bank_account_id)) ||
                     choices.find((b) => (c.payment_method === "cash" ? b.kind === "cash" : b.kind === "bank"));
                   return (
                     <tr key={c.id} className="border-b border-zinc-100 align-top last:border-0">
@@ -149,6 +159,7 @@ export default async function SavingsPayInsPage() {
                         {c.member_name}
                         <span className="block text-xs text-zinc-500">
                           {c.membership_no} · {CONTRIBUTION_KINDS[c.kind]}
+                          {topUp && <span className="font-mono"> · {topUp.top_up_no} from Accounts</span>}
                         </span>
                       </td>
                       <td className="px-5 py-3">{branchName.get(c.branch_id)}</td>
