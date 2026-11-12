@@ -5,6 +5,7 @@ import { reportToXlsx } from "@/lib/files/xlsx";
 import { formatDateTime } from "@/lib/format";
 import { listDimensions, listOrg } from "@/lib/org";
 import { toCsv } from "@/lib/reports/csv";
+import { limitFiltersToBranches, reportBranches } from "@/lib/reports/branch-scope";
 import { parseFilters } from "@/lib/reports/filters";
 import { findReport, withLoadedOptions } from "@/lib/reports/registry";
 import { describeScope } from "@/lib/reports/scope";
@@ -28,9 +29,11 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   if (!(format in FORMATS)) return new NextResponse("Unknown format", { status: 400 });
 
   const supabase = await createClient();
-  const report = await withLoadedOptions(found, supabase);
-  const filters = parseFilters(report, Object.fromEntries(search));
-  const [result, org, dimensions] = await Promise.all([report.run(supabase, filters), listOrg(), listDimensions()]);
+  const [report, org, dimensions] = await Promise.all([withLoadedOptions(found, supabase), listOrg(), listDimensions()]);
+  // The same branch limit as the report page, so a download can't reach other branches either.
+  const filters = limitFiltersToBranches(parseFilters(report, Object.fromEntries(search)), reportBranches(report, staff, org.branches));
+  if (!filters) return new NextResponse("Not found", { status: 404 });
+  const result = await report.run(supabase, filters);
   const scope = describeScope(report, filters, { ...org, ...dimensions });
   const name = `${report.key}-${report.dates === "period" || report.dates === "range" ? `${filters.from}-to-${filters.to}` : filters.to}.${format}`;
 

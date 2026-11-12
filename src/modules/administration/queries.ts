@@ -267,3 +267,53 @@ export async function listLiquidations(statuses?: string[]): Promise<Liquidation
   if (error) throw dbFailure(error);
   return data as Liquidation[];
 }
+
+/** A receipt or payment Accounts recorded for a member (from member_money_history; needs members.full_view). */
+export type MemberMoneyRow = {
+  id: string;
+  txn_no: string;
+  direction: "receipt" | "payment";
+  transaction_type: string;
+  type_name: string;
+  status: "draft" | "submitted" | "returned" | "rejected" | "approved" | "posted" | "reversed";
+  txn_date: string;
+  amount: string;
+  interest_amount: string;
+  reference: string | null;
+  description: string;
+  member_plan_id: string | null;
+  plan_name: string | null;
+  loan_id: string | null;
+  loan_no: string | null;
+  liquidation_id: string | null;
+  liquidation_no: string | null;
+  paid_at: string | null;
+  posted_at: string | null;
+};
+
+export async function getMemberMoney(memberId: string): Promise<MemberMoneyRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("member_money_history", { p_member_id: memberId });
+  if (error) throw dbFailure(error);
+  return (data ?? []) as MemberMoneyRow[];
+}
+
+/** One change to the member's records, newest first (from member_history; needs members.full_view). */
+export type MemberHistoryRow = {
+  occurred_at: string;
+  actor_id: string | null;
+  actor_name: string | null;
+  record_type: string;
+  record_id: string;
+  action: "INSERT" | "UPDATE" | "DELETE";
+  changed_fields: string[] | null;
+  status: string | null;
+  detail: string | null;
+};
+
+export async function getMemberHistory(memberId: string): Promise<MemberHistoryRow[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("member_history", { p_member_id: memberId });
+  if (error) throw dbFailure(error);
+  return (data ?? []) as MemberHistoryRow[];
+}

@@ -3,15 +3,21 @@ import { PageHeader } from "@/components/ui";
 import { requireModule, requirePermission } from "@/lib/auth/session";
 import { administrationModule } from "@/modules/administration/module";
 import { administrationReports } from "@/modules/administration/reports";
+import { ALL_BRANCHES_PERMISSION } from "@/lib/reports/branch-scope";
 
 export default async function AdministrationReportsPage() {
   await requireModule(administrationModule);
-  await requirePermission("members.read");
+  const staff = await requirePermission("members.read");
+  const allBranches = staff.permissions.has(ALL_BRANCHES_PERMISSION);
   return (
     <div className="max-w-4xl">
       <PageHeader
         title="Operations reports"
-        description="Filter by branch and region, then download for Excel or as a PDF."
+        description={
+          allBranches
+            ? "Filter by branch and region, then download for Excel or as a PDF."
+            : "Reports for your own branch. Download them for Excel or as a PDF."
+        }
       />
       <div className="grid gap-4 sm:grid-cols-2">
         {administrationReports.map((r) => (

@@ -15,6 +15,7 @@ export function ReportView({
   regions,
   departments,
   products,
+  ownBranchOnly = false,
 }: {
   report: ReportDefinition;
   filters: ReportFilters;
@@ -23,6 +24,8 @@ export function ReportView({
   regions: RegionRef[];
   departments: CodeRef[];
   products: CodeRef[];
+  /** The reader may only see the branches listed, so there is no region or "All branches" choice. */
+  ownBranchOnly?: boolean;
 }) {
   const scope = describeScope(report, filters, { branches, regions, departments, products });
   const download = (format: string) => `/reports/${report.key}/export?${filtersToQuery(filters)}&format=${format}`;
@@ -83,7 +86,19 @@ export function ReportView({
             <Input type="date" name="to" defaultValue={filters.to} />
           </label>
         )}
-        {report.branchFilter && (
+        {report.branchFilter && ownBranchOnly && branches.length > 1 && (
+          <label className="w-44 text-sm">
+            Branch
+            <Select name="branch" defaultValue={filters.branch ?? ""}>
+              {branches.map((b) => (
+                <option key={b.id} value={b.id}>
+                  {b.name}
+                </option>
+              ))}
+            </Select>
+          </label>
+        )}
+        {report.branchFilter && !ownBranchOnly && (
           <>
             <label className="w-44 text-sm">
               Region
