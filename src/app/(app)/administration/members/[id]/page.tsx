@@ -22,6 +22,9 @@ import {
 } from "@/modules/administration/actions";
 import { ActionButton } from "@/components/action-button";
 import { DocumentUpload } from "@/modules/administration/components/document-upload";
+import { signMemberDocument } from "@/modules/signatures/actions";
+import { ESignForm } from "@/modules/signatures/components/e-sign-form";
+import { SignatureList } from "@/modules/signatures/components/signature-list";
 import { ApprovalForm } from "@/modules/administration/components/approval-form";
 import {
   ContributionForm,
@@ -42,6 +45,7 @@ import {
   OFFICER_EDITABLE,
   PAYMENT_METHODS,
   REQUIRED_DOCUMENTS,
+  type DocumentType,
 } from "@/modules/administration/constants";
 import { administrationModule } from "@/modules/administration/module";
 import {
@@ -99,6 +103,9 @@ const STEPS = [
   { label: "Branch Manager approves", statuses: ["pending_approval"] },
 ] as const;
 
+/** Documents that carry signatures, so can be signed electronically as well as on paper. */
+const SIGNABLE_DOCUMENTS: DocumentType[] = ["kyc_form", "signed_agreement_letter", "maturity_letter", "other"];
+
 export default async function MemberPage({
   params,
   searchParams,
@@ -111,12 +118,15 @@ export default async function MemberPage({
   const { tab: tabParam } = await searchParams;
   const bundle = await getMemberBundle(id);
   if (!bundle) notFound();
-  const { member, documents, plans, totals, progress, contributions, planTypes, accruedDividends, staffName } = bundle;
+  const { member, documents, documentSignatures, plans, totals, progress, contributions, planTypes, accruedDividends, staffName } = bundle;
 
   const branch = (await listBranches()).find((b) => b.id === member.branch_id)!;
   const can = (permission: string) => staff.permissions.hasForBranch(permission, branch);
   const editable = OFFICER_EDITABLE.includes(member.status);
   const canManage = can("members.manage");
+  // The officer (or the Branch Manager, countersigning) can e-sign documents that carry signatures.
+  const canSignDocuments = canManage || can("members.approve");
+  const memberName = [member.first_name, member.middle_name, member.last_name].filter(Boolean).join(" ");
   const canEdit = (editable && canManage) || (member.status === "approved" && can("members.amend"));
   const isPreparer = [member.created_by, member.submitted_by, member.sent_to_marketer_by].includes(staff.id);
   const isReviewingMarketer = member.marketer_id === staff.id;
@@ -442,8 +452,8 @@ export default async function MemberPage({
             ) : (
               <ul className="mb-4 divide-y divide-zinc-100">
                 {documents.map((d) => (
-                  <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-                    <div>
+                  <li key={d.id} className="flex flex-wrap items-start justify-between gap-2 py-2 text-sm">
+                    <div className="min-w-0 flex-1">
                       <span className="font-medium">{DOCUMENT_TYPES[d.document_type]}</span>
                       <span className="ml-2 text-zinc-500">
                         {d.file_name} · {formatDate(d.uploaded_at)}
@@ -458,6 +468,17 @@ export default async function MemberPage({
                       ) : (
                         ISSUED_DOCUMENT_TYPES.includes(d.document_type) &&
                         member.status === "approved" && <div className="text-xs text-amber-700">Not issued yet</div>
+                      )}
+                      <SignatureList signatures={documentSignatures.get(d.id) ?? []} staffName={staffName} />
+                      {canSignDocuments && SIGNABLE_DOCUMENTS.includes(d.document_type) && (
+                        <div className="mt-2">
+                          <ESignForm
+                            action={signMemberDocument.bind(null, member.id, d.id)}
+                            roles={["member", "witness", "staff"]}
+                            names={{ member: memberName }}
+                            what={`the ${DOCUMENT_TYPES[d.document_type].replace(/^Signed /, "").toLowerCase()}`}
+                          />
+                        </div>
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
@@ -481,6 +502,12 @@ export default async function MemberPage({
                   </li>
                 ))}
               </ul>
+            )}
+            {canManage && (editable || member.status === "approved") && (
+              <p className="mb-2 text-xs text-zinc-500">
+                Signed on paper? Upload the signed scan. To sign electronically instead, upload the unsigned document, then use
+                &ldquo;Sign electronically&rdquo; on it.
+              </p>
             )}
             {canManage && (editable || member.status === "approved") && (
               <DocumentUpload

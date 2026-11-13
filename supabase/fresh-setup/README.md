@@ -4,7 +4,7 @@ Everything a brand-new, empty Supabase project needs to run the Silverkuun ERP, 
 
 | File | What it does |
 | --- | --- |
-| `01-schema.sql` | The whole database: all 24 migrations in order (tables, types, functions, triggers, RLS policies, roles and permissions, storage buckets) and the reference data (departments, roles, plan types and rates, loan products, CBN banks, chart of accounts, posting rules, leave types, job titles). No people or branches. |
+| `01-schema.sql` | The whole database: all 25 migrations in order (tables, types, functions, triggers, RLS policies, roles and permissions, storage buckets) and the reference data (departments, roles, plan types and rates, loan products, CBN banks, chart of accounts, posting rules, leave types, job titles). No people or branches. |
 | `02-seed-organisation.sql` | 3 regions, 10 branches, a bank and a cash account per branch, and 81 test logins: every role, and every branch-level role in every branch. |
 | `03-seed-demo-data.sql` | 16 members across all branches and dummy records in every module, created through the real workflow functions. |
 | `build-schema.py` | Rebuilds `01-schema.sql` from `supabase/migrations`. Run it after adding a migration. |
@@ -112,6 +112,6 @@ Plan interest rates (Silver 10%, Gold 12%, Platinum 15%, Target 12%, Child 10%),
 
 On an empty database set up like a new Supabase project (Supabase's own role and extension setup, the Supabase Auth schema, and the storage tables):
 
-- `01-schema.sql` runs cleanly in one transaction, and the result is identical (`pg_dump --schema-only`) to applying the 24 migrations one by one.
+- `01-schema.sql` runs cleanly in one transaction, and the result is identical (`pg_dump --schema-only`) to applying the 25 migrations one by one.
 - `02` and `03` run cleanly after it, and every seeded password checks out against its stored hash.
 - Row-level security scopes the seeded data as expected: the Utako officer sees 1 member, the Ikeja Branch Manager 4, the Lagos marketer 7, the Head of Operations all 16; the Port Harcourt accountant sees 3 transactions and the all-branch payments desk 13.
