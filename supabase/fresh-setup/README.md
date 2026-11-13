@@ -4,7 +4,7 @@ Everything a brand-new, empty Supabase project needs to run the Silverkuun ERP, 
 
 | File | What it does |
 | --- | --- |
-| `01-schema.sql` | The whole database: all 23 migrations in order (tables, types, functions, triggers, RLS policies, roles and permissions, storage buckets) and the reference data (departments, roles, plan types and rates, loan products, CBN banks, chart of accounts, posting rules, leave types, job titles). No people or branches. |
+| `01-schema.sql` | The whole database: all 24 migrations in order (tables, types, functions, triggers, RLS policies, roles and permissions, storage buckets) and the reference data (departments, roles, plan types and rates, loan products, CBN banks, chart of accounts, posting rules, leave types, job titles). No people or branches. |
 | `02-seed-organisation.sql` | 3 regions, 10 branches, a bank and a cash account per branch, and 43 test logins covering all 17 roles. |
 | `03-seed-demo-data.sql` | 16 members across all branches and dummy records in every module, created through the real workflow functions. |
 | `build-schema.py` | Rebuilds `01-schema.sql` from `supabase/migrations`. Run it after adding a migration. |
@@ -94,18 +94,18 @@ The logins are inserted straight into Supabase Auth (`auth.users` and `auth.iden
 | Payments | Bookkeeping fees wait for approval (Mabushi Main); stationery waits for Internal Audit (Ikeja); cleaning waits to be paid (Utako); plumbing was sent back by the payments desk (Peter Odili); rent and internet are paid. | controller, auditor, payments |
 | Liquidations | Zainab's Child savings waits for the Ikoyi Branch Manager; Ebi's was sent back; Segun's is approved for Accounts; Ifeoma's payout waits for the Financial Controller; Ibrahim's Target savings is paid. | manager.ikoyi, officer.abaroad, accountant.lagos, controller |
 | Accounting | Opening balances posted for Mabushi Main, Ikeja and Aba Road; an Ikeja bank statement to reconcile; a supplier bill; a posting-rule change waiting for the Financial Controller; this month's branch targets. | accountant.lagos, controller, head.ops |
-| Loans | One of each stage: draft, submitted, appraised, approved by Credit (waiting for the Head of Business), approved (waiting for payout), active and on time, active and late, more than 30 days behind, and repaid. | credit.lagos, analyst, head.credit, head.business, accountant.abuja |
+| Loans | One of each stage: draft, submitted, appraised, approved by Credit (waiting for the Head of Business), approved (waiting for payout), active and on time, active and late (Ada, 14 days, running a daily penalty), more than 30 days behind (Chinedu, with a restructure the Head of Credit asked for, waiting for the Head of Business), and repaid (Ada's salary advance, which paid a late penalty). Every application has a landmark. The PAR card and report, and the repayments-due report, have results. | credit.lagos, analyst, head.credit, head.business, accountant.abuja |
 | HR | 8 employees (6 linked to logins), salaries, last month's payroll, leave, a performance review, training and commission. | head.hr, hr.lagos, payroll, manager.ikeja |
 | Internal Audit | An anonymous whistleblowing report, and records aged so the exception checks show results. | auditor |
 
 Seeded documents are placeholder rows: no file sits behind them, so their download links won't open anything. Files you upload while testing work normally.
 
-Plan interest rates (Silver 10%, Gold 12%, Platinum 15%, Target 12%, Child 10%) and the interest formula are still placeholders until Kuun confirms them.
+Plan interest rates (Silver 10%, Gold 12%, Platinum 15%, Target 12%, Child 10%), the interest formula and the late repayment penalty (0.1% a day on every loan product) are still placeholders until Kuun confirms them.
 
 ## How this was checked
 
 On an empty database set up like a new Supabase project (Supabase's own role and extension setup, the Supabase Auth schema, and the storage tables):
 
-- `01-schema.sql` runs cleanly in one transaction, and the result is identical (`pg_dump --schema-only`) to applying the 23 migrations one by one.
+- `01-schema.sql` runs cleanly in one transaction, and the result is identical (`pg_dump --schema-only`) to applying the 24 migrations one by one.
 - `02` and `03` run cleanly after it, and every seeded password checks out against its stored hash.
 - Row-level security scopes the seeded data as expected: the Utako officer sees 1 member, the Ikeja Branch Manager 4, the Lagos marketer 7, the Head of Operations all 16; the Port Harcourt accountant sees 3 transactions and the all-branch payments desk 13.

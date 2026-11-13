@@ -15,7 +15,8 @@
 --                the payments desk); opening balances; a bank statement to reconcile; supplier bill; posting rule.
 --   Liquidations waiting for the Branch Manager, sent back, approved for Accounts, payout raised, and paid.
 --   Credit       loans in draft, submitted, appraised, approved by Credit, approved for payout, active (on time,
---                late, 30+ days behind) and repaid.
+--                late with a daily penalty, 30+ days behind with a restructure waiting for the Head of Business) and
+--                repaid (with a late penalty paid).
 --   HR           employees, salaries, last month's payroll, leave, a performance review, training, commission.
 --   Audit        an anonymous whistleblowing report and records aged to trip the exception checks.
 
@@ -437,9 +438,11 @@ create function pg_temp.new_loan(p_id uuid, p_member uuid, p_product text, p_amo
   p_category text, p_purpose text) returns void language plpgsql as $$
 begin
   perform pg_temp.as_role('credit_officer', (select branch_id from public.members where id = p_member));
-  insert into public.loans (id, branch_id, member_id, product_code, phone, address, customer_category, employer_name, occupation,
+  insert into public.loans (id, branch_id, member_id, product_code, phone, address, address_landmark, customer_category, employer_name, occupation,
     monthly_income, amount_requested, purpose, tenor_months, repayment_frequency, interest_rate, rate_basis, interest_method, repayment_mode)
-  select p_id, m.branch_id, m.id, p_product, m.phone, m.address, p_category,
+  select p_id, m.branch_id, m.id, p_product, m.phone, m.address,
+         (array['Opposite First Bank', 'Behind the central market', 'Beside the filling station', 'Near the police post'])[1 + abs(hashtext(p_id::text)) % 4],
+         p_category,
          case when p_category = 'salary_earner' then 'Federal Ministry of Education' else m.last_name || ' Enterprises' end,
          case when p_category = 'salary_earner' then 'Teacher' else 'Trader' end,
          case when p_category = 'salary_earner' then 420000 else 900000 end,
@@ -503,7 +506,9 @@ begin
   insert into public.finance_transactions (id, direction, transaction_type, txn_date, amount, bank_account_id, member_id, loan_id,
     reference, description, branch_id)
   select p_txn, 'receipt', 'loan_repayment', current_date - p_days_ago,
-         coalesce(p_amount, (select b.outstanding_principal + b.outstanding_interest from public.loan_book b where b.id = l.id)),
+         coalesce(p_amount, (select b.outstanding_principal + b.outstanding_interest
+                                    + greatest(0, app.loan_penalty_accrued(l.id, current_date - p_days_ago) - b.penalty_repaid)
+                             from public.loan_book b where b.id = l.id)),
          pg_temp.bank(v_branch), l.member_id, l.id, 'RPY-' || right(p_txn::text, 4), 'Repayment on loan ' || l.loan_no, l.branch_id
   from public.loans l where l.id = p_loan;
   perform pg_temp.attach(p_txn, 'supporting', 'teller.pdf');
@@ -538,11 +543,12 @@ select pg_temp.repay_loan('b0000000-0000-0000-0000-000000000001', '91000000-0000
 select pg_temp.loan_to('b0000000-0000-0000-0000-000000000002', 'approved', 1000000);
 select pg_temp.disburse_loan('b0000000-0000-0000-0000-000000000002', '91000000-0000-0000-0000-000000000003', 100);
 select pg_temp.repay_loan('b0000000-0000-0000-0000-000000000002', '91000000-0000-0000-0000-000000000004', 100462.09, 68);
--- Ada (Ikeja): salary advance repaid in full.
+-- Ada (Ikeja): salary advance repaid in full. Her second instalment was paid about a week late, so the payoff
+-- includes the late penalty (posted to 4150 Loan penalty income).
 select pg_temp.loan_to('b0000000-0000-0000-0000-000000000003', 'approved', 100000);
 select pg_temp.disburse_loan('b0000000-0000-0000-0000-000000000003', '91000000-0000-0000-0000-000000000005', 120);
 select pg_temp.repay_loan('b0000000-0000-0000-0000-000000000003', '91000000-0000-0000-0000-000000000006', 38333.33, 90);
-select pg_temp.repay_loan('b0000000-0000-0000-0000-000000000003', '91000000-0000-0000-0000-000000000007', 38333.33, 60);
+select pg_temp.repay_loan('b0000000-0000-0000-0000-000000000003', '91000000-0000-0000-0000-000000000007', 38333.33, 50);
 select pg_temp.repay_loan('b0000000-0000-0000-0000-000000000003', '91000000-0000-0000-0000-000000000008', null, 31);
 -- Ibrahim (Utako): active and on time, paid out 20 days ago.
 select pg_temp.loan_to('b0000000-0000-0000-0000-000000000009', 'approved', 120000);
@@ -556,6 +562,12 @@ select pg_temp.loan_to('b0000000-0000-0000-0000-000000000005', 'appraised', 4000
 -- Zainab (Ikoyi): submitted, waiting for the analyst.
 select pg_temp.loan_to('b0000000-0000-0000-0000-000000000006', 'submitted', null);
 -- Ifeoma (Peter Odili): still a draft with the account officer.
+
+-- Chinedu is more than 30 days behind, so the Head of Credit asks to restructure his loan over a longer term. It waits
+-- for the Head of Business; on approval his unpaid interest and late penalty roll into the new schedule.
+select pg_temp.act_as('head.credit@kuun.test');
+select public.request_loan_restructure('b0000000-0000-0000-0000-000000000002', 18, 'monthly', 3, 'per_month', 'reducing_balance',
+  current_date + 21, 'Sales fell after the road works closed his shop front; he can pay a smaller amount over a longer term.');
 
 -- The Lagos account officer reminded Ada about her overdue instalment.
 select pg_temp.act_as('credit.lagos@kuun.test');
