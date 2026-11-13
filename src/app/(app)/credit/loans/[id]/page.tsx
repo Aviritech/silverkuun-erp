@@ -170,8 +170,17 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
           <Stat label="Total expected" value={formatMoney(position.total_expected)} />
           <Stat label="Principal repaid" value={formatMoney(position.principal_repaid)} />
           <Stat label="Interest repaid" value={formatMoney(position.interest_repaid)} />
-          <Stat label="Outstanding" value={formatMoney(Number(position.outstanding_principal) + Number(position.outstanding_interest))} />
+          <Stat
+            label="Outstanding"
+            value={formatMoney(Number(position.outstanding_principal) + Number(position.outstanding_interest) + Number(position.penalty_outstanding))}
+          />
           <Stat label="Overdue" value={formatMoney(position.overdue_amount)} tone={overdue ? "red" : undefined} />
+          <Stat
+            label={`Late penalty owed (${Number(position.late_penalty_rate)}% a day)`}
+            value={formatMoney(position.penalty_outstanding)}
+            tone={Number(position.penalty_outstanding) > 0 ? "red" : undefined}
+          />
+          <Stat label="Penalty paid" value={formatMoney(position.penalty_repaid)} />
           <Stat label="Missed repayments" value={String(position.missed_repayments)} tone={position.missed_repayments > 0 ? "red" : undefined} />
           <Stat
             label="Next repayment"
@@ -324,7 +333,10 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
             {member.membership_no && <span className="block font-mono text-xs text-zinc-500">{member.membership_no}</span>}
           </Detail>
           <Detail label="Phone">{loan.phone}</Detail>
-          <Detail label="Address">{loan.address}</Detail>
+          <Detail label="Address">
+            {loan.address}
+            {loan.address_landmark && <span className="block text-xs text-zinc-500">Landmark: {loan.address_landmark}</span>}
+          </Detail>
           <Detail label="Category">{CUSTOMER_CATEGORIES[loan.customer_category]}</Detail>
           <Detail label="Employer or business">
             {loan.employer_name}
@@ -497,7 +509,8 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
           }
         >
           <p className="mb-3 text-xs text-zinc-500">
-            Repayments are receipted by Accounts against this loan. Each one pays the oldest instalment first, interest before principal.
+            Repayments are receipted by Accounts against this loan. Each one pays the overdue instalments first (oldest first, interest
+            before principal), then any late penalty, then the instalments not yet due.
           </p>
           {repayments.length === 0 ? (
             <EmptyState>No repayments yet.</EmptyState>
@@ -510,6 +523,7 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
                   <th className="py-1 text-right font-medium">Amount</th>
                   <th className="py-1 text-right font-medium">Principal</th>
                   <th className="py-1 text-right font-medium">Interest</th>
+                  <th className="py-1 text-right font-medium">Penalty</th>
                 </tr>
               </thead>
               <tbody>
@@ -523,6 +537,7 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
                     <td className="py-1.5 text-right tabular-nums">{formatMoney(r.amount)}</td>
                     <td className="py-1.5 text-right tabular-nums">{formatMoney(r.principal)}</td>
                     <td className="py-1.5 text-right tabular-nums">{formatMoney(r.interest)}</td>
+                    <td className="py-1.5 text-right tabular-nums">{formatMoney(r.penalty)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -534,7 +549,7 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
       {(loan.status === "active" || restructures.length > 0) && (
         <Card title="Restructuring">
           {restructures.length === 0 ? (
-            <EmptyState>This loan has not been restructured.</EmptyState>
+            <EmptyState>This loan has not been restructured. Only the Head of Credit can restructure a loan, and the Head of Business must approve it.</EmptyState>
           ) : (
             <ul className="mb-4 divide-y divide-zinc-100 text-sm">
               {restructures.map((r) => (
@@ -554,17 +569,20 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
                     {r.decided_at && `; decided by ${staffName(r.decided_by)} on ${formatDateTime(r.decided_at)}`}
                     {r.outstanding_principal && `; rescheduled ${formatMoney(r.outstanding_principal)} principal`}
                     {Number(r.carried_interest) > 0 && ` plus ${formatMoney(r.carried_interest)} unpaid interest`}
+                    {Number(r.carried_penalty) > 0 && ` and ${formatMoney(r.carried_penalty)} unpaid late penalty`}
                     {r.decision_note && `. ${r.decision_note}`}
                   </p>
-                  {r.status === "pending" && can("credit.approve") && r.requested_by !== staff.id && (
+                  {r.status === "pending" && can("credit.business_approve") && r.requested_by !== staff.id && (
                     <RestructureDecisionForm action={decideRestructure.bind(null, loan.id, r.id)} />
                   )}
-                  {r.status === "pending" && r.requested_by === staff.id && <p className="text-xs text-zinc-600">Someone else with approval rights must decide it.</p>}
+                  {r.status === "pending" && !(can("credit.business_approve") && r.requested_by !== staff.id) && (
+                    <p className="text-xs text-zinc-600">Waiting for the Head of Business to approve or decline it.</p>
+                  )}
                 </li>
               ))}
             </ul>
           )}
-          {loan.status === "active" && canManage && !pendingRestructure && (
+          {loan.status === "active" && can("credit.approve") && !pendingRestructure && (
             <RestructureForm
               action={requestRestructure.bind(null, loan.id)}
               defaults={{ rate: loan.interest_rate, basis: loan.rate_basis, method: loan.interest_method, frequency: loan.repayment_frequency }}

@@ -49,6 +49,8 @@ export type FinanceTransaction = {
   txn_date: string;
   amount: string;
   interest_amount: string;
+  /** Loan repayments: the late penalty part, worked out by the database. */
+  penalty_amount: string;
   bank_account_id: string;
   member_id: string | null;
   counterparty: string | null;

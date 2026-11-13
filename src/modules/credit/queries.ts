@@ -26,6 +26,8 @@ export type LoanProduct = {
   min_amount: string;
   max_amount: string | null;
   max_tenor_months: number;
+  /** Percent of an overdue instalment added for each day it stays unpaid. */
+  late_penalty_rate: string;
   requires_guarantor: boolean;
   requires_collateral: boolean;
   requires_proforma: boolean;
@@ -43,6 +45,8 @@ export type Loan = {
   account_officer_id: string;
   phone: string;
   address: string;
+  /** A nearby landmark, so the officer can find the address. */
+  address_landmark: string | null;
   customer_category: CustomerCategory;
   employer_name: string | null;
   occupation: string | null;
@@ -136,6 +140,12 @@ export type LoanBookRow = {
   next_due_amount: string;
   remaining_installments: number;
   last_paid_on: string | null;
+  /** Percent a day charged on overdue instalments (from the loan product). */
+  late_penalty_rate: string;
+  /** Late penalty paid, across all schedules. */
+  penalty_repaid: string;
+  /** Late penalty run up on the current schedule and not yet paid. */
+  penalty_outstanding: string;
 };
 
 export type Installment = {
@@ -193,6 +203,7 @@ export type Repayment = {
   amount: string;
   principal: string;
   interest: string;
+  penalty: string;
   schedule_version: number;
   reversed_at: string | null;
   reversal_reason: string | null;
@@ -201,6 +212,7 @@ export type Repayment = {
 export type Restructure = {
   id: string;
   loan_id: string;
+  branch_id: string;
   status: "pending" | "approved" | "rejected";
   tenor_months: number;
   repayment_frequency: RepaymentFrequency;
@@ -216,6 +228,7 @@ export type Restructure = {
   decision_note: string | null;
   outstanding_principal: string | null;
   carried_interest: string | null;
+  carried_penalty: string | null;
 };
 
 export type Reminder = {

@@ -3,7 +3,6 @@ import {
   ActivityList,
   AttentionPanel,
   StatCard,
-  StatGrid,
   WorkQueues,
   firstName,
   greeting,
@@ -96,7 +95,7 @@ export default async function CreditDashboard({ searchParams }: { searchParams: 
   }
 
   const supabase = await createClient();
-  const [loans, org, officers, products, pendingRes] = await Promise.all([
+  const [loans, org, officers, products, pendingRes, restructuresRes] = await Promise.all([
     loadBook(supabase, filters),
     listOrg(),
     loadOfficerNames(supabase),
@@ -105,8 +104,10 @@ export default async function CreditDashboard({ searchParams }: { searchParams: 
       .from("loans")
       .select("id, branch_id, status, created_by, submitted_by, account_officer_id, appraised_by, approved_by")
       .in("status", ["submitted", "appraised", "credit_approved", "returned"]),
+    supabase.from("loan_restructures").select("branch_id, requested_by").eq("status", "pending"),
   ]);
   if (pendingRes.error) throw dbFailure(pendingRes.error);
+  if (restructuresRes.error) throw dbFailure(restructuresRes.error);
   const branchName = new Map(org.branches.map((b) => [b.id, b.name]));
   const query = new URLSearchParams(Object.entries({ from, to, branch: branch ?? "", officer: filters.officer, loan_product: filters.product, category: filters.category }).filter(([, v]) => v)).toString();
 
@@ -130,15 +131,19 @@ export default async function CreditDashboard({ searchParams }: { searchParams: 
   const toApprove = pending.filter(
     (l) => l.status === "credit_approved" && can("credit.business_approve", l.branch_id) && !mine(l) && ![l.appraised_by, l.approved_by].includes(staff.id),
   ).length;
+  const restructuresToApprove = (restructuresRes.data as { branch_id: string; requested_by: string }[]).filter(
+    (r) => can("credit.business_approve", r.branch_id) && r.requested_by !== staff.id,
+  ).length;
   const returnedToMe = pending.filter((l) => l.status === "returned" && can("credit.manage", l.branch_id) && mine(l)).length;
   const weekEnd = addDays(to, 7);
   const dueThisWeek = loans.filter((l) => l.status === "active" && l.next_due_date && l.next_due_date <= weekEnd).length;
   const inArrears = loans.filter((l) => l.status === "active" && l.days_past_due > 0).length;
-  const waiting = toAppraise + toDecide + toApprove;
+  const waiting = toAppraise + toDecide + toApprove + restructuresToApprove;
   const queues: WorkQueue[] = [
     staff.permissions.has("credit.appraise") && { label: "Applications to appraise", value: toAppraise, href: "/credit/approvals" },
     staff.permissions.has("credit.approve") && { label: "Waiting for Head of Credit", value: toDecide, href: "/credit/approvals" },
     staff.permissions.has("credit.business_approve") && { label: "Waiting for Head of Business", value: toApprove, href: "/credit/approvals" },
+    staff.permissions.has("credit.business_approve") && { label: "Restructures to approve", value: restructuresToApprove, href: "/credit/approvals" },
     staff.permissions.has("credit.manage") && { label: "Returned to you", value: returnedToMe, href: "/credit/loans?status=returned" },
     { label: "Repayments due in 7 days", value: dueThisWeek, href: "/credit/reminders" },
     { label: "Loans in arrears", value: inArrears, href: `/credit/reports/overdue-loans?${new URLSearchParams({ from, to }).toString()}` },
@@ -178,19 +183,27 @@ export default async function CreditDashboard({ searchParams }: { searchParams: 
         }
       />
 
-      <StatGrid>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
         <StatCard label="Loan book" icon="loan" value={formatMoneyShort(book.principal)} hint={`${book.loans} active loans · ${book.customers} customers`} href={`/credit/reports/loan-portfolio?${query}`} />
         <StatCard
           label="Overdue"
           icon="alert"
           tone={book.overdue > 0 ? "bad" : "neutral"}
           value={formatMoneyShort(book.overdue)}
-          hint={`${book.overdueLoans} loans · PAR 30 ${pct(book.par30, book.principal)}`}
+          hint={`${book.overdueLoans} loans${book.penalty > 0 ? ` · ${formatMoneyShort(book.penalty)} late penalty owed` : ""}`}
           href={`/credit/reports/overdue-loans?${query}`}
+        />
+        <StatCard
+          label="Portfolio at risk (PAR 30)"
+          icon="alert"
+          tone={book.par30 > 0 ? "bad" : "neutral"}
+          value={pct(book.par30, book.principal)}
+          hint={`${formatMoneyShort(book.par30)} at risk · PAR 1 ${pct(book.par1, book.principal)} · PAR 90 ${pct(book.par90, book.principal)}`}
+          href={`/credit/reports/portfolio-at-risk?${query}`}
         />
         <StatCard label="Disbursed in the period" icon="bank" value={formatMoneyShort(disbursedInPeriod.reduce((s, l) => s + n(l.approved_amount), 0))} hint={`${disbursedInPeriod.length} loans since ${formatDate(from)}`} href={`/credit/reports/loan-disbursements?${query}`} />
         <StatCard label="In the pipeline" icon="clock" value={String(loans.filter(isPending).length)} hint={`${awaiting.length} approved, waiting for Accounts to pay out`} href="/credit/approvals" />
-      </StatGrid>
+      </div>
 
       <WorkQueues queues={queues} />
 
@@ -317,11 +330,11 @@ export default async function CreditDashboard({ searchParams }: { searchParams: 
             href={`/credit/reports/overdue-loans?${query}`}
           />
           <Stat
-            label="Portfolio at risk (30 days)"
-            value={pct(book.par30, book.principal)}
-            sub={`Suggested provision ${formatMoney(book.provision)}`}
-            tone={book.par30 > 0 ? "red" : undefined}
-            href={`/credit/reports/loan-portfolio?${query}&group=arrears`}
+            label="Late penalty owed"
+            value={formatMoney(book.penalty)}
+            sub={`Suggested provision on the book ${formatMoney(book.provision)}`}
+            tone={book.penalty > 0 ? "red" : undefined}
+            href={`/credit/reports/overdue-loans?${query}`}
           />
         </div>
       </div>

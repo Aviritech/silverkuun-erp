@@ -1,6 +1,6 @@
 import { accountsReports } from "@/modules/accounts/reports";
 import { administrationReports } from "@/modules/administration/reports";
-import { accountsLoanPortfolio, creditReports } from "@/modules/credit/reports";
+import { accountsLoanPortfolio, accountsPortfolioAtRisk, creditReports } from "@/modules/credit/reports";
 import { hrReports } from "@/modules/hr/reports";
 import { internalAuditReports } from "@/modules/internal-audit/reports";
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -10,6 +10,7 @@ export const reports: readonly ReportDefinition[] = [
   ...administrationReports,
   ...accountsReports,
   accountsLoanPortfolio,
+  accountsPortfolioAtRisk,
   ...internalAuditReports,
   ...creditReports,
   ...hrReports,
