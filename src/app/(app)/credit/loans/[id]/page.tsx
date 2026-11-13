@@ -54,6 +54,10 @@ import {
 } from "@/modules/credit/constants";
 import { creditModule } from "@/modules/credit/module";
 import { getLoanBundle, listOfficers, officersFor } from "@/modules/credit/queries";
+import { signGuarantee, signLoanDocument } from "@/modules/signatures/actions";
+import { ESignForm } from "@/modules/signatures/components/e-sign-form";
+import { SignatureList } from "@/modules/signatures/components/signature-list";
+import type { SignerRole } from "@/modules/signatures/constants";
 
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -73,6 +77,9 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: "re
   );
 }
 
+/** Documents that carry signatures, so can be signed electronically as well as on paper. */
+const SIGNABLE_DOCUMENTS: LoanDocumentType[] = ["application_form", "guarantor_form", "offer_letter", "collateral_document", "other"];
+
 const APPLICATION_DOCUMENTS: LoanDocumentType[] = [
   "application_form",
   "proforma_invoice",
@@ -89,7 +96,7 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   const [bundle, org, officers] = await Promise.all([getLoanBundle(id), listOrg(), listOfficers()]);
   if (!bundle) notFound();
-  const { loan, position, member, memberName, product, guarantors, collaterals, documents, schedule, repayments, restructures, reminders, otherLoans, staffName } =
+  const { loan, position, member, memberName, product, guarantors, collaterals, documents, schedule, repayments, restructures, reminders, otherLoans, documentSignatures, guarantorSignatures, staffName } =
     bundle;
   const branch = org.branches.find((b) => b.id === loan.branch_id)!;
   const can = (p: string) => staff.permissions.hasForBranch(p, branch);
@@ -110,6 +117,11 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
   const canCancel = (editable && canManage) || (loan.status === "approved" && can("credit.approve"));
   const pendingRestructure = restructures.find((r) => r.status === "pending");
   const live = ["active", "closed"].includes(loan.status);
+  // E-signatures: guarantors sign their guarantee before appraisal; signed documents can be e-signed at any stage.
+  const canSignGuarantee = (editable && canManage) || (loan.status === "submitted" && can("credit.appraise"));
+  const canSignDocuments = canManage || can("credit.appraise") || can("credit.approve");
+  const signerRoles = (type: LoanDocumentType): SignerRole[] =>
+    type === "guarantor_form" ? ["guarantor", "witness", "staff"] : ["member", "guarantor", "witness", "staff"];
 
   const uploadTypes: LoanDocumentType[] = editable
     ? canManage
@@ -375,6 +387,21 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
                   ) : (
                     !editable && <span className="mt-1 block text-xs text-amber-800">Not confirmed yet</span>
                   )}
+                  {guarantorSignatures.get(g.id) ? (
+                    <SignatureList signatures={guarantorSignatures.get(g.id)!} staffName={staffName} />
+                  ) : (
+                    canSignGuarantee && (
+                      <span className="mt-2 block">
+                        <ESignForm
+                          action={signGuarantee.bind(null, loan.id, g.id)}
+                          roles={["guarantor"]}
+                          names={{ guarantor: g.full_name }}
+                          label="Guarantor signs electronically"
+                          what={`the guarantee for loan ${loan.loan_no}`}
+                        />
+                      </span>
+                    )
+                  )}
                   {!g.confirmed_at && canAppraise && (
                     <span className="mt-2 block">
                       <ConfirmGuarantorForm action={confirmGuarantor.bind(null, loan.id, g.id)} />
@@ -435,12 +462,23 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
         ) : (
           <ul className="mb-4 divide-y divide-zinc-100 text-sm">
             {documents.map((d) => (
-              <li key={d.id} className="flex items-center justify-between gap-4 py-2">
-                <span>
+              <li key={d.id} className="flex items-start justify-between gap-4 py-2">
+                <span className="min-w-0 flex-1">
                   <span className="font-medium">{LOAN_DOCUMENT_TYPES[d.document_type]}</span> · {d.file_name}
                   <span className="block text-xs text-zinc-500">
                     {staffName(d.uploaded_by)}, {formatDateTime(d.uploaded_at)}
                   </span>
+                  <SignatureList signatures={documentSignatures.get(d.id) ?? []} staffName={staffName} />
+                  {canSignDocuments && SIGNABLE_DOCUMENTS.includes(d.document_type) && (
+                    <span className="mt-2 block">
+                      <ESignForm
+                        action={signLoanDocument.bind(null, loan.id, d.id)}
+                        roles={signerRoles(d.document_type)}
+                        names={{ member: memberName, guarantor: guarantors[0]?.full_name }}
+                        what={`the ${LOAN_DOCUMENT_TYPES[d.document_type].replace(/^Signed /, "").toLowerCase()}`}
+                      />
+                    </span>
+                  )}
                 </span>
                 <span className="flex items-center gap-3">
                   {d.url ? (
@@ -457,6 +495,12 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
               </li>
             ))}
           </ul>
+        )}
+        {uploadTypes.length > 0 && canSignDocuments && (
+          <p className="mb-2 text-xs text-zinc-500">
+            Signed on paper? Upload the signed scan. To sign electronically instead, upload the unsigned document, then use
+            &ldquo;Sign electronically&rdquo; on it.
+          </p>
         )}
         {uploadTypes.length > 0 && <LoanDocumentUpload action={uploadLoanDocument.bind(null, loan.id)} types={uploadTypes} />}
       </Card>

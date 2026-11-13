@@ -3,6 +3,7 @@ import type { PermissionSet } from "@/lib/auth/permissions";
 import { createClient } from "@/lib/supabase/server";
 import { MEMBER_STATUSES, type DocumentType, type LiquidationStatus, type MemberStatus } from "./constants";
 import { dbFailure } from "@/lib/db-errors";
+import { signaturesFor, signatureStaffIds } from "@/modules/signatures/queries";
 
 export type Branch = { id: string; code: string; name: string; region_id: string };
 
@@ -185,6 +186,7 @@ export async function getMemberBundle(memberId: string) {
     ? await supabase.storage.from("member-documents").createSignedUrls(docs.map((d) => d.storage_path), 120)
     : { data: [] };
   const urls = new Map((signed.data ?? []).map((s) => [s.path, s.signedUrl]));
+  const documentSignatures = await signaturesFor("member_document_id", docs.map((d) => d.id));
 
   const staffIds = [
     ...new Set(
@@ -196,6 +198,7 @@ export async function getMemberBundle(memberId: string) {
         member.approved_by,
         member.returned_by,
         ...docs.map((d) => d.issued_by),
+        ...signatureStaffIds(documentSignatures),
       ].filter(Boolean),
     ),
   ];
@@ -207,6 +210,7 @@ export async function getMemberBundle(memberId: string) {
   return {
     member: member as Member,
     documents: docs.map((d) => ({ ...d, url: urls.get(d.storage_path) ?? null })),
+    documentSignatures,
     plans: (plans.data ?? []) as Plan[],
     totals: new Map(((totals.data ?? []) as PlanTotals[]).map((t) => [t.member_plan_id, t])),
     progress: new Map(((progress.data ?? []) as PlanProgress[]).map((p) => [p.plan_id, p])),
