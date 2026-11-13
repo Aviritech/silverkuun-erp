@@ -266,7 +266,7 @@ export function ReassignForm({ action, officers, current }: { action: Action; of
 
 export function RestructureForm({ action, defaults }: { action: Action; defaults: { rate: string; basis: string; method: string; frequency: string } }) {
   return (
-    <InlineForm action={action} openLabel="Request restructure" submitLabel="Send for approval">
+    <InlineForm action={action} openLabel="Restructure loan" submitLabel="Send to Head of Business">
       {(e) => (
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="New duration (months)" error={e.tenor_months}>
@@ -297,7 +297,7 @@ export function RestructureForm({ action, defaults }: { action: Action; defaults
             <Field
               label="Why is the loan being restructured?"
               error={e.reason}
-              hint="The principal still owed, plus interest already due and unpaid, is rescheduled on these terms once management approves."
+              hint="The principal still owed, plus interest already due and any late penalty still unpaid, is rescheduled on these terms once the Head of Business approves."
             >
               <Textarea name="reason" rows={2} required />
             </Field>
@@ -409,6 +409,9 @@ export function ProductForm({ action, product }: { action: Action; product?: Loa
           </Field>
           <Field label="Longest duration (months)" error={e.max_tenor_months}>
             <Input name="max_tenor_months" type="number" min="1" max="120" defaultValue={product?.max_tenor_months ?? 12} required />
+          </Field>
+          <Field label="Late penalty (% a day)" error={e.late_penalty_rate} hint="Of an overdue instalment, for each day it stays unpaid. 0 for none.">
+            <Input name="late_penalty_rate" type="number" min="0" max="10" step="0.0001" defaultValue={product?.late_penalty_rate ?? "0.1"} required />
           </Field>
           <div className="flex flex-wrap items-end gap-4 pb-2 text-sm sm:col-span-3">
             {(

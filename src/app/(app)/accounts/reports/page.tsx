@@ -7,7 +7,7 @@ import { createClient } from "@/lib/supabase/server";
 import { accountsModule } from "@/modules/accounts/module";
 import { locationSummary } from "@/modules/accounts/position-reports";
 import { accountsReports } from "@/modules/accounts/reports";
-import { accountsLoanPortfolio } from "@/modules/credit/reports";
+import { accountsLoanPortfolio, accountsPortfolioAtRisk } from "@/modules/credit/reports";
 
 const STATEMENTS = ["profit-and-loss", "balance-sheet", "cash-flow", "trial-balance", "general-ledger"];
 
@@ -19,7 +19,7 @@ export default async function AccountsReportsPage() {
   const summary = await locationSummary.run(supabase, { from: asAt, to: asAt, branch: null, region: null, department: null, product: null, options: {} });
   // The region totals and the Society total; the branch rows are in the full report.
   const rollup = summary.rows.filter((r) => r._kind === "subtotal" || r._kind === "total");
-  const all = [...accountsReports, accountsLoanPortfolio].filter((r) => r.key !== locationSummary.key);
+  const all = [...accountsReports, accountsLoanPortfolio, accountsPortfolioAtRisk].filter((r) => r.key !== locationSummary.key);
   const statements = all.filter((r) => STATEMENTS.includes(r.key));
   const schedules = all.filter((r) => !STATEMENTS.includes(r.key));
   const money = summary.columns.filter((c) => c.kind === "money");

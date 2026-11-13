@@ -135,7 +135,8 @@ export default async function ApprovalsPage() {
           )}
         </Card>
       ))}
-      <Card title={`Restructures awaiting approval (${pending.length})`}>
+      <Card title={`Restructures awaiting Head of Business (${pending.length})`}>
+        <p className="mb-3 text-xs text-zinc-500">The Head of Credit restructures a loan; the Head of Business approves or declines it before the new schedule starts.</p>
         {pending.length === 0 ? (
           <EmptyState>Nothing waiting.</EmptyState>
         ) : (
@@ -149,7 +150,7 @@ export default async function ApprovalsPage() {
                   to {r.tenor_months} months from {formatDate(r.first_repayment_date)}
                   <span className="block text-xs text-zinc-500">{r.reason}</span>
                 </span>
-                {staff.permissions.has("credit.approve") && r.requested_by !== staff.id && (
+                {can("credit.business_approve", r.branch_id) && r.requested_by !== staff.id && (
                   <Link href={`/credit/loans/${r.loan_id}`} className="rounded-md bg-brand px-2.5 py-1 text-xs font-medium text-ink hover:bg-brand-300">
                     Decide
                   </Link>

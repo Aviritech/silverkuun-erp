@@ -137,6 +137,9 @@ export function LoanForm({
         <Field label="Residential address" error={e.address}>
           <Input name="address" key={`address-${memberId}`} defaultValue={loan?.address ?? member?.address ?? ""} required />
         </Field>
+        <Field label="Nearest landmark" error={e.address_landmark} hint="Something easy to find nearby, such as “opposite First Bank”.">
+          <Input name="address_landmark" maxLength={200} defaultValue={loan?.address_landmark ?? ""} />
+        </Field>
       </fieldset>
 
       <fieldset className="grid gap-4 sm:grid-cols-3">

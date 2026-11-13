@@ -334,7 +334,10 @@ create function pg_temp.repay_loan(p_loan uuid, p_txn uuid, p_amount numeric, p_
   insert into public.finance_transactions (id, direction, transaction_type, txn_date, amount, bank_account_id, member_id, loan_id,
     reference, description, branch_id)
   select p_txn, 'receipt', 'loan_repayment', current_date - p_days_ago,
-         coalesce(p_amount, (select b.outstanding_principal + b.outstanding_interest from public.loan_book b where b.id = l.id)),
+         coalesce(p_amount, (select b.outstanding_principal + b.outstanding_interest from public.loan_book b where b.id = l.id)
+           -- plus any late penalty run up by the payment date
+           + (select greatest(0, app.loan_penalty_accrued(l.id, current_date - p_days_ago) - coalesce(sum(r.penalty), 0))
+              from public.loan_repayments r where r.loan_id = l.id and r.schedule_version = l.schedule_version and r.reversed_at is null)),
          '40000000-0000-0000-0000-000000000001', l.member_id, l.id, 'RPY-' || right(p_txn::text, 4), 'Repayment on loan ' || l.loan_no, l.branch_id
   from public.loans l where l.id = p_loan;
   insert into public.finance_attachments (transaction_id, branch_id, kind, file_name, storage_path, mime_type, size_bytes)

@@ -504,6 +504,7 @@ const overdueLoans: ReportDefinition = {
       missed: l.missed_repayments,
       days: l.days_past_due,
       bucket: arrearsBucket(l.days_past_due).label,
+      penalty: n(l.penalty_outstanding),
       outstanding: round2(outstanding(l)),
       last_paid: l.last_paid_on,
       maturity: l.maturity_date,
@@ -519,11 +520,12 @@ const overdueLoans: ReportDefinition = {
         { key: "missed", label: "Missed repayments", kind: "number" },
         { key: "days", label: "Days overdue", kind: "number" },
         { key: "bucket", label: "Arrears" },
+        { key: "penalty", label: "Late penalty", kind: "money" },
         { key: "outstanding", label: "Total owed", kind: "money" },
         { key: "last_paid", label: "Last paid", kind: "date" },
         { key: "maturity", label: "Matures", kind: "date" },
       ],
-      rows: rows.length ? [...rows, totalRow(rows, "Total", ["overdue", "missed", "outstanding"])] : [],
+      rows: rows.length ? [...rows, totalRow(rows, "Total", ["overdue", "missed", "penalty", "outstanding"])] : [],
     };
   },
 };
@@ -596,79 +598,266 @@ const officerPerformance: ReportDefinition = {
   },
 };
 
+type DueLoanRow = { id: string; phone: string };
+
 const dueRepayments: ReportDefinition = {
   key: "due-repayments",
-  title: "Repayments falling due",
-  description: "Instalments due in the coming days, for reminding customers before they fall behind.",
+  title: "Repayments due",
+  description:
+    "Generate the list of repayments falling due in any window, loan by loan with the customer's phone, plus anything already overdue and late penalty, for collection and reminders.",
   basePath: "/credit",
   permission: "credit.read",
-  dates: "none",
+  dates: "range",
   branchFilter: true,
   options: [
     {
       name: "window",
       label: "Due within",
       choices: [
-        { value: String(REMINDER_WINDOW_DAYS), label: `${REMINDER_WINDOW_DAYS} days` },
-        { value: "14", label: "14 days" },
-        { value: "30", label: "30 days" },
+        { value: String(REMINDER_WINDOW_DAYS), label: `The next ${REMINDER_WINDOW_DAYS} days` },
+        { value: "14", label: "The next 14 days" },
+        { value: "30", label: "The next 30 days" },
+        { value: "custom", label: "Custom date range (below)" },
       ],
     },
+    {
+      name: "arrears",
+      label: "Already overdue",
+      choices: [
+        { value: "include", label: "Add overdue amounts and penalty" },
+        { value: "exclude", label: "Only what falls due in the window" },
+      ],
+    },
+    groupOption(["loan", "branch", "officer", "product", "month"]),
   ],
   loadOptions: bookFilterOptions,
   async run(supabase, f) {
     const today = new Date().toISOString().slice(0, 10);
-    const until = new Date(Date.now() + Number(f.options.window) * 86_400_000).toISOString().slice(0, 10);
-    const [loans, branches, officers, due] = await Promise.all([
+    const custom = f.options.window === "custom";
+    const from = custom ? f.from : today;
+    const until = custom ? f.to : new Date(Date.now() + Number(f.options.window) * 86_400_000).toISOString().slice(0, 10);
+    const withArrears = f.options.arrears === "include";
+    const [loans, branches, officers, due, phones] = await Promise.all([
       book(supabase, f),
       branchNames(supabase),
       loadOfficerNames(supabase),
       fetchAll<DueRow>((a, b) =>
-        supabase.from("loan_schedule_status").select("loan_id, due_date, outstanding, status, installment_no").gte("due_date", today).lte("due_date", until).gt("outstanding", 0).order("due_date").range(a, b),
+        supabase
+          .from("loan_schedule_status")
+          .select("loan_id, due_date, outstanding, status, installment_no")
+          .gte("due_date", from)
+          .lte("due_date", until)
+          .gt("outstanding", 0)
+          .order("due_date")
+          .range(a, b),
       ),
+      fetchAll<DueLoanRow>((a, b) => supabase.from("loans").select("id, phone").eq("status", "active").order("id").range(a, b)),
     ]);
+    const phoneOf = new Map(phones.map((l) => [l.id, l.phone]));
     const byId = new Map(loans.filter(isOnBook).map((l) => [l.id, l]));
-    const rows: Row[] = due
-      .filter((d) => byId.has(d.loan_id))
-      .map((d) => {
-        const l = byId.get(d.loan_id)!;
-        return {
-          due: d.due_date,
-          name: l.loan_no,
-          _href: loanHref(l.id),
-          member: l.member_name,
-          branch: branches.get(l.branch_id),
-          officer: officers.get(l.account_officer_id),
-          installment: d.installment_no,
-          amount: n(d.outstanding),
-          arrears: n(l.overdue_amount),
-        };
-      });
+    const dueByLoan = groupBy(
+      due.filter((d) => byId.has(d.loan_id)),
+      (d) => d.loan_id,
+    );
+    // Loans with nothing due in the window still need collecting when they are already overdue or owe penalty.
+    const ids = new Set(dueByLoan.map(([id]) => id));
+    if (withArrears) for (const l of byId.values()) if (n(l.overdue_amount) > 0 || n(l.penalty_outstanding) > 0) ids.add(l.id);
+
+    const items = [...ids].map((id) => {
+      const l = byId.get(id)!;
+      const inWindow = dueByLoan.find(([k]) => k === id)?.[1] ?? [];
+      // A custom window can start in the past, where instalments are already counted as overdue.
+      const dueAmount = round2(inWindow.reduce((s, d) => s + n(d.outstanding), 0));
+      const overdue = withArrears ? round2(n(l.overdue_amount) - inWindow.filter((d) => d.due_date < today).reduce((s, d) => s + n(d.outstanding), 0)) : 0;
+      const penalty = withArrears ? n(l.penalty_outstanding) : 0;
+      return { l, inWindow, first: inWindow[0]?.due_date ?? null, dueAmount, overdue: Math.max(0, overdue), penalty };
+    });
+    items.sort((a, b) => (a.first ?? "0000").localeCompare(b.first ?? "0000") || a.l.loan_no.localeCompare(b.l.loan_no));
+    const notes = [
+      `Instalments falling due ${from === until ? `on ${from}` : `from ${from} to ${until}`}, from each loan's current schedule, net of anything already paid towards them.`,
+      withArrears
+        ? "Already overdue is what fell due before the window and is still unpaid; late penalty is what the loan has run up and not yet paid."
+        : "Overdue amounts and late penalty are left out; choose \"Add overdue amounts and penalty\" to include them.",
+    ];
+
+    const group = f.options.group as Grouping;
+    if (group === "loan") {
+      const rows: Row[] = items.map(({ l, inWindow, first, dueAmount, overdue, penalty }) => ({
+        due: first,
+        name: l.loan_no,
+        _href: loanHref(l.id),
+        member: l.member_name,
+        phone: phoneOf.get(l.id) ?? null,
+        branch: branches.get(l.branch_id),
+        officer: officers.get(l.account_officer_id),
+        instalments: inWindow.length,
+        due_amount: dueAmount,
+        overdue,
+        penalty,
+        total: round2(dueAmount + overdue + penalty),
+      }));
+      return {
+        columns: [
+          { key: "due", label: "Next due", kind: "date" },
+          { key: "name", label: "Loan" },
+          { key: "member", label: "Customer" },
+          { key: "phone", label: "Phone" },
+          { key: "branch", label: "Branch" },
+          { key: "officer", label: "Account officer" },
+          { key: "instalments", label: "Instalments due", kind: "number" },
+          { key: "due_amount", label: "Amount due", kind: "money" },
+          ...(withArrears
+            ? ([
+                { key: "overdue", label: "Already overdue", kind: "money" },
+                { key: "penalty", label: "Late penalty", kind: "money" },
+              ] as Column[])
+            : []),
+          { key: "total", label: "To collect", kind: "money" },
+        ],
+        rows: rows.length
+          ? [...rows, { ...totalRow(rows, "Total", ["instalments", "due_amount", "overdue", "penalty", "total"]), member: `${rows.length} loans` }]
+          : [],
+        notes,
+      };
+    }
+
+    const base = grouper(group, branches, officers, () => null);
+    const keyOf = (i: (typeof items)[number]) => (group === "month" ? (i.first ?? "Overdue only").slice(0, 7) : base(i.l));
+    const rows: Row[] = groupBy(items, keyOf).map(([name, list]) => ({
+      name,
+      loans: list.length,
+      instalments: list.reduce((s, i) => s + i.inWindow.length, 0),
+      due: round2(list.reduce((s, i) => s + i.dueAmount, 0)),
+      overdue: round2(list.reduce((s, i) => s + i.overdue, 0)),
+      penalty: round2(list.reduce((s, i) => s + i.penalty, 0)),
+      total: round2(list.reduce((s, i) => s + i.dueAmount + i.overdue + i.penalty, 0)),
+    }));
     return {
       columns: [
-        { key: "due", label: "Due", kind: "date" },
-        { key: "name", label: "Loan" },
-        { key: "member", label: "Customer" },
-        { key: "branch", label: "Branch" },
-        { key: "officer", label: "Account officer" },
-        { key: "installment", label: "Instalment", kind: "number" },
-        { key: "amount", label: "Amount due", kind: "money" },
-        { key: "arrears", label: "Already overdue", kind: "money" },
+        { key: "name", label: GROUP_CHOICES[group].replace("By ", "").replace(/^./, (c) => c.toUpperCase()) },
+        { key: "loans", label: "Loans", kind: "number" },
+        { key: "instalments", label: "Instalments due", kind: "number" },
+        { key: "due", label: "Amount due", kind: "money" },
+        ...(withArrears
+          ? ([
+              { key: "overdue", label: "Already overdue", kind: "money" },
+              { key: "penalty", label: "Late penalty", kind: "money" },
+            ] as Column[])
+          : []),
+        { key: "total", label: "To collect", kind: "money" },
       ],
-      rows: rows.length ? [...rows, totalRow(rows, "Total", ["amount", "arrears"])] : [],
+      rows: rows.length ? [...rows, totalRow(rows, "Total", ["loans", "instalments", "due", "overdue", "penalty", "total"])] : [],
+      notes,
     };
   },
 };
 
+function parReport(key: string, basePath: ReportDefinition["basePath"], permission: string): ReportDefinition {
+  return {
+    key,
+    title: "Portfolio at risk (PAR)",
+    description: "PAR 1, 30, 60 and 90: the principal outstanding on loans with a repayment overdue by more than that many days, as a share of the book.",
+    basePath,
+    permission,
+    dates: "none",
+    branchFilter: true,
+    options: [groupOption(["branch", "officer", "product", "category", "loan"])],
+    loadOptions: bookFilterOptions,
+    async run(supabase, f) {
+      const [loans, branches, officers] = await Promise.all([book(supabase, f), branchNames(supabase), loadOfficerNames(supabase)]);
+      const live = loans.filter(isOnBook);
+      const total = portfolio(live);
+      const notes = [
+        `Across ${total.loans} active loans: PAR 1 ${pct(total.par1, total.principal)}, PAR 30 ${pct(total.par30, total.principal)}, PAR 60 ${pct(total.par60, total.principal)}, PAR 90 ${pct(total.par90, total.principal)} of ${round2(total.principal).toLocaleString("en-NG", { style: "currency", currency: "NGN" })} principal outstanding.`,
+        "A loan is at risk from the first day any instalment is overdue, and all of its outstanding principal counts, not just the overdue part. Figures are as at today.",
+      ];
+
+      if (f.options.group === "loan") {
+        const rows: Row[] = live
+          .filter((l) => l.days_past_due > 0)
+          .sort((a, b) => b.days_past_due - a.days_past_due || a.loan_no.localeCompare(b.loan_no))
+          .map((l) => ({
+            name: l.loan_no,
+            _href: basePath === "/credit" ? loanHref(l.id) : undefined,
+            member: l.member_name,
+            branch: branches.get(l.branch_id),
+            officer: officers.get(l.account_officer_id),
+            product: l.product_name,
+            days: l.days_past_due,
+            bucket: arrearsBucket(l.days_past_due).label,
+            principal: n(l.outstanding_principal),
+            overdue: n(l.overdue_amount),
+            penalty: n(l.penalty_outstanding),
+            last_paid: l.last_paid_on,
+          }));
+        return {
+          columns: [
+            { key: "name", label: "Loan" },
+            { key: "member", label: "Customer" },
+            { key: "branch", label: "Branch" },
+            { key: "officer", label: "Account officer" },
+            { key: "product", label: "Product" },
+            { key: "days", label: "Days overdue", kind: "number" },
+            { key: "bucket", label: "Arrears" },
+            { key: "principal", label: "Principal at risk", kind: "money" },
+            { key: "overdue", label: "Amount overdue", kind: "money" },
+            { key: "penalty", label: "Late penalty", kind: "money" },
+            { key: "last_paid", label: "Last paid", kind: "date" },
+          ],
+          rows: rows.length ? [...rows, totalRow(rows, "Total", ["principal", "overdue", "penalty"])] : [],
+          notes,
+        };
+      }
+
+      const keyOf = grouper(f.options.group as Grouping, branches, officers, () => null);
+      const line = (name: string, p: ReturnType<typeof portfolio>, atRisk: number): Row => ({
+        name,
+        loans: p.loans,
+        at_risk: atRisk,
+        principal: p.principal,
+        par1_amount: p.par1,
+        par1: pct(p.par1, p.principal),
+        par30_amount: p.par30,
+        par30: pct(p.par30, p.principal),
+        par60: pct(p.par60, p.principal),
+        par90_amount: p.par90,
+        par90: pct(p.par90, p.principal),
+      });
+      const rows: Row[] = groupBy(live, keyOf).map(([name, group]) =>
+        line(name, portfolio(group), group.filter((l) => l.days_past_due > 0).length),
+      );
+      return {
+        columns: [
+          { key: "name", label: GROUP_CHOICES[f.options.group as Grouping].replace("By ", "").replace(/^./, (c) => c.toUpperCase()) },
+          { key: "loans", label: "Active loans", kind: "number" },
+          { key: "at_risk", label: "Loans at risk", kind: "number" },
+          { key: "principal", label: "Principal outstanding", kind: "money" },
+          { key: "par1_amount", label: "At risk over 1 day", kind: "money" },
+          { key: "par1", label: "PAR 1" },
+          { key: "par30_amount", label: "At risk over 30 days", kind: "money" },
+          { key: "par30", label: "PAR 30" },
+          { key: "par60", label: "PAR 60" },
+          { key: "par90_amount", label: "At risk over 90 days", kind: "money" },
+          { key: "par90", label: "PAR 90" },
+        ],
+        rows: rows.length ? [...rows, { ...line("Total", total, live.filter((l) => l.days_past_due > 0).length), _kind: "total" }] : [],
+        notes,
+      };
+    },
+  };
+}
+
 export const creditReports: ReportDefinition[] = [
   portfolioReport("loan-portfolio", "/credit", "credit.read"),
+  parReport("portfolio-at-risk", "/credit", "credit.read"),
+  dueRepayments,
   overdueLoans,
   loanApplications,
   disbursements,
   repayments,
   officerPerformance,
-  dueRepayments,
 ];
 
 /** The same portfolio for Accounts, who read the loan book without holding Credit permissions. */
 export const accountsLoanPortfolio = portfolioReport("accounts-loan-portfolio", "/accounts", "accounts.read");
+export const accountsPortfolioAtRisk = parReport("accounts-portfolio-at-risk", "/accounts", "accounts.read");
