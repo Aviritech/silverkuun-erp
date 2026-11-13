@@ -1,4 +1,4 @@
--- Silverkuun ERP: regions, branches, bank accounts and a test login for every role.
+-- Silverkuun ERP: regions, branches, bank accounts and test logins for every role, in every branch.
 -- Run after 01-schema.sql, on a NEW project. Run it once.
 --
 -- Every login below uses the password:  Kuun@Test2026
@@ -107,6 +107,24 @@ insert into seed_staff values
   ('30000000-0000-0000-0000-000000000208', 'manager.festac@kuun.test',   'Mike Manager',       'branch_operations', 'branch_manager', 'branch', 'FST'),
   ('30000000-0000-0000-0000-000000000209', 'manager.abaroad@kuun.test',  'Minaibim Manager',   'branch_operations', 'branch_manager', 'branch', 'ABR'),
   ('30000000-0000-0000-0000-000000000210', 'manager.odili@kuun.test',    'Mina Manager',       'branch_operations', 'branch_manager', 'branch', 'POD');
+
+-- Every branch also gets its own Marketer, Account Officer (Credit), Receipts Accountant and HR Officer, so each
+-- department can be tried from every branch. Emails follow the officer.<branch> pattern, e.g. marketer.ikeja,
+-- credit.ikeja, receipts.ikeja, hr.ikeja. Mabushi Main and Ikeja already have an HR Officer (hr.abuja, hr.lagos).
+-- The regional logins above stay: they cover every branch in their region.
+insert into seed_staff
+select ('30000000-0000-0000-0000-000000000' || r.n || lpad(b.n::text, 2, '0'))::uuid,
+       r.prefix || '.' || b.slug || '@kuun.test', initcap(b.label) || ' ' || r.title, r.department, r.role, 'branch', b.code
+from (values (1, 'MBM', 'mabushi', 'mabushi main'), (2, 'MBA', 'annex', 'mabushi annex'), (3, 'UTK', 'utako', 'utako'),
+             (4, 'KBW', 'kubwa', 'kubwa'), (5, 'IKJ', 'ikeja', 'ikeja'), (6, 'IKY', 'ikoyi', 'ikoyi'), (7, 'YAB', 'yaba', 'yaba'),
+             (8, 'FST', 'festac', 'festac'), (9, 'ABR', 'abaroad', 'aba road'), (10, 'POD', 'odili', 'peter odili'))
+       as b(n, code, slug, label)
+cross join (values (3, 'marketer', 'Marketer', 'administration', 'marketer'),
+                   (4, 'credit', 'Account Officer', 'credit', 'credit_officer'),
+                   (5, 'receipts', 'Receipts Accountant', 'accounts', 'receipts_accountant'),
+                   (6, 'hr', 'HR Officer', 'hr', 'hr_officer'))
+       as r(n, prefix, title, department, role)
+where not (r.role = 'hr_officer' and b.code in ('MBM', 'IKJ'));
 
 insert into auth.users (
   instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,

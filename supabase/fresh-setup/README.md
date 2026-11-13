@@ -5,7 +5,7 @@ Everything a brand-new, empty Supabase project needs to run the Silverkuun ERP, 
 | File | What it does |
 | --- | --- |
 | `01-schema.sql` | The whole database: all 24 migrations in order (tables, types, functions, triggers, RLS policies, roles and permissions, storage buckets) and the reference data (departments, roles, plan types and rates, loan products, CBN banks, chart of accounts, posting rules, leave types, job titles). No people or branches. |
-| `02-seed-organisation.sql` | 3 regions, 10 branches, a bank and a cash account per branch, and 43 test logins covering all 17 roles. |
+| `02-seed-organisation.sql` | 3 regions, 10 branches, a bank and a cash account per branch, and 81 test logins: every role, and every branch-level role in every branch. |
 | `03-seed-demo-data.sql` | 16 members across all branches and dummy records in every module, created through the real workflow functions. |
 | `build-schema.py` | Rebuilds `01-schema.sql` from `supabase/migrations`. Run it after adding a migration. |
 
@@ -65,22 +65,28 @@ The logins are inserted straight into Supabase Auth (`auth.users` and `auth.iden
 | Receipts Accountant | receipts.abuja@kuun.test | receipts.lagos@kuun.test | |
 | Marketer | marketer.abuja@kuun.test | marketer.lagos@kuun.test | marketer.ph@kuun.test |
 | Account Officer (Credit) | credit.abuja@kuun.test | credit.lagos@kuun.test | credit.ph@kuun.test |
-| HR Officer | hr.abuja@kuun.test (Mabushi Main) | hr.lagos@kuun.test (Ikeja) | |
 
-### By branch: an Operations Officer and a Branch Manager in each
+### By branch: every department in every branch
 
-| Region | Branch | Operations Officer | Branch Manager |
-| --- | --- | --- | --- |
-| Abuja | Mabushi Main | officer.mabushi@kuun.test | manager.mabushi@kuun.test |
-| Abuja | Mabushi Annex | officer.annex@kuun.test | manager.annex@kuun.test |
-| Abuja | Utako | officer.utako@kuun.test | manager.utako@kuun.test |
-| Abuja | Kubwa | officer.kubwa@kuun.test | manager.kubwa@kuun.test |
-| Lagos | Ikeja | officer.ikeja@kuun.test | manager.ikeja@kuun.test |
-| Lagos | Ikoyi | officer.ikoyi@kuun.test | manager.ikoyi@kuun.test |
-| Lagos | Yaba | officer.yaba@kuun.test | manager.yaba@kuun.test |
-| Lagos | Festac | officer.festac@kuun.test | manager.festac@kuun.test |
-| Port Harcourt | Aba Road | officer.abaroad@kuun.test | manager.abaroad@kuun.test |
-| Port Harcourt | Peter Odili | officer.odili@kuun.test | manager.odili@kuun.test |
+Each branch has an Operations Officer, Branch Manager, Marketer, Account Officer (Credit), Receipts Accountant and HR Officer.
+The logins follow one pattern, `<role>.<branch>@kuun.test`, and see only their own branch:
+
+| Region | Branch | Operations | Branch Manager | Marketer | Credit | Receipts (Accounts) | HR |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Abuja | Mabushi Main | officer.mabushi | manager.mabushi | marketer.mabushi | credit.mabushi | receipts.mabushi | hr.abuja |
+| Abuja | Mabushi Annex | officer.annex | manager.annex | marketer.annex | credit.annex | receipts.annex | hr.annex |
+| Abuja | Utako | officer.utako | manager.utako | marketer.utako | credit.utako | receipts.utako | hr.utako |
+| Abuja | Kubwa | officer.kubwa | manager.kubwa | marketer.kubwa | credit.kubwa | receipts.kubwa | hr.kubwa |
+| Lagos | Ikeja | officer.ikeja | manager.ikeja | marketer.ikeja | credit.ikeja | receipts.ikeja | hr.lagos |
+| Lagos | Ikoyi | officer.ikoyi | manager.ikoyi | marketer.ikoyi | credit.ikoyi | receipts.ikoyi | hr.ikoyi |
+| Lagos | Yaba | officer.yaba | manager.yaba | marketer.yaba | credit.yaba | receipts.yaba | hr.yaba |
+| Lagos | Festac | officer.festac | manager.festac | marketer.festac | credit.festac | receipts.festac | hr.festac |
+| Port Harcourt | Aba Road | officer.abaroad | manager.abaroad | marketer.abaroad | credit.abaroad | receipts.abaroad | hr.abaroad |
+| Port Harcourt | Peter Odili | officer.odili | manager.odili | marketer.odili | credit.odili | receipts.odili | hr.odili |
+
+Add `@kuun.test` to each. Regional accountants, the payments desk, the Financial Controller, Internal Audit, the Heads of
+department, payroll and the System Administrator work across branches, so they have one login each (above). The demo
+data was created by the original logins, but every per-branch login sees and works on everything in its branch.
 
 ## What the dummy data covers, and where to look
 
