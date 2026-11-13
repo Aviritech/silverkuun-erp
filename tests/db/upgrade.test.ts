@@ -40,4 +40,22 @@ describe("upgrading a database that already has data", () => {
     );
     expect(perms.rows.map((r) => r.role_code)).toEqual(["admin_officer", "branch_manager", "head_of_administration"]);
   });
+  it("adds the landmark, restructure approval and late penalty to a database that already has loans and repayments", async () => {
+    const db = await createTestDatabase({ before: "20261113000001" });
+    await db.exec(`
+      set session_replication_role = replica;
+      insert into loan_repayments (loan_id, branch_id, finance_transaction_id, txn_no, paid_on, amount, principal, interest, schedule_version)
+      values (gen_random_uuid(), gen_random_uuid(), gen_random_uuid(), 'RCP-000001', '2026-11-01', 33000, 30000, 3000, 1);
+      insert into finance_transactions (txn_no, branch_id, direction, transaction_type, status, txn_date, amount, interest_amount, bank_account_id, description, created_by)
+      values ('RCP-000001', gen_random_uuid(), 'receipt', 'loan_repayment', 'posted', '2026-11-01', 33000, 3000, gen_random_uuid(), 'Existing', gen_random_uuid());
+      set session_replication_role = origin;
+    `);
+
+    await applyMigrations(db, { from: "20261113000001" });
+
+    expect((await db.query("select penalty from loan_repayments")).rows).toEqual([{ penalty: "0.00" }]);
+    expect((await db.query("select penalty_amount from finance_transactions")).rows).toEqual([{ penalty_amount: "0.00" }]);
+    const rates = await db.query<{ late_penalty_rate: string }>("select distinct late_penalty_rate from loan_products");
+    expect(rates.rows).toEqual([{ late_penalty_rate: "0.1000" }]);
+  });
 });

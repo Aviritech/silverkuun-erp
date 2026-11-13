@@ -83,7 +83,8 @@ export const isDisbursed = (l: LoanBookRow) => l.status === "active" || l.status
 export const PENDING_STATUSES = ["draft", "submitted", "appraised", "credit_approved", "returned"] as const;
 export const isPending = (l: LoanBookRow) => (PENDING_STATUSES as readonly string[]).includes(l.status);
 export const wasApproved = (l: LoanBookRow) => ["approved", "active", "closed"].includes(l.status);
-export const outstanding = (l: LoanBookRow) => n(l.outstanding_principal) + n(l.outstanding_interest);
+/** Everything owed on a loan today: principal, interest and late penalty. */
+export const outstanding = (l: LoanBookRow) => n(l.outstanding_principal) + n(l.outstanding_interest) + n(l.penalty_outstanding);
 
 /** Portfolio figures for a set of loans: what is owed, what is late, and the suggested provision. */
 export function portfolio(loans: LoanBookRow[]) {
@@ -91,6 +92,7 @@ export function portfolio(loans: LoanBookRow[]) {
   const principal = live.reduce((s, l) => s + n(l.outstanding_principal), 0);
   const interest = live.reduce((s, l) => s + n(l.outstanding_interest), 0);
   const overdue = live.reduce((s, l) => s + n(l.overdue_amount), 0);
+  const penalty = live.reduce((s, l) => s + n(l.penalty_outstanding), 0);
   const par = (days: number) => live.filter((l) => l.days_past_due > days).reduce((s, l) => s + n(l.outstanding_principal), 0);
   const provision = live.reduce((s, l) => s + n(l.outstanding_principal) * arrearsBucket(l.days_past_due).provision, 0);
   return {
@@ -99,9 +101,11 @@ export function portfolio(loans: LoanBookRow[]) {
     principal: round2(principal),
     interest: round2(interest),
     overdue: round2(overdue),
+    penalty: round2(penalty),
     overdueLoans: live.filter((l) => l.days_past_due > 0).length,
     par1: round2(par(0)),
     par30: round2(par(30)),
+    par60: round2(par(60)),
     par90: round2(par(90)),
     provision: round2(provision),
   };

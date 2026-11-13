@@ -180,6 +180,11 @@ export default async function TransactionPage({
                 of which interest {formatMoney(txn.interest_amount)}
               </span>
             )}
+            {Number(txn.penalty_amount) > 0 && (
+              <span className="block text-xs text-zinc-500">
+                and late penalty {formatMoney(txn.penalty_amount)}
+              </span>
+            )}
             {txn.currency !== "NGN" && (
               <span className="block text-xs text-zinc-500">
                 {txn.currency}{" "}
