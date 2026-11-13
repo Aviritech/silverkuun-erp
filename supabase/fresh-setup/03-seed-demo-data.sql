@@ -32,8 +32,8 @@ begin
   perform set_config('request.jwt.claim.sub', v_id::text, false);
 end $$;
 
--- The login that does p_role's work for a branch: someone given that role for the branch, else for its region,
--- else organisation-wide.
+-- The login that does p_role's work for a branch: someone given that role for the branch, its region or the
+-- whole organisation.
 create function pg_temp.staff_for(p_role text, p_branch uuid) returns text language sql stable as $$
   select s.email
   from public.staff_roles sr join public.staff s on s.id = sr.staff_id
@@ -41,7 +41,8 @@ create function pg_temp.staff_for(p_role text, p_branch uuid) returns text langu
     and (sr.branch_id = p_branch
          or sr.region_id = (select region_id from public.branches where id = p_branch)
          or (sr.branch_id is null and sr.region_id is null))
-  order by (sr.branch_id is not null) desc, (sr.region_id is not null) desc, s.email
+  -- The original logins (lowest ids) do the work, so the demo data reads the same with or without the per-branch logins.
+  order by s.id
   limit 1;
 $$;
 
