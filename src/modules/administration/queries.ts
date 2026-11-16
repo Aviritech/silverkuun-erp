@@ -41,7 +41,11 @@ export type Member = {
   returned_by: string | null;
   sent_to_marketer_by: string | null;
   sent_to_marketer_at: string | null;
-  /** The marketer who reviewed the file, with their note. */
+  /** The staff member (any department) who brought the client in and confirms the file. */
+  introduced_by: string | null;
+  /** "self_signup" when the client filled the form through a sign-up link. */
+  source: "staff" | "self_signup";
+  /** Who confirmed the file at the "with staff" step (the introducer), with their note. */
   marketer_id: string | null;
   marketer_reviewed_at: string | null;
   marketer_note: string | null;
@@ -206,6 +210,7 @@ export async function getMemberBundle(memberId: string) {
       [
         member.created_by,
         member.sent_to_marketer_by,
+        member.introduced_by,
         member.marketer_id,
         member.submitted_by,
         member.approved_by,
@@ -333,4 +338,14 @@ export async function getMemberHistory(memberId: string): Promise<MemberHistoryR
   const { data, error } = await supabase.rpc("member_history", { p_member_id: memberId });
   if (error) throw dbFailure(error);
   return (data ?? []) as MemberHistoryRow[];
+}
+
+export type IntroducerOption = { id: string; full_name: string; department: string };
+
+/** Active staff an officer can name as the person who brought a client in. */
+export async function listIntroducerOptions(): Promise<IntroducerOption[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("member_introducer_options");
+  if (error) throw dbFailure(error);
+  return (data ?? []) as IntroducerOption[];
 }

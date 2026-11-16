@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useFormAction } from "@/lib/use-form-action";
 import {
   Button,
@@ -21,6 +21,10 @@ type Props = {
   member?: Partial<Member>;
   requireReason?: boolean;
   submitLabel: string;
+  /** Shown while saving, instead of "Saving…". */
+  pendingLabel?: string;
+  /** Extra fields placed just above the submit button, such as the client's document uploads. */
+  children?: ReactNode | ((errors: Record<string, string>) => ReactNode);
 };
 
 export function MemberForm({
@@ -30,6 +34,8 @@ export function MemberForm({
   member = {},
   requireReason,
   submitLabel,
+  pendingLabel = "Saving…",
+  children,
 }: Props) {
   const [state, formAction, pending] = useFormAction(action, {});
   // "other" is a bank without a CBN code, entered by name.
@@ -288,8 +294,10 @@ export function MemberForm({
         </Field>
       )}
 
+      {typeof children === "function" ? children(e) : children}
+
       <Button type="submit" disabled={pending}>
-        {pending ? "Saving…" : submitLabel}
+        {pending ? pendingLabel : submitLabel}
       </Button>
     </form>
   );

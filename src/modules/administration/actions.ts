@@ -26,6 +26,7 @@ import {
   planSchema,
   returnSchema,
   reversalSchema,
+  sendToStaffSchema,
   targetSchema,
 } from "./schemas";
 import { formFile } from "@/lib/uploads/server";
@@ -220,11 +221,19 @@ export async function removeDocument(
   return { ok: true };
 }
 
-export async function sendToMarketer(memberId: string): Promise<ActionState> {
+/** Sends the file to the staff member (any department) who brought the client in, to confirm they know them. */
+export async function sendToStaff(
+  memberId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
   await requireModule(administrationModule);
+  const parsed = sendToStaffSchema.safeParse({ staff_id: formData.get("staff_id") ?? "" });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
   const supabase = await createClient();
-  const { error } = await supabase.rpc("send_member_to_marketer", {
+  const { error } = await supabase.rpc("send_member_to_staff", {
     p_member_id: memberId,
+    p_staff_id: parsed.data.staff_id,
   });
   if (error) return { error: friendlyDbError(error) };
   revalidatePath("/administration", "layout");

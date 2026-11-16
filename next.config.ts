@@ -15,7 +15,18 @@ const nextConfig: NextConfig = {
     serverActions: { bodySizeLimit: "11mb" },
   },
   async headers() {
-    return [{ source: "/:path*", headers: securityHeaders }];
+    return [
+      { source: "/:path*", headers: securityHeaders },
+      // The sign-up link's token is in the address: never send it on as a referrer, and keep the page out of search.
+      {
+        source: "/join/:path*",
+        headers: [
+          { key: "Referrer-Policy", value: "no-referrer" },
+          { key: "X-Robots-Tag", value: "noindex, nofollow" },
+          { key: "Cache-Control", value: "no-store" },
+        ],
+      },
+    ];
   },
 };
 

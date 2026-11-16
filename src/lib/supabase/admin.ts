@@ -4,7 +4,8 @@ import { publicEnv, serviceRoleKey } from "@/lib/env";
 
 /**
  * Supabase Auth administration: creating, resetting and switching off logins. It bypasses row level security,
- * so it is used for nothing else (apart from logging failed sign-ins, below). Every caller first makes a change through the signed-in staff member's own
+ * so it is used for nothing else (apart from logging failed sign-ins, and the public sign-up page's narrower
+ * `serviceClient`, below). Every caller first makes a change through the signed-in staff member's own
  * client (which the database checks), and only then touches the login.
  */
 export function authAdmin() {
@@ -25,6 +26,17 @@ export async function setLoginBlocked(userId: string, blocked: boolean): Promise
   } catch (error) {
     return error instanceof Error ? error.message : String(error);
   }
+}
+
+/**
+ * A database client that acts as the service role, for the public client sign-up page only (which has no signed-in
+ * user). It may call only the sign-up functions the database grants to the service role, read the bank list, and
+ * move the client's own uploads; every check on the link happens again inside those functions.
+ */
+export function serviceClient() {
+  return createClient(publicEnv().NEXT_PUBLIC_SUPABASE_URL, serviceRoleKey(), {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
 }
 
 /**

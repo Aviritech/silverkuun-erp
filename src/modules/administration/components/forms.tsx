@@ -24,12 +24,41 @@ export function ReturnForm({ action }: { action: Action }) {
   );
 }
 
-export function MarketerReviewForm({ action }: { action: Action }) {
+/** The staff member who brought the client in confirms they know them; the file goes back to the officer. */
+export function StaffConfirmForm({ action }: { action: Action }) {
   return (
-    <InlineForm action={action} openLabel="Confirm and send back to the officer" submitLabel="Confirm member" variant="primary">
+    <InlineForm action={action} openLabel="Confirm and send to the officer" submitLabel="Confirm client" variant="primary">
       {(e) => (
         <Field label="Note for the officer (optional)" error={e.note}>
-          <Textarea name="note" rows={2} placeholder="For example: I brought this member in; details confirmed by phone." />
+          <Textarea name="note" rows={2} placeholder="For example: I brought this client in; details confirmed by phone." />
+        </Field>
+      )}
+    </InlineForm>
+  );
+}
+
+/** The officer names the staff member, from any department, who brought the client in. */
+export function SendToStaffForm({
+  action,
+  staff,
+  defaultStaffId,
+}: {
+  action: Action;
+  staff: { id: string; full_name: string; department: string }[];
+  defaultStaffId?: string | null;
+}) {
+  return (
+    <InlineForm action={action} openLabel="Send to staff" submitLabel="Send to staff" variant="primary">
+      {(e) => (
+        <Field label="Who brought this client in?" error={e.staff_id} hint="Any staff member. They confirm the client, then the file comes back to you.">
+          <Select name="staff_id" required defaultValue={defaultStaffId ?? ""}>
+            <option value="">Choose a staff member</option>
+            {staff.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.full_name} ({s.department})
+              </option>
+            ))}
+          </Select>
         </Field>
       )}
     </InlineForm>
