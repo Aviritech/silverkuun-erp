@@ -23,14 +23,14 @@ import { listBranches, listLiquidations, memberCounts } from "@/modules/administ
 
 const STEPS = [
   { title: "Capture", text: "The officer opens the member file with KYC and documents" },
-  { title: "Marketer", text: "The marketer confirms they know the member" },
+  { title: "Staff", text: "The staff member who brought the client in confirms them" },
   { title: "Complete", text: "The officer finishes the file and submits it" },
   { title: "Approve", text: "The Branch Manager signs and approves" },
   { title: "Save", text: "Contributions are recorded against the savings plan" },
   { title: "Accounts", text: "Accounts posts each pay-in once Operations confirms it" },
 ];
 
-type QueuedMember = { id: string; branch_id: string; status: MemberStatus; created_by: string; sent_to_marketer_by: string | null };
+type QueuedMember = { id: string; branch_id: string; status: MemberStatus; created_by: string; sent_to_marketer_by: string | null; introduced_by: string | null; source: string };
 type RecentMember = {
   id: string;
   branch_id: string;
@@ -52,7 +52,7 @@ export default async function AdministrationPage() {
   const [counts, branches, queued, receipts, liquidations, collected, maturing, recent] = await Promise.all([
     memberCounts(),
     listBranches(),
-    supabase.from("members").select("id, branch_id, status, created_by, sent_to_marketer_by").in("status", ["with_marketer", "pending_approval", "marketer_reviewed", "returned"]),
+    supabase.from("members").select("id, branch_id, status, created_by, sent_to_marketer_by, introduced_by, source").in("status", ["with_marketer", "pending_approval", "marketer_reviewed", "returned"]),
     p.has("receipts.confirm") ? supabase.rpc("receipts_to_confirm") : Promise.resolve({ data: [], error: null }),
     p.has("liquidations.request") || p.has("liquidations.approve") ? listLiquidations(["pending_approval", "returned"]) : Promise.resolve([]),
     canRead
@@ -78,11 +78,16 @@ export default async function AdministrationPage() {
     return !!b && p.hasForBranch(permission, b);
   };
   const files = (queued.data ?? []) as QueuedMember[];
-  const forMarketer = p.has("members.endorse")
-    ? files.filter((m) => m.status === "with_marketer").filter(inBranch("members.endorse")).filter((m) => ![m.created_by, m.sent_to_marketer_by].includes(staff.id)).length
-    : 0;
+  const forMarketer = files
+    .filter((m) => m.status === "with_marketer" && m.sent_to_marketer_by !== staff.id)
+    .filter((m) => (m.introduced_by ? m.introduced_by === staff.id : p.has("members.endorse") && inBranch("members.endorse")(m) && m.created_by !== staff.id))
+    .length;
   const forManager = p.has("members.approve") ? files.filter((m) => m.status === "pending_approval").filter(inBranch("members.approve")).length : 0;
-  const backWithMe = files.filter((m) => ["marketer_reviewed", "returned"].includes(m.status) && m.created_by === staff.id).length;
+  const backWithMe = files.filter((m) => ["marketer_reviewed", "returned"].includes(m.status) && m.created_by === staff.id && m.source === "staff").length;
+  // Clients who filled the form themselves have no officer yet: any officer at the branch completes them.
+  const signupsToComplete = p.has("members.manage")
+    ? files.filter((m) => m.source === "self_signup" && m.status === "marketer_reviewed").filter(inBranch("members.manage")).length
+    : 0;
   const receiptsToCheck = ((receipts.data ?? []) as unknown[]).length;
   const liquidationsToApprove = liquidations.filter((l) => l.status === "pending_approval").filter(inBranch("liquidations.approve")).length;
   const liquidationsReturned = liquidations.filter((l) => l.status === "returned" && l.requested_by === staff.id).length;
@@ -95,12 +100,13 @@ export default async function AdministrationPage() {
   const totalFiles = inProgress + counts.approved;
 
   const queues: WorkQueue[] = [
-    p.has("members.endorse") && { label: "Files to confirm as marketer", value: forMarketer, href: "/administration/approvals" },
+    (p.has("members.endorse") || forMarketer > 0) && { label: "Clients to confirm", value: forMarketer, href: p.has("members.endorse") ? "/administration/approvals" : "/clients" },
     p.has("members.approve") && { label: "Files to approve", value: forManager, href: "/administration/approvals" },
     p.has("receipts.confirm") && { label: "Receipts to check", value: receiptsToCheck, href: "/administration/receipts" },
     p.has("liquidations.approve") && { label: "Liquidations to approve", value: liquidationsToApprove, href: "/administration/liquidations" },
     p.has("liquidations.request") && { label: "Liquidations sent back to you", value: liquidationsReturned, href: "/administration/liquidations" },
-    p.has("members.manage") && { label: "Files back with you", value: backWithMe, href: "/administration/members?status=returned", hint: "Returned or confirmed by the marketer" },
+    p.has("members.manage") && { label: "Client sign-ups to complete", value: signupsToComplete, href: "/administration/members?status=marketer_reviewed", hint: "Filled in by the client and confirmed by staff" },
+    p.has("members.manage") && { label: "Files back with you", value: backWithMe, href: "/administration/members?status=returned", hint: "Returned, or confirmed by the staff member who brought the client in" },
   ].filter((q): q is WorkQueue => !!q);
 
   const pipeline = (Object.keys(MEMBER_STATUSES) as MemberStatus[]).filter((s) => s !== "approved");
