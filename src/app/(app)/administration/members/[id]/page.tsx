@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { Badge, ButtonLink, Card, EmptyState, PageHeader, Tabs } from "@/components/ui";
 import { requireModule } from "@/lib/auth/session";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
+import { monthlyRate } from "@/lib/letters/words";
 import { createClient } from "@/lib/supabase/server";
 import { LOAN_STATUSES, RATE_BASES, REPAYMENT_FREQUENCIES, type LoanStatus, type RateBasis, type RepaymentFrequency } from "@/modules/credit/constants";
 import { FINANCE_STATUSES } from "@/modules/accounts/constants";
@@ -393,7 +394,7 @@ export default async function MemberPage({
                   {livePlans.length > 0 &&
                     livePlans.map((p) => (
                       <span key={p.id} className="block">
-                        {planName.get(p.plan_type) ?? p.plan_type} · {Number(p.interest_rate)}% a year
+                        {planName.get(p.plan_type) ?? p.plan_type} · {monthlyRate(p.interest_rate)}% a month
                       </span>
                     ))}
                 </Detail>
@@ -547,7 +548,7 @@ export default async function MemberPage({
                           {FREQUENCIES[plan.contribution_frequency as keyof typeof FREQUENCIES].toLowerCase()}
                         </p>
                         <p className="text-xs text-zinc-500">
-                          {formatDate(plan.start_date)} to {formatDate(plan.maturity_date)} · {Number(plan.interest_rate)}% a year · {plan.status}
+                          {formatDate(plan.start_date)} to {formatDate(plan.maturity_date)} · {monthlyRate(plan.interest_rate)}% a month · {plan.status}
                         </p>
                         {plan.dividends_at_maturity ? (
                           <p className="text-xs text-zinc-500">Dividends build up and are paid with the savings at maturity.</p>
@@ -566,6 +567,16 @@ export default async function MemberPage({
                             />
                           </div>
                         )}
+                        {member.status === "approved" && plan.status !== "cancelled" && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <ButtonLink href={`/letters/plans/${plan.id}/agreement`} variant="secondary">
+                              Agreement letter
+                            </ButtonLink>
+                            <ButtonLink href={`/letters/plans/${plan.id}/statement`} variant="secondary">
+                              Dividend statement
+                            </ButtonLink>
+                          </div>
+                        )}
                       </div>
                       <dl className="grid grid-cols-3 gap-x-6 gap-y-2 text-right">
                         <Detail label="Total contributed">{formatMoney(t?.total_contributed)}</Detail>
@@ -582,7 +593,7 @@ export default async function MemberPage({
                         <Detail label="Matures">
                           {p && p.days_to_maturity >= 0 ? `in ${p.days_to_maturity} days` : "Matured"}
                         </Detail>
-                        <Detail label="Interest rate">{Number(plan.interest_rate)}% a year</Detail>
+                        <Detail label="Interest rate">{monthlyRate(plan.interest_rate)}% a month</Detail>
                         <Detail label="Monthly interest (estimate)">{formatMoney(monthlyInterest(plan.id, plan.interest_rate))}</Detail>
                         {plan.dividends_at_maturity && (
                           <>
@@ -634,6 +645,11 @@ export default async function MemberPage({
                                 </td>
                                 <td className="px-4 py-2">
                                   <div className="flex flex-wrap justify-end gap-2">
+                                    {c.kind === "top_up" && !reversed.has(c.id) && member.status === "approved" && (
+                                      <ButtonLink href={`/letters/top-ups/${c.id}`} variant="secondary">
+                                        Top-up letter
+                                      </ButtonLink>
+                                    )}
                                     {!c.verified_at && can("contributions.verify") && c.recorded_by !== staff.id && (
                                       <ActionButton
                                         action={verifyContribution.bind(null, member.id, c.id)}
