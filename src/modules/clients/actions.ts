@@ -7,7 +7,7 @@ import { getCurrentStaff } from "@/lib/auth/session";
 import { friendlyDbError } from "@/lib/db-errors";
 import { createClient } from "@/lib/supabase/server";
 import { fieldErrors, marketerReviewSchema, returnSchema } from "@/modules/administration/schemas";
-import { linkSchema } from "./schemas";
+import { fixLinkSchema, linkSchema } from "./schemas";
 import { hashSignupToken, newSignupToken } from "./tokens";
 
 /** Where the app is served: the configured site address, or the address this request came in on. */
@@ -50,6 +50,40 @@ export async function revokeSignupLink(linkId: string): Promise<ActionState> {
   const { error } = await supabase.rpc("revoke_member_signup_link", { p_id: linkId });
   if (error) return { error: friendlyDbError(error) };
   revalidatePath("/clients/links");
+  return { ok: true };
+}
+
+/**
+ * A client's own sign-up came back: the staff member who brought them in, or the branch's officer, sends the client a
+ * one-time link to their form, with their answers and the reason. Shown once; only its hash is kept.
+ */
+export async function createFixLink(memberId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  await getCurrentStaff();
+  const parsed = fixLinkSchema.safeParse({ days: formData.get("days") ?? "" });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+
+  const token = newSignupToken();
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("create_member_fix_link", {
+    p_token_hash: hashSignupToken(token),
+    p_member_id: memberId,
+    p_days: parsed.data.days,
+  });
+  if (error) return { error: friendlyDbError(error) };
+
+  revalidatePath(`/clients/${memberId}`);
+  revalidatePath(`/administration/members/${memberId}`);
+  return { ok: true, secret: `${await siteOrigin()}/join/fix/${token}` };
+}
+
+/** Switches off a fix link that was sent to the wrong person or is no longer needed. */
+export async function revokeFixLink(linkId: string, memberId: string): Promise<ActionState> {
+  await getCurrentStaff();
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("revoke_member_fix_link", { p_id: linkId });
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath(`/clients/${memberId}`);
+  revalidatePath(`/administration/members/${memberId}`);
   return { ok: true };
 }
 

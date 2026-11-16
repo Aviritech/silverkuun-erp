@@ -8,6 +8,9 @@ export const linkSchema = z.object({
   days: z.coerce.number().refine((d) => (LINK_DAYS as readonly number[]).includes(d), "Choose how long the link lasts"),
 });
 
+/** Sending a returned sign-up back to the client. */
+export const fixLinkSchema = linkSchema.pick({ days: true });
+
 /** The client's own form: the member form without the branch (the link sets it), plus their consent. */
 export const signupSchema = memberSchema.omit({ branch_id: true }).extend({
   consent: z.literal("yes", "Tick the box to confirm these details are yours and correct"),

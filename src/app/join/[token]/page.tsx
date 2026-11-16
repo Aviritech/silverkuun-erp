@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { BrandLogo } from "@/components/brand";
 import { formatDateTime } from "@/lib/format";
 import { serviceClient } from "@/lib/supabase/admin";
 import type { CbnBank } from "@/modules/administration/queries";
+import { JoinNotice as Notice, JoinShell as Shell } from "@/modules/clients/components/join-shell";
 import { SignupForm } from "@/modules/clients/components/signup-form";
 import { openLink, pageViewAllowed } from "@/modules/clients/signup";
 
@@ -13,28 +13,6 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
   referrer: "no-referrer",
 };
-
-function Shell({ children }: { children: React.ReactNode }) {
-  return (
-    <main className="min-h-screen bg-neutral-50">
-      <header className="bg-ink px-4 py-5 sm:px-8">
-        <BrandLogo subtitle="Membership" />
-      </header>
-      <div className="mx-auto max-w-4xl px-4 py-8 sm:px-8">{children}</div>
-    </main>
-  );
-}
-
-function Notice({ title, children }: { title: string; children: React.ReactNode }) {
-  return (
-    <Shell>
-      <div className="rounded-xl border border-zinc-200 bg-white p-6">
-        <h1 className="text-xl font-semibold text-ink">{title}</h1>
-        <p className="mt-2 text-sm text-zinc-700">{children}</p>
-      </div>
-    </Shell>
-  );
-}
 
 /** The client's own sign-up form, opened from a one-time link a staff member sent them. No login. */
 export default async function JoinPage({ params }: { params: Promise<{ token: string }> }) {
