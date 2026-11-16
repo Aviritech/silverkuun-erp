@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
+import { useFormAction } from "@/lib/use-form-action";
 import { InlineForm } from "@/components/inline-form";
 import { Button, Field, FormError, Input, Select } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
@@ -17,7 +18,7 @@ export function NewStaffForm({
   departments: { code: string; name: string }[];
   branches: Ref[];
 }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useFormAction(action, {});
   const [copied, setCopied] = useState(false);
   const e = state.fieldErrors ?? {};
 
@@ -44,7 +45,7 @@ export function NewStaffForm({
   }
 
   return (
-    <form action={formAction} className="grid gap-4 sm:grid-cols-2">
+    <form onSubmit={formAction} className="grid gap-4 sm:grid-cols-2">
       <div className="sm:col-span-2">
         <FormError message={state.error} />
       </div>

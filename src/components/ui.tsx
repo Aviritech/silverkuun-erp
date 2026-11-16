@@ -86,12 +86,23 @@ export function Field({
   hint?: string;
   children: ReactNode;
 }) {
+  // A field that failed validation keeps its value and is outlined in red, with the message under it.
   return (
-    <label className="block">
-      <span className="text-sm font-medium text-zinc-800">{label}</span>
+    <label
+      className={
+        error
+          ? "block [&_input]:border-red-500 [&_input]:bg-red-50/40 [&_select]:border-red-500 [&_select]:bg-red-50/40 [&_textarea]:border-red-500 [&_textarea]:bg-red-50/40"
+          : "block"
+      }
+    >
+      <span className={error ? "text-sm font-medium text-red-800" : "text-sm font-medium text-zinc-800"}>{label}</span>
       {children}
       {hint && !error && <span className="mt-1 block text-xs text-zinc-500">{hint}</span>}
-      {error && <span className="mt-1 block text-xs text-red-700">{error}</span>}
+      {error && (
+        <span data-field-error className="mt-1 block text-xs text-red-700">
+          {error}
+        </span>
+      )}
     </label>
   );
 }

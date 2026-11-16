@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+import { useFormAction } from "@/lib/use-form-action";
 import { Button, Field, FormError, Input, Select, Textarea } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 import { formatDate, formatMoney } from "@/lib/format";
@@ -48,7 +49,7 @@ export function LoanForm({
   defaultOfficerId?: string;
   submitLabel: string;
 }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useFormAction(action, {});
   const e = state.fieldErrors ?? {};
   const [memberId, setMemberId] = useState(loan?.member_id ?? (members?.length === 1 ? members[0].id : ""));
   const member = members?.find((m) => m.id === memberId);
@@ -96,7 +97,7 @@ export function LoanForm({
   const burden = Number(terms.income) > 0 && terms.frequency !== "end_of_term" ? perMonth / Number(terms.income) : null;
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form onSubmit={formAction} className="space-y-6">
       <FormError message={state.error} />
 
       <fieldset className="grid gap-4 sm:grid-cols-2">
