@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BrandLogo } from "@/components/brand";
+import { LiveUpdates } from "@/components/live-updates";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { UsageTracker } from "@/components/usage-tracker";
 import { getCurrentStaff } from "@/lib/auth/session";
@@ -41,6 +42,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <header className="no-print sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-zinc-200 bg-white/90 px-6 py-3 backdrop-blur">
           <p className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-500">Silverkuun Group</p>
           <div className="flex items-center gap-3">
+            <LiveUpdates />
             <div className="hidden text-right sm:block">
               <p className="text-sm font-medium leading-tight">{staff.fullName}</p>
               <p className="text-xs leading-tight text-zinc-500">{staff.email}</p>
