@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { DOCUMENT_TYPES, FREQUENCIES, ID_TYPES, ISSUE_CHANNELS, MAX_SIGNATURE_LENGTH, PAYMENT_METHODS } from "./constants";
+import { DOCUMENT_TYPES, FREQUENCIES, ID_TYPES, ISSUE_CHANNELS, MAX_SIGNATURE_LENGTH, NIGERIAN_STATES, PAYMENT_METHODS } from "./constants";
 
 const optionalText = z
   .string()
@@ -27,7 +27,11 @@ export const memberSchema = z.object({
   gender: z.enum(["female", "male"]).nullable().or(z.literal("").transform(() => null)),
   phone: z.string().trim().min(7, "Enter a phone number"),
   email: z.email("Enter a valid email").nullable().or(z.literal("").transform(() => null)),
-  address: z.string().trim().min(1, "Enter the address"),
+  address: z.string().trim().min(1, "Enter the house number and street"),
+  address_city: optionalText.pipe(z.string().max(100, "Keep the town under 100 characters").nullable()),
+  address_lga: z.string().trim().min(1, "Enter the LGA").max(100, "Keep the LGA under 100 characters"),
+  address_state: z.enum(NIGERIAN_STATES, "Choose the state"),
+  address_landmark: optionalText.pipe(z.string().max(200, "Keep the landmark under 200 characters").nullable()),
   nin: z.string().trim().regex(/^\d{11}$/, "A NIN is 11 digits"),
   id_type: z.enum(Object.keys(ID_TYPES) as [keyof typeof ID_TYPES], "Choose an ID type"),
   id_number: z.string().trim().min(1, "Enter the ID number"),
@@ -46,7 +50,6 @@ export const memberSchema = z.object({
     .regex(/^\d{10}$/, "An account number is 10 digits")
     .nullable()
     .or(z.literal("").transform(() => null)),
-  interest_pay_day: optionalPayDay,
 });
 export type MemberInput = z.infer<typeof memberSchema>;
 
@@ -100,6 +103,8 @@ export const planSchema = z
       (v) => (v === "" ? undefined : v),
       z.coerce.number("Choose a tenure").int().positive("Choose a tenure").optional(),
     ),
+    // Required for plans that pay interest monthly; plans that pay at maturity leave it out.
+    interest_pay_day: optionalPayDay.optional(),
   })
   .refine((v) => v.maturity_date || v.tenure_months, { path: ["maturity_date"], message: "Enter a maturity date" })
   .refine((v) => !v.maturity_date || v.maturity_date > v.start_date, {
@@ -115,6 +120,15 @@ export function addMonths(isoDay: string, months: number): string {
   target.setUTCDate(Math.min(d, lastDay));
   return target.toISOString().slice(0, 10);
 }
+
+export const payDayChangeSchema = z.object({
+  interest_pay_day: z.coerce
+    .number("Choose a day")
+    .int("Choose a day from 1 to 31")
+    .min(1, "Choose a day from 1 to 31")
+    .max(31, "Choose a day from 1 to 31"),
+  reason: z.string().trim().min(5, "Say why the pay day is changing"),
+});
 
 export const contributionSchema = z.object({
   member_plan_id: z.guid(),

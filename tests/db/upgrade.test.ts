@@ -58,4 +58,31 @@ describe("upgrading a database that already has data", () => {
     const rates = await db.query<{ late_penalty_rate: string }>("select distinct late_penalty_rate from loan_products");
     expect(rates.rows).toEqual([{ late_penalty_rate: "0.1000" }]);
   });
+
+  it("moves each member's interest pay day onto their plans", async () => {
+    const db = await createTestDatabase({ before: "20261116000001" });
+    await db.exec(`
+      set session_replication_role = replica;
+      insert into members (id, branch_id, first_name, last_name, phone, address, nin, id_type, id_number, status, created_by, interest_pay_day)
+      values ('00000000-0000-0000-0000-0000000000a1', gen_random_uuid(), 'Ada', 'Obi', '08031234567', '12 Marina', '12345678901',
+              'national_id', 'NG-1', 'approved', gen_random_uuid(), 25);
+      insert into member_plans (member_id, branch_id, plan_type, contribution_amount, contribution_frequency, start_date, maturity_date,
+                                created_by, interest_rate, dividends_at_maturity)
+      values ('00000000-0000-0000-0000-0000000000a1', gen_random_uuid(), 'gold', 50000, 'monthly', '2026-01-01', '2027-01-01', gen_random_uuid(), 12, false),
+             ('00000000-0000-0000-0000-0000000000a1', gen_random_uuid(), 'target', 50000, 'monthly', '2026-01-01', '2026-07-01', gen_random_uuid(), 12, true);
+      set session_replication_role = origin;
+    `);
+
+    await applyMigrations(db, { from: "20261116000001" });
+
+    const res = await db.query<{ plan_type: string; interest_pay_day: number | null }>(
+      "select plan_type, interest_pay_day from member_plans order by plan_type",
+    );
+    expect(res.rows).toEqual([
+      { plan_type: "gold", interest_pay_day: 25 },
+      { plan_type: "target", interest_pay_day: null },
+    ]);
+    const cols = await db.query("select 1 from information_schema.columns where table_name = 'members' and column_name = 'interest_pay_day'");
+    expect(cols.rows).toHaveLength(0);
+  });
 });

@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { useFormAction } from "@/lib/use-form-action";
 import { InlineForm } from "@/components/inline-form";
 import { Button, Field, FormError, Input, Select, Textarea } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
@@ -101,13 +102,13 @@ export function CollateralForm({ action }: { action: Action }) {
 }
 
 export function LoanDocumentUpload({ action, types }: { action: Action; types: LoanDocumentType[] }) {
-  const [state, formAction, pending] = useActionState(withStagedUploads(action), {});
+  const [state, formAction, pending] = useFormAction(withStagedUploads(action), {});
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => {
     if (state.ok) form.current?.reset();
   }, [state]);
   return (
-    <form ref={form} action={formAction} className="grid items-end gap-3 sm:grid-cols-[1fr_1.5fr_auto]">
+    <form ref={form} onSubmit={formAction} className="grid items-end gap-3 sm:grid-cols-[1fr_1.5fr_auto]">
       <Field label="Document" error={state.fieldErrors?.document_type}>
         <Select name="document_type" required defaultValue={types.length === 1 ? types[0] : ""}>
           <option value="">Choose</option>
@@ -132,11 +133,11 @@ export function LoanDocumentUpload({ action, types }: { action: Action; types: L
 }
 
 export function AppraisalForm({ action, amountRequested }: { action: Action; amountRequested: string }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useFormAction(action, {});
   const [recommendation, setRecommendation] = useState("approve");
   const e = state.fieldErrors ?? {};
   return (
-    <form action={formAction} className="space-y-3">
+    <form onSubmit={formAction} className="space-y-3">
       <FormError message={state.error} />
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label="Credit bureau result" error={e.bureau_check}>
@@ -180,11 +181,11 @@ export function AppraisalForm({ action, amountRequested }: { action: Action; amo
 }
 
 export function DecisionForm({ action, recommendedAmount }: { action: Action; recommendedAmount: string }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useFormAction(action, {});
   const [decision, setDecision] = useState("approve");
   const e = state.fieldErrors ?? {};
   return (
-    <form action={formAction} className="space-y-3">
+    <form onSubmit={formAction} className="space-y-3">
       <FormError message={state.error} />
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label="Decision" error={e.decision}>
@@ -210,11 +211,11 @@ export function DecisionForm({ action, recommendedAmount }: { action: Action; re
 }
 
 export function BusinessDecisionForm({ action }: { action: Action }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useFormAction(action, {});
   const [decision, setDecision] = useState("approve");
   const e = state.fieldErrors ?? {};
   return (
-    <form action={formAction} className="space-y-3">
+    <form onSubmit={formAction} className="space-y-3">
       <FormError message={state.error} />
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label="Decision" error={e.decision}>
@@ -309,10 +310,10 @@ export function RestructureForm({ action, defaults }: { action: Action; defaults
 }
 
 export function RestructureDecisionForm({ action }: { action: Action }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useFormAction(action, {});
   const [decision, setDecision] = useState("approve");
   return (
-    <form action={formAction} className="flex flex-wrap items-end gap-3">
+    <form onSubmit={formAction} className="flex flex-wrap items-end gap-3">
       <div className="w-40">
         <Select name="decision" value={decision} onChange={(ev) => setDecision(ev.target.value)} aria-label="Decision">
           <option value="approve">Approve</option>

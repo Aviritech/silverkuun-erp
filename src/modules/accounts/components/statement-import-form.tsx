@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
+import { useFormAction } from "@/lib/use-form-action";
 import { Button, Field, FormError, Input } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 import { withStagedUploads } from "@/lib/uploads/client";
@@ -22,14 +23,14 @@ export function StatementImportForm({
   action: (prev: ActionState, formData: FormData) => Promise<ActionState>;
   mapping: Record<string, string>;
 }) {
-  const [state, formAction, pending] = useActionState(withStagedUploads(action), {});
+  const [state, formAction, pending] = useFormAction(withStagedUploads(action), {});
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => {
     if (state.ok) form.current?.reset();
   }, [state]);
   const e = state.fieldErrors ?? {};
   return (
-    <form ref={form} action={formAction} className="space-y-3">
+    <form ref={form} onSubmit={formAction} className="space-y-3">
       <FormError message={state.error} />
       {state.ok && state.message && <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-900">{state.message}</p>}
       <Field

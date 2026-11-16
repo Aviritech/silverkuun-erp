@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
+import { useFormAction } from "@/lib/use-form-action";
 import { InlineForm } from "@/components/inline-form";
 import { Button, Field, FormError, Input, Select, Textarea } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
@@ -74,12 +75,12 @@ export function TargetForm({
   action: Action;
   employees: { id: string; full_name: string; employee_no: string; branch_name: string }[];
 }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useFormAction(action, {});
   const [method, setMethod] = useState<CommissionMethod | "">("");
   const e = state.fieldErrors ?? {};
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form onSubmit={formAction} className="space-y-4">
       <FormError message={state.error} />
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Employee" error={e.employee_id}>

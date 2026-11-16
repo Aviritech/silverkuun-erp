@@ -3,11 +3,13 @@ import { notFound } from "next/navigation";
 import { Badge, ButtonLink, Card, EmptyState, PageHeader, Tabs } from "@/components/ui";
 import { requireModule } from "@/lib/auth/session";
 import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
+import { monthlyRate } from "@/lib/letters/words";
 import { createClient } from "@/lib/supabase/server";
 import { LOAN_STATUSES, RATE_BASES, REPAYMENT_FREQUENCIES, type LoanStatus, type RateBasis, type RepaymentFrequency } from "@/modules/credit/constants";
 import { FINANCE_STATUSES } from "@/modules/accounts/constants";
 import {
   addPlan,
+  changePlanPayDay,
   approveMember,
   marketerReview,
   recordContribution,
@@ -27,6 +29,7 @@ import {
   ContributionForm,
   IssueForm,
   MarketerReviewForm,
+  PayDayForm,
   PlanForm,
   ReturnForm,
   ReversalForm,
@@ -374,7 +377,7 @@ export default async function MemberPage({
                   {livePlans.length > 0 &&
                     livePlans.map((p) => (
                       <span key={p.id} className="block">
-                        {planName.get(p.plan_type) ?? p.plan_type} · {Number(p.interest_rate)}% a year
+                        {planName.get(p.plan_type) ?? p.plan_type} · {monthlyRate(p.interest_rate)}% a month
                       </span>
                     ))}
                 </Detail>
@@ -406,7 +409,17 @@ export default async function MemberPage({
               <Detail label="Phone">{member.phone}</Detail>
               <Detail label="Email">{member.email}</Detail>
               <Detail label="Date of birth">{formatDate(member.date_of_birth)}</Detail>
-              <Detail label="Address">{member.address}</Detail>
+              <Detail label="Address">
+                {member.address}
+                {(member.address_city || member.address_lga || member.address_state) && (
+                  <span className="block">
+                    {[member.address_city, member.address_lga && `${member.address_lga} LGA`, member.address_state]
+                      .filter(Boolean)
+                      .join(", ")}
+                  </span>
+                )}
+                {member.address_landmark && <span className="block text-xs text-zinc-500">Landmark: {member.address_landmark}</span>}
+              </Detail>
               <Detail label="NIN">{member.nin}</Detail>
               <Detail label="Means of ID">
                 {ID_TYPES[member.id_type as keyof typeof ID_TYPES]} · {member.id_number}
@@ -417,7 +430,6 @@ export default async function MemberPage({
               <Detail label="Interest paid to">
                 {member.bank_account_no &&
                   `${member.bank_name}${member.bank_code ? ` (${member.bank_code})` : ""} · ${member.bank_account_no}`}
-                {member.interest_pay_day && <span className="block text-xs text-zinc-500">on day {member.interest_pay_day} of each month</span>}
               </Detail>
               <Detail label="Prepared by">
                 {staffName(member.created_by)}, {formatDate(member.created_at)}
@@ -518,10 +530,34 @@ export default async function MemberPage({
                           {FREQUENCIES[plan.contribution_frequency as keyof typeof FREQUENCIES].toLowerCase()}
                         </p>
                         <p className="text-xs text-zinc-500">
-                          {formatDate(plan.start_date)} to {formatDate(plan.maturity_date)} · {Number(plan.interest_rate)}% a year · {plan.status}
+                          {formatDate(plan.start_date)} to {formatDate(plan.maturity_date)} · {monthlyRate(plan.interest_rate)}% a month · {plan.status}
                         </p>
-                        {plan.dividends_at_maturity && (
+                        {plan.dividends_at_maturity ? (
                           <p className="text-xs text-zinc-500">Dividends build up and are paid with the savings at maturity.</p>
+                        ) : (
+                          <p className="text-xs text-zinc-500">
+                            {plan.interest_pay_day
+                              ? `Interest paid on day ${plan.interest_pay_day} of each month`
+                              : "No interest pay day set yet, so this plan isn't on the monthly interest schedule"}
+                          </p>
+                        )}
+                        {!plan.dividends_at_maturity && plan.status === "active" && can("members.amend") && (
+                          <div className="mt-2">
+                            <PayDayForm
+                              action={changePlanPayDay.bind(null, member.id, plan.id)}
+                              current={plan.interest_pay_day}
+                            />
+                          </div>
+                        )}
+                        {member.status === "approved" && plan.status !== "cancelled" && (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            <ButtonLink href={`/letters/plans/${plan.id}/agreement`} variant="secondary">
+                              Agreement letter
+                            </ButtonLink>
+                            <ButtonLink href={`/letters/plans/${plan.id}/statement`} variant="secondary">
+                              Dividend statement
+                            </ButtonLink>
+                          </div>
                         )}
                       </div>
                       <dl className="grid grid-cols-3 gap-x-6 gap-y-2 text-right">
@@ -539,7 +575,7 @@ export default async function MemberPage({
                         <Detail label="Matures">
                           {p && p.days_to_maturity >= 0 ? `in ${p.days_to_maturity} days` : "Matured"}
                         </Detail>
-                        <Detail label="Interest rate">{Number(plan.interest_rate)}% a year</Detail>
+                        <Detail label="Interest rate">{monthlyRate(plan.interest_rate)}% a month</Detail>
                         <Detail label="Monthly interest (estimate)">{formatMoney(monthlyInterest(plan.id, plan.interest_rate))}</Detail>
                         {plan.dividends_at_maturity && (
                           <>
@@ -591,6 +627,11 @@ export default async function MemberPage({
                                 </td>
                                 <td className="px-4 py-2">
                                   <div className="flex flex-wrap justify-end gap-2">
+                                    {c.kind === "top_up" && !reversed.has(c.id) && member.status === "approved" && (
+                                      <ButtonLink href={`/letters/top-ups/${c.id}`} variant="secondary">
+                                        Top-up letter
+                                      </ButtonLink>
+                                    )}
                                     {!c.verified_at && can("contributions.verify") && c.recorded_by !== staff.id && (
                                       <ActionButton
                                         action={verifyContribution.bind(null, member.id, c.id)}

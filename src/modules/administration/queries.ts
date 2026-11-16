@@ -19,7 +19,13 @@ export type Member = {
   gender: "female" | "male" | null;
   phone: string;
   email: string | null;
+  /** House number and street. */
   address: string;
+  address_city: string | null;
+  address_lga: string | null;
+  address_state: string | null;
+  /** Something easy to find nearby, such as "opposite First Bank". */
+  address_landmark: string | null;
   nin: string;
   id_type: string;
   id_number: string;
@@ -30,8 +36,6 @@ export type Member = {
   bank_code: string | null;
   bank_name: string | null;
   bank_account_no: string | null;
-  /** Day of the month interest is paid; the last day in shorter months. */
-  interest_pay_day: number | null;
   return_reason: string | null;
   returned_by: string | null;
   sent_to_marketer_by: string | null;
@@ -81,10 +85,14 @@ export type Plan = {
   start_date: string;
   maturity_date: string;
   status: string;
-  /** Annual interest rate (%), fixed from the plan type when the plan was opened. */
+  /** Annual interest rate (%), fixed from the plan type when the plan was opened. Letters quote it a month (/ 12). */
   interest_rate: string;
   /** True when dividends build up and are paid with the principal at maturity (Target savings), not monthly. */
   dividends_at_maturity: boolean;
+  /** Day of the month this plan's interest is paid (the last day in shorter months); null for plans paid at maturity. */
+  interest_pay_day: number | null;
+  /** Why the pay day was last changed after the plan was opened. */
+  pay_day_change_reason: string | null;
 };
 
 /** A plan type members can open, with the rules the database enforces on new plans. */
@@ -95,6 +103,11 @@ export type PlanType = {
   tenure_months: number[] | null;
   /** Smallest plan amount in naira; null means no minimum. */
   min_amount: string | null;
+  /** Largest plan amount in naira; null means no maximum. */
+  max_amount: string | null;
+  /** Annual rate (%); the letters and forms quote it a month (rate / 12). */
+  interest_rate: string;
+  description: string;
   dividends_at_maturity: boolean;
 };
 
@@ -163,7 +176,7 @@ export async function getMemberBundle(memberId: string) {
     supabase.from("contributions").select("*").eq("member_id", memberId).order("paid_on").order("recorded_at"),
     supabase
       .from("plan_types")
-      .select("code, name, tenure_months, min_amount, dividends_at_maturity")
+      .select("code, name, description, interest_rate, tenure_months, min_amount, max_amount, dividends_at_maturity")
       .eq("is_active", true)
       .order("sort_order"),
     supabase

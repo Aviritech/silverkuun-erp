@@ -88,15 +88,15 @@ $$;
 -- Each file goes officer, marketer, officer, Branch Manager.
 select pg_temp.act_as('officer.lagos@kuun.test');
 insert into public.members (id, branch_id, title, first_name, last_name, gender, phone, email, address, nin, id_type, id_number, created_at,
-  bank_code, bank_name, bank_account_no, interest_pay_day) values
+  bank_code, bank_name, bank_account_no, address_city, address_lga, address_state, address_landmark) values
   ('50000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'Mrs', 'Ada', 'Obi', 'female', '08031234567', 'ada.obi@example.com', '12 Marina, Lagos Island', '12345678901', 'national_id', 'NG-A001', now(),
-   '058', null, '0123456789', extract(day from current_date)),
+   '058', null, '0123456789', 'Lagos Island', 'Lagos Island', 'Lagos', 'Opposite the Marina bus stop'),
   ('50000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'Mr', 'Chinedu', 'Okeke', 'male', '08039876543', null, '4 Allen Avenue, Ikeja', '12345678902', 'drivers_licence', 'LAG-DL-22', now(),
-   '057', null, '2034567891', extract(day from current_date)),
+   '057', null, '2034567891', 'Ikeja', 'Ikeja', 'Lagos', null),
   ('50000000-0000-0000-0000-000000000003', '20000000-0000-0000-0000-000000000001', 'Ms', 'Funke', 'Adeyemi', 'female', '08025551234', null, '9 Bode Thomas, Surulere', '12345678903', 'international_passport', 'A09876543', now(),
-   null, 'Moniepoint MFB', '6543210987', 15),
+   null, 'Moniepoint MFB', '6543210987', 'Surulere', 'Surulere', 'Lagos', 'Behind the National Stadium'),
   ('50000000-0000-0000-0000-000000000004', '20000000-0000-0000-0000-000000000001', 'Mr', 'Tunde', 'Balogun', 'male', '08024443322', null, '3 Adeola Odeku, VI', '12345678904', 'voters_card', 'VC-7781', now() - interval '20 days',
-   null, null, null, null);
+   null, null, null, 'Victoria Island', 'Eti-Osa', 'Lagos', null);
 select pg_temp.add_docs(id, array['kyc_form', 'nin_slip', 'means_of_id', 'utility_bill', 'passport_photo'])
 from public.members where id in ('50000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000002', '50000000-0000-0000-0000-000000000003');
 select pg_temp.add_docs('50000000-0000-0000-0000-000000000004', array['kyc_form', 'nin_slip']);
@@ -118,9 +118,10 @@ select public.approve_member('50000000-0000-0000-0000-000000000002', (select png
 
 -- Plans and contributions.
 select pg_temp.act_as('officer.lagos@kuun.test');
-insert into public.member_plans (id, member_id, branch_id, plan_type, contribution_amount, contribution_frequency, start_date, maturity_date) values
-  ('60000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'gold', 50000, 'monthly', current_date - 60, current_date + 305),
-  ('60000000-0000-0000-0000-000000000002', '50000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'silver', 20000, 'monthly', current_date - 30, current_date + 335);
+-- Ada's and Chinedu's plans pay their monthly interest today, so today's interest payment schedule has rows.
+insert into public.member_plans (id, member_id, branch_id, plan_type, contribution_amount, contribution_frequency, start_date, maturity_date, interest_pay_day) values
+  ('60000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'gold', 50000, 'monthly', current_date - 60, current_date + 305, extract(day from current_date)),
+  ('60000000-0000-0000-0000-000000000002', '50000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'silver', 20000, 'monthly', current_date - 30, current_date + 335, extract(day from current_date));
 insert into public.contributions (id, member_plan_id, member_id, branch_id, kind, amount, paid_on, payment_method, reference) values
   ('70000000-0000-0000-0000-000000000001', '60000000-0000-0000-0000-000000000001', '50000000-0000-0000-0000-000000000001', '20000000-0000-0000-0000-000000000001', 'scheduled', 50000, current_date - 10, 'bank_transfer', 'TRF-ADA-001'),
   ('70000000-0000-0000-0000-000000000003', '60000000-0000-0000-0000-000000000002', '50000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'scheduled', 20000, current_date - 8, 'bank_transfer', 'TRF-CHI-001'),
@@ -236,8 +237,8 @@ select public.auto_match_bank_lines('40000000-0000-0000-0000-000000000001');
 
 -- A one-off plan maturing soon, so the maturities list has something to show.
 select pg_temp.act_as('officer.lagos@kuun.test');
-insert into public.member_plans (id, member_id, branch_id, plan_type, contribution_amount, contribution_frequency, start_date, maturity_date) values
-  ('60000000-0000-0000-0000-000000000003', '50000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'platinum', 250000, 'one_off', current_date - 350, current_date + 15);
+insert into public.member_plans (id, member_id, branch_id, plan_type, contribution_amount, contribution_frequency, start_date, maturity_date, interest_pay_day) values
+  ('60000000-0000-0000-0000-000000000003', '50000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'platinum', 250000, 'one_off', current_date - 350, current_date + 15, 28);
 insert into public.contributions (id, member_plan_id, member_id, branch_id, kind, amount, paid_on, payment_method, reference) values
   ('70000000-0000-0000-0000-000000000005', '60000000-0000-0000-0000-000000000003', '50000000-0000-0000-0000-000000000002', '20000000-0000-0000-0000-000000000001', 'scheduled', 250000, current_date - 350, 'bank_transfer', 'TRF-CHI-FD1');
 

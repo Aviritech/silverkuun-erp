@@ -122,12 +122,13 @@ async function txnRow(id: string) {
   return (await db.query<Txn>("select id, status, branch_id, journal_entry_id from finance_transactions where id = $1", [id])).rows[0];
 }
 
-async function newPlan(member = memberId, planType = "gold"): Promise<string> {
+async function newPlan(member = memberId, planType = "gold", payDay: number | null = null): Promise<string> {
   const res = await commitAs(OFFICER, () =>
     db.query<{ id: string }>(
-      `insert into member_plans (member_id, branch_id, plan_type, contribution_amount, contribution_frequency, start_date, maturity_date)
-       values ($1, $2, $3, 5000, 'monthly', current_date - 60, current_date + 365) returning id`,
-      [member, lagos, planType],
+      `insert into member_plans (member_id, branch_id, plan_type, contribution_amount, contribution_frequency, start_date, maturity_date,
+         interest_pay_day)
+       values ($1, $2, $3, 5000, 'monthly', current_date - 60, current_date + 365, $4) returning id`,
+      [member, lagos, planType, payDay],
     ),
   );
   return res.rows[0].id;
@@ -636,18 +637,19 @@ describe("Operations confirms member receipts", () => {
 
 describe("monthly interest payment schedule", () => {
   let payee: string;
+  let plan: string;
 
   beforeAll(async () => {
     payee = await approvedMember();
     const today = new Date().getDate();
     await commitAs(HEAD_OPS, () =>
       db.query(
-        `update members set bank_code = '058', bank_name = 'whatever', bank_account_no = '0123456789', interest_pay_day = $2,
+        `update members set bank_code = '058', bank_name = 'whatever', bank_account_no = '0123456789',
            amendment_reason = 'Bank details from the client' where id = $1`,
-        [payee, today],
+        [payee],
       ),
     );
-    const plan = await newPlan(payee, "gold");
+    plan = await newPlan(payee, "gold", today);
     const c = await commitAs(OFFICER, () =>
       db.query<{ id: string }>(
         `insert into contributions (member_plan_id, member_id, branch_id, kind, amount, paid_on, payment_method)
@@ -676,7 +678,8 @@ describe("monthly interest payment schedule", () => {
         [payee, lagos],
       ),
     );
-    expect(res.rows[0].interest_rate).toBe("10.00");
+    // Silver is 4% a month, kept as 48% a year.
+    expect(res.rows[0].interest_rate).toBe("48.00");
   });
 
   it("lists members due today with savings, rate and a month's interest", async () => {
@@ -690,8 +693,9 @@ describe("monthly interest payment schedule", () => {
       bank_account_no: "0123456789",
       branch_name: "Lagos",
       total_savings: "120000.00",
-      interest_rate: "12.00",
-      amount: "1200.00",
+      // Gold is 5% a month (60% a year): 6,000 a month on 120,000.
+      interest_rate: "60.00",
+      amount: "6000.00",
     });
     const tomorrow = await asUser(db, LAGOS_ACCOUNTANT, (tx) =>
       tx.query("select * from interest_payment_schedule(current_date + 1) where member_id = $1", [payee]),
@@ -699,10 +703,46 @@ describe("monthly interest payment schedule", () => {
     expect(tomorrow.rows).toHaveLength(0);
   });
 
-  it("pays days past the month's end on its last day", async () => {
-    await commitAs(HEAD_OPS, () =>
-      db.query("update members set interest_pay_day = 31, amendment_reason = 'Client asked for month end' where id = $1", [payee]),
+  it("only changes a plan's pay day through the workflow, with a reason, for members.amend holders", async () => {
+    // No one can update plans directly: there is no update policy, so the row is left alone.
+    await commitAs(HEAD_OPS, () => db.query("update member_plans set interest_pay_day = 31 where id = $1", [plan]));
+    const unchanged = await db.query<{ interest_pay_day: number }>("select interest_pay_day from member_plans where id = $1", [plan]);
+    expect(unchanged.rows[0].interest_pay_day).toBe(new Date().getDate());
+    await expect(
+      commitAs(OFFICER, () => db.query("select change_plan_interest_pay_day($1, 31, 'Client asked for month end')", [plan])),
+    ).rejects.toThrow(/can't change/);
+    await expect(
+      commitAs(HEAD_OPS, () => db.query("select change_plan_interest_pay_day($1, 31, '')", [plan])),
+    ).rejects.toThrow(/say why/);
+    await expect(
+      commitAs(HEAD_OPS, () => db.query("select change_plan_interest_pay_day($1, 32, 'Client asked for month end')", [plan])),
+    ).rejects.toThrow(/1 to 31/);
+  });
+
+  it("pays each plan on its own day, and days past the month's end on its last day", async () => {
+    // A second plan on another day is paid on that day, not with the first plan.
+    const other = await newPlan(payee, "silver", (new Date().getDate() % 28) + 1);
+    const c = await commitAs(OFFICER, () =>
+      db.query<{ id: string }>(
+        `insert into contributions (member_plan_id, member_id, branch_id, kind, amount, paid_on, payment_method)
+         values ($1, $2, $3, 'scheduled', 60000, current_date - 30, 'bank_transfer') returning id`,
+        [other, payee, lagos],
+      ),
     );
+    await commitAs(MANAGER, () => db.query("select verify_contribution($1)", [c.rows[0].id]));
+    const today = await asUser(db, LAGOS_ACCOUNTANT, (tx) =>
+      tx.query<{ total_savings: string }>("select * from interest_payment_schedule(current_date) where member_id = $1", [payee]),
+    );
+    expect(today.rows[0].total_savings).toBe("120000.00");
+
+    await commitAs(HEAD_OPS, () =>
+      db.query("select change_plan_interest_pay_day($1, 31, 'Client asked for month end')", [plan]),
+    );
+    const row = await db.query<{ interest_pay_day: number; pay_day_change_reason: string }>(
+      "select interest_pay_day, pay_day_change_reason from member_plans where id = $1",
+      [plan],
+    );
+    expect(row.rows[0]).toEqual({ interest_pay_day: 31, pay_day_change_reason: "Client asked for month end" });
     const res = await asUser(db, LAGOS_ACCOUNTANT, (tx) =>
       tx.query(
         `select * from interest_payment_schedule((date_trunc('month', current_date) + interval '1 month - 1 day')::date)
@@ -719,9 +759,11 @@ describe("target and child savings", () => {
 
   async function openPlan(planType: string, amount: number, start: string, maturity: string) {
     return commitAs(OFFICER, () =>
-      db.query<{ id: string; interest_rate: string; dividends_at_maturity: boolean }>(
-        `insert into member_plans (member_id, branch_id, plan_type, contribution_amount, contribution_frequency, start_date, maturity_date)
-         values ($1, $2, $3, $4, 'monthly', ${start}, ${maturity}) returning id, interest_rate, dividends_at_maturity`,
+      db.query<{ id: string; interest_rate: string; dividends_at_maturity: boolean; interest_pay_day: number | null }>(
+        `insert into member_plans (member_id, branch_id, plan_type, contribution_amount, contribution_frequency, start_date, maturity_date,
+           interest_pay_day)
+         values ($1, $2, $3, $4, 'monthly', ${start}, ${maturity}, extract(day from current_date))
+         returning id, interest_rate, dividends_at_maturity, interest_pay_day`,
         [saver, lagos, planType, amount],
       ),
     );
@@ -731,9 +773,9 @@ describe("target and child savings", () => {
     saver = await approvedMember();
     await commitAs(HEAD_OPS, () =>
       db.query(
-        `update members set bank_code = '058', bank_account_no = '0123456789', interest_pay_day = $2,
+        `update members set bank_code = '058', bank_account_no = '0123456789',
            amendment_reason = 'Bank details from the client' where id = $1`,
-        [saver, new Date().getDate()],
+        [saver],
       ),
     );
   });
@@ -745,6 +787,8 @@ describe("target and child savings", () => {
     for (const months of [3, 6, 12]) {
       const res = await openPlan("target", 10000, "current_date", `(current_date + interval '${months} months')::date`);
       expect(res.rows[0].dividends_at_maturity).toBe(true);
+      // Paid at maturity, so no monthly pay day even if one is sent.
+      expect(res.rows[0].interest_pay_day).toBeNull();
     }
   });
 

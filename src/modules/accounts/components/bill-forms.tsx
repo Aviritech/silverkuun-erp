@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useFormAction } from "@/lib/use-form-action";
 import { Button, Field, FormError, Input, Select, Textarea } from "@/components/ui";
 import { InlineForm } from "@/components/inline-form";
 import type { ActionState } from "@/lib/action-state";
@@ -63,11 +63,11 @@ export function BillForm({
   withInvoice: boolean;
   submitLabel: string;
 }) {
-  const [state, formAction, pending] = useActionState(withStagedUploads(action), {});
+  const [state, formAction, pending] = useFormAction(withStagedUploads(action), {});
   const e = state.fieldErrors ?? {};
   const today = new Date().toISOString().slice(0, 10);
   return (
-    <form action={formAction} className="space-y-4">
+    <form onSubmit={formAction} className="space-y-4">
       <FormError message={state.error} />
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="Supplier" error={e.supplier_id}>
