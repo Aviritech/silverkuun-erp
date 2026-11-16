@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BrandLogo } from "@/components/brand";
 import { SidebarNav } from "@/components/sidebar-nav";
+import { UsageTracker } from "@/components/usage-tracker";
 import { getCurrentStaff } from "@/lib/auth/session";
 import { myHrNav, speakUpNav } from "@/modules/me/nav";
 import { getMyEmployee } from "@/modules/me/queries";
@@ -64,6 +65,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </header>
         <main className="flex-1 p-6 lg:p-8">{children}</main>
+        <UsageTracker />
       </div>
     </div>
   );

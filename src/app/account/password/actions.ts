@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import type { ActionState } from "@/lib/action-state";
+import { logActivity } from "@/lib/activity/log";
 import { friendlyDbError } from "@/lib/db-errors";
 import { createClient } from "@/lib/supabase/server";
 import { fieldErrors } from "@/modules/administration/schemas";
@@ -39,6 +40,8 @@ export async function changePassword(_prev: ActionState, formData: FormData): Pr
 
   const cleared = await supabase.rpc("password_changed");
   if (cleared.error) return { error: friendlyDbError(cleared.error) };
+
+  await logActivity("password_changed", { path: "/account/password", label: "Changed password", module: null, supabase });
 
   redirect("/");
 }
