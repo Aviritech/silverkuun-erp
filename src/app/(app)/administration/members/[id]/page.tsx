@@ -23,6 +23,8 @@ import {
   verifyContribution,
 } from "@/modules/administration/actions";
 import { ActionButton } from "@/components/action-button";
+import { ReturnedSignupCard } from "@/modules/clients/components/returned-signup-card";
+import { openFixLinkFor } from "@/modules/clients/queries";
 import { DocumentUpload } from "@/modules/administration/components/document-upload";
 import { signMemberDocument } from "@/modules/signatures/actions";
 import { ESignForm } from "@/modules/signatures/components/e-sign-form";
@@ -142,6 +144,9 @@ export default async function MemberPage({
     staff.id !== member.sent_to_marketer_by &&
     (member.introduced_by ? member.introduced_by === staff.id : can("members.endorse") && !isPreparer);
   const introducerOptions = ["draft", "returned"].includes(member.status) && canManage ? await listIntroducerOptions() : [];
+  // A client's own returned sign-up: the officer can send the client a link to correct it.
+  const canSendFixLink = member.status === "returned" && member.source === "self_signup" && canManage;
+  const fixLink = canSendFixLink ? await openFixLinkFor(member.id) : null;
   const missing = REQUIRED_DOCUMENTS.filter((t) => !documents.some((d) => d.document_type === t));
   const status = MEMBER_STATUSES[member.status];
   const planName = new Map(planTypes.map((p) => [p.code, p.name]));
@@ -268,8 +273,21 @@ export default async function MemberPage({
             <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
               <p className="font-medium">Returned by {member.returned_by ? staffName(member.returned_by) : "the Branch Manager"}</p>
               <p className="mt-1">{member.return_reason}</p>
-              <p className="mt-1 text-xs">Correct it, then send it to staff again.</p>
+              <p className="mt-1 text-xs">
+                {member.source === "self_signup"
+                  ? "Send the client a link to correct it below, or correct it yourself and send it to staff again."
+                  : "Correct it, then send it to staff again."}
+              </p>
             </div>
+          )}
+
+          {canSendFixLink && (
+            <ReturnedSignupCard
+              memberId={member.id}
+              openLink={fixLink}
+              openLinkBy={fixLink ? (fixLink.created_by === staff.id ? "you" : fixLink.created_by === member.introduced_by ? staffName(member.introduced_by) : null) : null}
+              officerCanEdit
+            />
           )}
 
           {/* Workflow: Officer → Staff who brought the client in → Officer → Branch Manager */}

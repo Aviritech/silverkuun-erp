@@ -47,3 +47,52 @@ export async function pageViewAllowed(): Promise<boolean> {
   return withinLimit(`view:${await clientIp()}`, 60);
 }
 
+
+export type FixLinkDocument = { document_type: string; file_name: string };
+
+export type OpenFixLink = {
+  linkId: string;
+  memberId: string;
+  branchId: string;
+  branchName: string;
+  staffName: string;
+  expiresAt: string;
+  returnReason: string;
+  /** The client's answers as they stand, to fill the form. */
+  member: Record<string, string | null>;
+  documents: FixLinkDocument[];
+};
+
+/** The returned file behind a fix link, when the link is still open and the file is still waiting for the client. */
+export async function openFixLink(token: string): Promise<OpenFixLink | "closed" | "invalid"> {
+  if (!isSignupToken(token)) return "invalid";
+  const { data, error } = await serviceClient().rpc("member_fix_link_status", { p_token_hash: hashSignupToken(token) });
+  if (error) throw new Error(`Fix link lookup failed: ${error.message}`);
+  const row = (data ?? [])[0] as
+    | {
+        link_id: string;
+        member_id: string;
+        branch_id: string;
+        branch_name: string;
+        staff_name: string;
+        expires_at: string;
+        return_reason: string;
+        state: string;
+        member: Record<string, string | null> | null;
+        documents: FixLinkDocument[] | null;
+      }
+    | undefined;
+  if (!row) return "invalid";
+  if (row.state !== "open" || !row.member) return "closed";
+  return {
+    linkId: row.link_id,
+    memberId: row.member_id,
+    branchId: row.branch_id,
+    branchName: row.branch_name,
+    staffName: row.staff_name,
+    expiresAt: row.expires_at,
+    returnReason: row.return_reason,
+    member: row.member,
+    documents: row.documents ?? [],
+  };
+}

@@ -8,7 +8,8 @@ import { ReturnForm, StaffConfirmForm } from "@/modules/administration/component
 import { ID_TYPES, MEMBER_STATUSES } from "@/modules/administration/constants";
 import { fullName, listBranches, type Member } from "@/modules/administration/queries";
 import { confirmClient, returnClient } from "@/modules/clients/actions";
-import { listMyClients } from "@/modules/clients/queries";
+import { ReturnedSignupCard } from "@/modules/clients/components/returned-signup-card";
+import { listMyClients, openFixLinkFor } from "@/modules/clients/queries";
 
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -32,16 +33,20 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
   const member = data as Member | null;
   if (!member || member.introduced_by !== staff.id) notFound();
 
-  const [branches, clients, names] = await Promise.all([
+  const returnedSignup = member.status === "returned" && member.source === "self_signup";
+  const nameIds = [member.sent_to_marketer_by, member.returned_by].filter((x): x is string => Boolean(x));
+  const [branches, clients, names, fixLink] = await Promise.all([
     listBranches(),
     listMyClients(),
-    member.sent_to_marketer_by
-      ? supabase.rpc("staff_display_names", { p_ids: [member.sent_to_marketer_by] })
+    nameIds.length
+      ? supabase.rpc("staff_display_names", { p_ids: nameIds })
       : Promise.resolve({ data: [] as { id: string; full_name: string }[] }),
+    returnedSignup ? openFixLinkFor(member.id) : Promise.resolve(null),
   ]);
+  const nameOf = (id: string | null) => ((names.data ?? []) as { id: string; full_name: string }[]).find((n) => n.id === id)?.full_name;
   const branch = branches.find((b) => b.id === member.branch_id);
   const totals = clients.find((c) => c.member_id === member.id);
-  const officer = ((names.data ?? []) as { full_name: string }[])[0]?.full_name;
+  const officer = nameOf(member.sent_to_marketer_by);
   const status = MEMBER_STATUSES[member.status];
   const canConfirm = member.status === "with_marketer" && member.sent_to_marketer_by !== staff.id;
   const seesFullFile = branch && staff.permissions.hasForBranch("members.read", branch) && staff.permissions.has("module.administration");
@@ -77,6 +82,24 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
             <ReturnForm action={returnClient.bind(null, member.id)} />
           </div>
         </Card>
+      )}
+
+      {member.status === "returned" && member.return_reason && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
+          <p className="font-medium">
+            Returned by {member.returned_by === staff.id ? "you" : (nameOf(member.returned_by) ?? "staff")}
+          </p>
+          <p className="mt-1 whitespace-pre-line">{member.return_reason}</p>
+        </div>
+      )}
+
+      {returnedSignup && (
+        <ReturnedSignupCard
+          memberId={member.id}
+          openLink={fixLink}
+          openLinkBy={fixLink ? (fixLink.created_by === staff.id ? "you" : null) : null}
+          officerCanEdit={false}
+        />
       )}
 
       {member.status === "approved" && totals && (
