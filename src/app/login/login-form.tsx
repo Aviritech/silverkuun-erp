@@ -1,13 +1,13 @@
 "use client";
 
-import { useActionState } from "react";
-import { signIn, type LoginState } from "./actions";
+import { useFormAction } from "@/lib/use-form-action";
+import { signIn } from "./actions";
 
 export function LoginForm({ initialError }: { initialError?: string }) {
-  const [state, action, pending] = useActionState<LoginState, FormData>(signIn, { error: initialError });
+  const [state, action, pending] = useFormAction(signIn, { error: initialError });
 
   return (
-    <form action={action} className="space-y-4">
+    <form onSubmit={action} className="space-y-4">
       <label className="block">
         <span className="text-sm font-medium text-zinc-800">Work email</span>
         <input

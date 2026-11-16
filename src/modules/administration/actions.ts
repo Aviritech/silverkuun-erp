@@ -22,6 +22,7 @@ import {
   logTopUpSchema,
   marketerReviewSchema,
   memberSchema,
+  payDayChangeSchema,
   planSchema,
   returnSchema,
   reversalSchema,
@@ -42,6 +43,10 @@ const MEMBER_FIELDS = [
   "phone",
   "email",
   "address",
+  "address_city",
+  "address_lga",
+  "address_state",
+  "address_landmark",
   "nin",
   "id_type",
   "id_number",
@@ -51,7 +56,6 @@ const MEMBER_FIELDS = [
   "bank_code",
   "bank_name",
   "bank_account_no",
-  "interest_pay_day",
 ] as const;
 
 /** A coded bank takes its name from the CBN list in the database; a bank without a code is entered by name. */
@@ -359,6 +363,7 @@ export async function addPlan(
       "start_date",
       "maturity_date",
       "tenure_months",
+      "interest_pay_day",
     ]),
   );
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
@@ -376,10 +381,13 @@ export async function addPlan(
   // tenure and minimum amount again.
   const { data: planType } = await supabase
     .from("plan_types")
-    .select("tenure_months, min_amount")
+    .select("tenure_months, min_amount, dividends_at_maturity")
     .eq("code", plan.plan_type)
     .maybeSingle();
   if (!planType) return { fieldErrors: { plan_type: "Choose a plan" } };
+  // Monthly interest is paid on the day chosen here; plans that pay at maturity have no pay day.
+  if (planType.dividends_at_maturity) plan.interest_pay_day = null;
+  else if (!plan.interest_pay_day) return { fieldErrors: { interest_pay_day: "Choose the day of the month interest is paid" } };
   const tenures = planType.tenure_months as number[] | null;
   if (tenures) {
     if (!tenure_months || !tenures.includes(tenure_months)) {
@@ -400,6 +408,29 @@ export async function addPlan(
       member_id: member.id,
       branch_id: member.branch_id,
     });
+  if (error) return { error: friendlyDbError(error) };
+
+  revalidatePath(memberPath(memberId));
+  return { ok: true };
+}
+
+/** Changes the day an active plan's monthly interest is paid. Needs members.amend and a reason; the database checks both. */
+export async function changePlanPayDay(
+  memberId: string,
+  planId: string,
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  await requireModule(administrationModule);
+  const parsed = payDayChangeSchema.safeParse(formObject(formData, ["interest_pay_day", "reason"]));
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("change_plan_interest_pay_day", {
+    p_plan_id: planId,
+    p_day: parsed.data.interest_pay_day,
+    p_reason: parsed.data.reason,
+  });
   if (error) return { error: friendlyDbError(error) };
 
   revalidatePath(memberPath(memberId));

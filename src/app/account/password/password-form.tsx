@@ -1,15 +1,15 @@
 "use client";
 
-import { useActionState } from "react";
+import { useFormAction } from "@/lib/use-form-action";
 import { Button, Field, FormError, Input } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 
 export function PasswordForm({ action }: { action: (prev: ActionState, formData: FormData) => Promise<ActionState> }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useFormAction(action, {});
   const e = state.fieldErrors ?? {};
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form onSubmit={formAction} className="space-y-4">
       <FormError message={state.error} />
       <Field label="Current password" error={e.current_password}>
         <Input name="current_password" type="password" autoComplete="current-password" required />

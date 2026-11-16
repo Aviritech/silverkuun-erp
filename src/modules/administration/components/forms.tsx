@@ -56,7 +56,7 @@ export function PlanForm({ action, planTypes }: { action: Action; planTypes: Pla
     <InlineForm action={action} openLabel="Add plan" submitLabel="Add plan" variant="primary">
       {(e) => (
         <div className="space-y-2">
-          <div className="grid gap-3 sm:grid-cols-5">
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
             <Field label="Plan" error={e.plan_type}>
               <Select name="plan_type" required value={code} onChange={(ev) => setCode(ev.target.value)}>
                 <option value="">Choose</option>
@@ -104,18 +104,44 @@ export function PlanForm({ action, planTypes }: { action: Action; planTypes: Pla
                 <Input name="maturity_date" type="date" required />
               </Field>
             )}
+            {!type?.dividends_at_maturity && (
+              <Field label="Interest pay day" error={e.interest_pay_day} hint="Day of the month, 1 to 31">
+                <Input name="interest_pay_day" type="number" min={1} max={31} step={1} required />
+              </Field>
+            )}
           </div>
-          {type && (type.min_amount || type.dividends_at_maturity || tenures) && (
+          {type && (
             <p className="text-xs text-zinc-500">
               {[
+                type.description,
                 tenures && `Runs for ${tenures.join(", ")} months; matures that long after the start date.`,
-                type.min_amount && `Minimum ${formatMoney(type.min_amount)}.`,
-                type.dividends_at_maturity && "No monthly interest: the savings and all dividends are paid together at maturity.",
+                type.min_amount && !type.description.includes("naira") && `Minimum ${formatMoney(type.min_amount)}.`,
+                type.max_amount && !type.description.includes("naira") && `Maximum ${formatMoney(type.max_amount)}.`,
+                type.dividends_at_maturity && "No monthly interest, so no pay day: the savings and all dividends are paid together at maturity.",
+                !type.dividends_at_maturity && "Interest is paid on the pay day each month; a day past the end of a shorter month pays on its last day.",
               ]
                 .filter(Boolean)
                 .join(" ")}
             </p>
           )}
+        </div>
+      )}
+    </InlineForm>
+  );
+}
+
+/** Changes the day an active plan's monthly interest is paid. For holders of members.amend; needs a reason. */
+export function PayDayForm({ action, current }: { action: Action; current: number | null }) {
+  return (
+    <InlineForm action={action} openLabel={current ? "Change pay day" : "Set pay day"} submitLabel="Save pay day">
+      {(e) => (
+        <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
+          <Field label="Interest pay day" error={e.interest_pay_day} hint="Day of the month, 1 to 31">
+            <Input name="interest_pay_day" type="number" min={1} max={31} step={1} defaultValue={current ?? ""} required />
+          </Field>
+          <Field label="Reason for the change" error={e.reason}>
+            <Input name="reason" placeholder="For example: the member is now paid at the end of the month" required />
+          </Field>
         </div>
       )}
     </InlineForm>

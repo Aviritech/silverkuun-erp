@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
+import { useFormAction } from "@/lib/use-form-action";
 import { Button, Field, FormError, Input, Select } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 import { DOCUMENT_TYPES, type DocumentType } from "../constants";
@@ -14,14 +15,14 @@ export function DocumentUpload({
   /** The document types offered; letters and statements only make sense once a member is approved. */
   types: DocumentType[];
 }) {
-  const [state, formAction, pending] = useActionState(withStagedUploads(action), {});
+  const [state, formAction, pending] = useFormAction(withStagedUploads(action), {});
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => {
     if (state.ok) form.current?.reset();
   }, [state]);
 
   return (
-    <form ref={form} action={formAction} className="grid items-end gap-3 sm:grid-cols-[1fr_1.5fr_auto]">
+    <form ref={form} onSubmit={formAction} className="grid items-end gap-3 sm:grid-cols-[1fr_1.5fr_auto]">
       <Field label="Document" error={state.fieldErrors?.document_type}>
         <Select name="document_type" required defaultValue="">
           <option value="">Choose</option>
