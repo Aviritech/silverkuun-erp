@@ -101,7 +101,8 @@ end $$;
 
 -- ---------------------------------------------------------------------------
 -- Members: 16 across all 10 branches. IDs 50000000-...-0000000000NN.
--- Interest is paid on interest_pay_day each month; Amina, Ada and Chinedu are due today.
+-- pay_day is the day of the month their monthly-interest plans pay (set on each plan below); Amina, Ada and Chinedu
+-- are due today.
 -- ---------------------------------------------------------------------------
 
 create temporary table seed_members (n int, branch int, title text, first_name text, last_name text, gender text, phone text,
@@ -134,11 +135,19 @@ begin
   for r in select * from seed_members order by n loop
     perform pg_temp.as_role('admin_officer', pg_temp.b(r.branch));
     insert into public.members (id, branch_id, title, first_name, last_name, gender, phone, email, address, nin, id_type, id_number,
-      date_of_birth, next_of_kin_name, next_of_kin_phone, next_of_kin_relationship, bank_code, bank_name, bank_account_no, interest_pay_day)
+      date_of_birth, next_of_kin_name, next_of_kin_phone, next_of_kin_relationship, bank_code, bank_name, bank_account_no,
+      address_city, address_lga, address_state, address_landmark)
     values (pg_temp.m(r.n), pg_temp.b(r.branch), r.title, r.first_name, r.last_name, r.gender, r.phone, r.email, r.address,
       '2233344' || lpad(r.n::text, 4, '0'), r.id_type, 'ID-' || lpad(r.n::text, 5, '0'),
       date '1975-01-01' + (r.n * 517), 'Next of kin of ' || r.first_name, '0809000' || lpad(r.n::text, 4, '0'), 'Spouse',
-      r.bank_code, r.bank_name, r.account_no, r.pay_day);
+      r.bank_code, r.bank_name, r.account_no,
+      trim(split_part(r.address, ',', case when r.address like '%,%,%' then -2 else -1 end)),
+      case when r.address like '%Kubwa%' then 'Bwari' when r.address like '%Abuja' then 'Abuja Municipal'
+           when r.address like '%Ikoyi%' then 'Eti-Osa' when r.address like '%Yaba%' then 'Lagos Mainland'
+           when r.address like '%Festac%' then 'Amuwo-Odofin' when r.address like '%Lagos' then 'Ikeja'
+           when r.address like '%Rumuola%' or r.address like '%Odili%' then 'Obio/Akpor' else 'Port Harcourt' end,
+      case when r.address like '%Abuja' then 'FCT' when r.address like '%Lagos' then 'Lagos' else 'Rivers' end,
+      case r.n % 3 when 0 then 'Opposite the filling station' when 1 then 'Behind the market' end);
     if r.stage = 'with_marketer' then
       perform pg_temp.add_docs(pg_temp.m(r.n), array['kyc_form', 'nin_slip']);
     elsif r.stage <> 'draft' then
@@ -189,8 +198,10 @@ declare r record; v_branch uuid; i int;
 begin
   for r in select p.*, m.branch_id from seed_plans p join public.members m on m.id = pg_temp.m(p.member) order by p.n loop
     perform pg_temp.as_role('admin_officer', r.branch_id);
-    insert into public.member_plans (id, member_id, branch_id, plan_type, contribution_amount, contribution_frequency, start_date, maturity_date)
-    values (pg_temp.p(r.n), pg_temp.m(r.member), r.branch_id, r.plan_type, r.amount, r.frequency, r.start_date, r.maturity_date);
+    insert into public.member_plans (id, member_id, branch_id, plan_type, contribution_amount, contribution_frequency, start_date, maturity_date,
+      interest_pay_day)
+    values (pg_temp.p(r.n), pg_temp.m(r.member), r.branch_id, r.plan_type, r.amount, r.frequency, r.start_date, r.maturity_date,
+      (select pay_day from seed_members where n = r.member));
     for i in 1 .. r.paid loop
       insert into public.contributions (member_plan_id, member_id, branch_id, kind, amount, paid_on, payment_method, reference)
       values (pg_temp.p(r.n), pg_temp.m(r.member), r.branch_id, 'scheduled', r.amount,

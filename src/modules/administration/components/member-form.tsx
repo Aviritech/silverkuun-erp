@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
+import { useFormAction } from "@/lib/use-form-action";
 import {
   Button,
   Field,
@@ -10,7 +11,7 @@ import {
   Textarea,
 } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
-import { ID_TYPES } from "../constants";
+import { ID_TYPES, NIGERIAN_STATES } from "../constants";
 import type { Branch, CbnBank, Member } from "../queries";
 
 type Props = {
@@ -30,7 +31,7 @@ export function MemberForm({
   requireReason,
   submitLabel,
 }: Props) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useFormAction(action, {});
   // "other" is a bank without a CBN code, entered by name.
   const [bankChoice, setBankChoice] = useState(
     member.bank_code ?? (member.bank_name ? "other" : ""),
@@ -38,7 +39,7 @@ export function MemberForm({
   const e = state.fieldErrors ?? {};
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form onSubmit={formAction} className="space-y-6">
       <FormError message={state.error} />
 
       {branches && (
@@ -113,16 +114,64 @@ export function MemberForm({
         <Field label="Email" error={e.email}>
           <Input name="email" type="email" defaultValue={member.email ?? ""} />
         </Field>
+      </fieldset>
+
+      <fieldset className="grid gap-4 sm:grid-cols-4">
+        <legend className="mb-2 text-sm font-semibold text-zinc-700">
+          Residential address
+        </legend>
         <div className="sm:col-span-4">
-          <Field label="Residential address" error={e.address}>
+          <Field label="House number and street" error={e.address}>
             <Textarea
               name="address"
               rows={2}
               defaultValue={member.address ?? ""}
+              placeholder="12 Allen Avenue"
               required
             />
           </Field>
         </div>
+        <Field label="Town or city" error={e.address_city}>
+          <Input
+            name="address_city"
+            maxLength={100}
+            defaultValue={member.address_city ?? ""}
+            placeholder="Ikeja"
+          />
+        </Field>
+        <Field label="LGA" error={e.address_lga} hint="Local Government Area">
+          <Input
+            name="address_lga"
+            maxLength={100}
+            defaultValue={member.address_lga ?? ""}
+            required
+          />
+        </Field>
+        <Field label="State" error={e.address_state}>
+          <Select
+            name="address_state"
+            defaultValue={member.address_state ?? ""}
+            required
+          >
+            <option value="">Choose a state</option>
+            {NIGERIAN_STATES.map((state) => (
+              <option key={state} value={state}>
+                {state}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field
+          label="Nearest landmark"
+          error={e.address_landmark}
+          hint="Such as “opposite First Bank”"
+        >
+          <Input
+            name="address_landmark"
+            maxLength={200}
+            defaultValue={member.address_landmark ?? ""}
+          />
+        </Field>
       </fieldset>
 
       <fieldset className="grid gap-4 sm:grid-cols-3">
@@ -182,9 +231,9 @@ export function MemberForm({
         </Field>
       </fieldset>
 
-      <fieldset className="grid gap-4 sm:grid-cols-4">
+      <fieldset className="grid gap-4 sm:grid-cols-3">
         <legend className="mb-2 text-sm font-semibold text-zinc-700">
-          Interest payments
+          Bank account for interest payments
         </legend>
         <Field label="Bank" error={e.bank_code}>
           <Select
@@ -225,19 +274,6 @@ export function MemberForm({
             maxLength={10}
             defaultValue={member.bank_account_no ?? ""}
             required={Boolean(bankChoice)}
-          />
-        </Field>
-        <Field
-          label="Interest pay day"
-          error={e.interest_pay_day}
-          hint="Day of the month. Later than the month's last day pays on the last day."
-        >
-          <Input
-            name="interest_pay_day"
-            type="number"
-            min={1}
-            max={31}
-            defaultValue={member.interest_pay_day ?? ""}
           />
         </Field>
       </fieldset>

@@ -161,12 +161,18 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
           </span>
         }
         actions={
-          editable &&
-          canManage && (
-            <ButtonLink href={`/credit/loans/${loan.id}/edit`} variant="secondary">
-              Edit application
-            </ButtonLink>
-          )
+          <div className="flex flex-wrap gap-2">
+            {["approved", "active", "closed"].includes(loan.status) && (
+              <ButtonLink href={`/letters/loans/${loan.id}`} variant="secondary">
+                Offer letter
+              </ButtonLink>
+            )}
+            {editable && canManage && (
+              <ButtonLink href={`/credit/loans/${loan.id}/edit`} variant="secondary">
+                Edit application
+              </ButtonLink>
+            )}
+          </div>
         }
       />
 

@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useRef, useState, useTransition, type FormEvent } from "react";
+import { useRef, useState, useTransition, type FormEvent } from "react";
+import { useFormAction } from "@/lib/use-form-action";
 import { Badge, Button, Field, FormError, Input, Select, Textarea } from "@/components/ui";
 import { formatDate } from "@/lib/format";
 import { lookUpCase, replyToCase, submitReport } from "./actions";
@@ -41,14 +42,14 @@ function Receipt({ reference, code }: { reference: string; code: string }) {
 }
 
 export function SpeakUpForm() {
-  const [state, formAction, pending] = useActionState(submitReport, {});
+  const [state, formAction, pending] = useFormAction(submitReport, {});
   const [anonymous, setAnonymous] = useState(true);
   const e = state.fieldErrors ?? {};
 
   if (state.ok && state.message && state.secret) return <Receipt reference={state.message} code={state.secret} />;
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form onSubmit={formAction} className="space-y-4">
       <FormError message={state.error} />
       <div className="grid gap-4 sm:grid-cols-2">
         <Field label="What is it about?" error={e.category}>

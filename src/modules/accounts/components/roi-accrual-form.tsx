@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
+import { useFormAction } from "@/lib/use-form-action";
 import { Button, Field, FormError, Input } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 import { formatMoney } from "@/lib/format";
@@ -20,7 +21,7 @@ export function RoiAccrualForm({
   branchId: string;
   members: AccrualMember[];
 }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useFormAction(action, {});
   const [amounts, setAmounts] = useState<Record<string, string>>({});
   const [rate, setRate] = useState("");
   const e = state.fieldErrors ?? {};
@@ -34,7 +35,7 @@ export function RoiAccrualForm({
   }
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form onSubmit={formAction} className="space-y-4">
       <FormError message={state.error ?? e.members} />
       <input type="hidden" name="branch_id" value={branchId} />
       <div className="grid gap-4 sm:grid-cols-3">

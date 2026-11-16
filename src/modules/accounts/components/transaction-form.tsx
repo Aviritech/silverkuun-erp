@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
+import { useFormAction } from "@/lib/use-form-action";
 import {
   Button,
   Field,
@@ -78,7 +79,7 @@ export function TransactionForm({
   withEvidence: boolean;
   submitLabel: string;
 }) {
-  const [state, formAction, pending] = useActionState(withStagedUploads(action), {});
+  const [state, formAction, pending] = useFormAction(withStagedUploads(action), {});
   const [type, setType] = useState(defaults.transaction_type ?? "");
   const [bankId, setBankId] = useState(defaults.bank_account_id ?? "");
   const [amount, setAmount] = useState(defaults.amount ?? "");
@@ -125,7 +126,7 @@ export function TransactionForm({
   };
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form onSubmit={formAction} className="space-y-4">
       <FormError message={state.error} />
       <input type="hidden" name="direction" value={direction} />
       <input

@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useFormAction } from "@/lib/use-form-action";
 import { InlineForm } from "@/components/inline-form";
 import { Button, Field, FormError, Input, Select, Textarea } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
@@ -73,7 +74,7 @@ export function RequestLeaveForm({
   minDate?: string;
   submitLabel?: string;
 }) {
-  const [state, formAction, pending] = useActionState(withStagedUploads(action), {});
+  const [state, formAction, pending] = useFormAction(withStagedUploads(action), {});
   const form = useRef<HTMLFormElement>(null);
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
@@ -95,7 +96,7 @@ export function RequestLeaveForm({
   const e = state.fieldErrors ?? {};
 
   return (
-    <form ref={form} action={formAction} className="space-y-4">
+    <form ref={form} onSubmit={formAction} className="space-y-4">
       {state.ok && state.message && (
         <p role="status" className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">
           {state.message}
