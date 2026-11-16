@@ -1,6 +1,6 @@
 export const MEMBER_STATUSES = {
   draft: { label: "Draft", tone: "gray" },
-  with_marketer: { label: "With the marketer", tone: "blue" },
+  with_marketer: { label: "With staff to confirm", tone: "blue" },
   marketer_reviewed: { label: "Back with the officer", tone: "amber" },
   pending_approval: { label: "With the Branch Manager", tone: "amber" },
   returned: { label: "Returned", tone: "red" },

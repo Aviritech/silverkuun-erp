@@ -1,7 +1,9 @@
 import Link from "next/link";
 import { BrandLogo } from "@/components/brand";
 import { SidebarNav } from "@/components/sidebar-nav";
+import { UsageTracker } from "@/components/usage-tracker";
 import { getCurrentStaff } from "@/lib/auth/session";
+import { myClientsNav } from "@/modules/clients/nav";
 import { myHrNav, speakUpNav } from "@/modules/me/nav";
 import { getMyEmployee } from "@/modules/me/queries";
 import { visibleModules } from "@/modules/registry";
@@ -21,6 +23,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const modules = visibleModules(staff.permissions);
   // Everyone's own HR comes first; staff without an employee record still get "Speak up".
   const myHr = { department: "me", name: "My HR", nav: employee ? [...myHrNav, speakUpNav] : [speakUpNav] };
+  // Any staff member can bring in a client, so everyone has their own client list and sign-up links.
+  const myClients = { department: "clients", name: "My clients", nav: myClientsNav };
 
   return (
     <div className="flex min-h-screen flex-col md:flex-row">
@@ -31,7 +35,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </Link>
         </div>
         <div className="mx-5 mb-5 hidden h-px bg-gradient-to-r from-transparent via-ink-600 to-transparent md:block" />
-        <SidebarNav modules={[myHr, ...modules.map(({ department, name, nav }) => ({ department, name, nav }))]} />
+        <SidebarNav modules={[myHr, myClients, ...modules.map(({ department, name, nav }) => ({ department, name, nav }))]} />
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="no-print sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-zinc-200 bg-white/90 px-6 py-3 backdrop-blur">
@@ -64,6 +68,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           </div>
         </header>
         <main className="flex-1 p-6 lg:p-8">{children}</main>
+        <UsageTracker />
       </div>
     </div>
   );

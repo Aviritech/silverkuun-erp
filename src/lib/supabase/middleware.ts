@@ -2,7 +2,8 @@ import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import { publicEnv } from "@/lib/env";
 
-const PUBLIC_PATHS = ["/login"];
+// "/join/<token>" is the client sign-up page: it has no login, and checks its own token.
+const PUBLIC_PATHS = ["/login", "/join/"];
 
 /** Refreshes the Supabase session cookie and sends signed-out visitors to the login page. */
 export async function updateSession(request: NextRequest) {

@@ -10,5 +10,6 @@ export const systemModule: DepartmentModule = {
     { label: "Overview", href: "/system" },
     { label: "Staff access", href: "/system/staff", permission: "staff.read" },
     { label: "Organisation", href: "/system/organisation", permission: "system.manage" },
+    { label: "Usage", href: "/system/usage", permission: "activity.read" },
   ],
 };

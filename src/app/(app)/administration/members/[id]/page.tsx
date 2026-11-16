@@ -17,18 +17,22 @@ import {
   removeDocument,
   returnMember,
   reverseContribution,
-  sendToMarketer,
+  sendToStaff,
   submitMember,
   uploadDocument,
   verifyContribution,
 } from "@/modules/administration/actions";
 import { ActionButton } from "@/components/action-button";
 import { DocumentUpload } from "@/modules/administration/components/document-upload";
+import { signMemberDocument } from "@/modules/signatures/actions";
+import { ESignForm } from "@/modules/signatures/components/e-sign-form";
+import { SignatureList } from "@/modules/signatures/components/signature-list";
 import { ApprovalForm } from "@/modules/administration/components/approval-form";
 import {
   ContributionForm,
   IssueForm,
-  MarketerReviewForm,
+  SendToStaffForm,
+  StaffConfirmForm,
   PayDayForm,
   PlanForm,
   ReturnForm,
@@ -45,6 +49,7 @@ import {
   OFFICER_EDITABLE,
   PAYMENT_METHODS,
   REQUIRED_DOCUMENTS,
+  type DocumentType,
 } from "@/modules/administration/constants";
 import { administrationModule } from "@/modules/administration/module";
 import {
@@ -54,6 +59,7 @@ import {
   getMemberMoney,
   listBranches,
   listCbnBanks,
+  listIntroducerOptions,
   listLiquidations,
 } from "@/modules/administration/queries";
 import { LiquidationForm } from "@/modules/administration/components/liquidation-form";
@@ -97,10 +103,13 @@ function historyDetail(recordType: string, detail: string) {
 /** The four hand-offs a new member file goes through. */
 const STEPS = [
   { label: "Officer prepares", statuses: ["draft", "returned"] },
-  { label: "Marketer confirms", statuses: ["with_marketer"] },
+  { label: "Staff confirms", statuses: ["with_marketer"] },
   { label: "Officer completes", statuses: ["marketer_reviewed"] },
   { label: "Branch Manager approves", statuses: ["pending_approval"] },
 ] as const;
+
+/** Documents that carry signatures, so can be signed electronically as well as on paper. */
+const SIGNABLE_DOCUMENTS: DocumentType[] = ["kyc_form", "signed_agreement_letter", "maturity_letter", "other"];
 
 export default async function MemberPage({
   params,
@@ -114,17 +123,25 @@ export default async function MemberPage({
   const { tab: tabParam } = await searchParams;
   const bundle = await getMemberBundle(id);
   if (!bundle) notFound();
-  const { member, documents, plans, totals, progress, contributions, planTypes, accruedDividends, staffName } = bundle;
+  const { member, documents, documentSignatures, plans, totals, progress, contributions, planTypes, accruedDividends, staffName } = bundle;
 
   const branch = (await listBranches()).find((b) => b.id === member.branch_id)!;
   const can = (permission: string) => staff.permissions.hasForBranch(permission, branch);
   const editable = OFFICER_EDITABLE.includes(member.status);
   const canManage = can("members.manage");
+  // The officer (or the Branch Manager, countersigning) can e-sign documents that carry signatures.
+  const canSignDocuments = canManage || can("members.approve");
+  const memberName = [member.first_name, member.middle_name, member.last_name].filter(Boolean).join(" ");
   const canEdit = (editable && canManage) || (member.status === "approved" && can("members.amend"));
   const isPreparer = [member.created_by, member.submitted_by, member.sent_to_marketer_by].includes(staff.id);
   const isReviewingMarketer = member.marketer_id === staff.id;
   const canDecide = member.status === "pending_approval" && can("members.approve") && !isPreparer && !isReviewingMarketer;
-  const canMarketerReview = member.status === "with_marketer" && can("members.endorse") && !isPreparer;
+  // The staff member named as having brought the client in confirms; older files without one go to a branch marketer.
+  const canMarketerReview =
+    member.status === "with_marketer" &&
+    staff.id !== member.sent_to_marketer_by &&
+    (member.introduced_by ? member.introduced_by === staff.id : can("members.endorse") && !isPreparer);
+  const introducerOptions = ["draft", "returned"].includes(member.status) && canManage ? await listIntroducerOptions() : [];
   const missing = REQUIRED_DOCUMENTS.filter((t) => !documents.some((d) => d.document_type === t));
   const status = MEMBER_STATUSES[member.status];
   const planName = new Map(planTypes.map((p) => [p.code, p.name]));
@@ -251,11 +268,11 @@ export default async function MemberPage({
             <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-900">
               <p className="font-medium">Returned by {member.returned_by ? staffName(member.returned_by) : "the Branch Manager"}</p>
               <p className="mt-1">{member.return_reason}</p>
-              <p className="mt-1 text-xs">Correct it, then send it to the marketer again.</p>
+              <p className="mt-1 text-xs">Correct it, then send it to staff again.</p>
             </div>
           )}
 
-          {/* Workflow: Officer → Marketer → Officer → Branch Manager */}
+          {/* Workflow: Officer → Staff who brought the client in → Officer → Branch Manager */}
           {stepIndex >= 0 && (
             <ol className="flex flex-wrap gap-2 text-xs" aria-label="Approval steps">
               {STEPS.map((step, i) => (
@@ -276,42 +293,52 @@ export default async function MemberPage({
             </ol>
           )}
 
+          {member.source === "self_signup" && (
+            <p className="text-sm text-zinc-600">
+              The client filled this form themselves through {staffName(member.introduced_by)}&rsquo;s sign-up link on{" "}
+              {formatDateTime(member.created_at)}.
+            </p>
+          )}
+
           {["draft", "returned"].includes(member.status) && canManage && (
-            <Card title="Send to the marketer">
-              <div className="flex flex-wrap items-center justify-between gap-4">
-                <p className="text-sm text-zinc-700">
-                  A marketer at {branch.name} confirms the member first. The file comes back to you to finish the documents before it goes
-                  to the Branch Manager.
+            <Card title="Send to staff">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <p className="max-w-xl text-sm text-zinc-700">
+                  Any staff member can bring in a client. Choose who brought this one in: they confirm they know the client, then the
+                  file comes back to you to finish the documents before it goes to the Branch Manager.
                 </p>
-                <ActionButton
-                  action={sendToMarketer.bind(null, member.id)}
-                  label="Send to marketer"
-                  pendingLabel="Sending…"
-                  confirm="Send this file to the marketer? You won't be able to edit it until they send it back."
+                <SendToStaffForm
+                  action={sendToStaff.bind(null, member.id)}
+                  staff={introducerOptions.filter((s) => s.id !== staff.id && (member.source !== "staff" || s.id !== member.created_by))}
+                  defaultStaffId={member.introduced_by}
                 />
               </div>
             </Card>
           )}
 
           {member.status === "with_marketer" && (
-            <Card title="Marketer review">
+            <Card title="Staff confirmation">
               {canMarketerReview ? (
                 <div className="space-y-3">
                   <p className="text-sm text-zinc-700">
-                    Confirm you know this member and their details below are right. The file then goes back to{" "}
-                    {staffName(member.sent_to_marketer_by)} to finish.
+                    Confirm you know this client and their details below are right. The file then goes to{" "}
+                    {member.sent_to_marketer_by ? staffName(member.sent_to_marketer_by) : "the Operations Officer"} to finish.
                   </p>
                   <div className="flex flex-wrap items-start gap-3">
-                    <MarketerReviewForm action={marketerReview.bind(null, member.id)} />
+                    <StaffConfirmForm action={marketerReview.bind(null, member.id)} />
                     <ReturnForm action={returnMember.bind(null, member.id)} />
                   </div>
                 </div>
               ) : (
                 <p className="text-sm text-zinc-700">
-                  Sent by {staffName(member.sent_to_marketer_by)} on {formatDateTime(member.sent_to_marketer_at)}.{" "}
-                  {isPreparer && can("members.endorse")
-                    ? "You prepared this file, so another marketer has to review it."
-                    : "Waiting for a marketer to confirm the member."}
+                  {member.sent_to_marketer_by
+                    ? `Sent by ${staffName(member.sent_to_marketer_by)} on ${formatDateTime(member.sent_to_marketer_at)}. `
+                    : `Received ${formatDateTime(member.sent_to_marketer_at)}. `}
+                  {member.introduced_by
+                    ? `Waiting for ${staffName(member.introduced_by)}, who brought this client in, to confirm them.`
+                    : isPreparer && can("members.endorse")
+                      ? "You prepared this file, so another marketer has to review it."
+                      : "Waiting for a marketer to confirm the member."}
                 </p>
               )}
             </Card>
@@ -320,7 +347,7 @@ export default async function MemberPage({
           {member.status === "marketer_reviewed" && (
             <Card title="Send for approval">
               <p className="mb-3 text-sm text-zinc-700">
-                Confirmed by {staffName(member.marketer_id)} (marketer) on {formatDateTime(member.marketer_reviewed_at)}
+                Confirmed by {staffName(member.marketer_id)}, who brought the client in, on {formatDateTime(member.marketer_reviewed_at)}
                 {member.marketer_note && <>: &ldquo;{member.marketer_note}&rdquo;</>}
               </p>
               {canManage ? (
@@ -434,7 +461,8 @@ export default async function MemberPage({
               <Detail label="Prepared by">
                 {staffName(member.created_by)}, {formatDate(member.created_at)}
               </Detail>
-              <Detail label="Confirmed by marketer">
+              <Detail label="Brought in by">{member.introduced_by ? staffName(member.introduced_by) : null}</Detail>
+              <Detail label="Confirmed by">
                 {member.marketer_id ? `${staffName(member.marketer_id)}, ${formatDateTime(member.marketer_reviewed_at)}` : null}
               </Detail>
               <Detail label="Approved by">
@@ -454,8 +482,8 @@ export default async function MemberPage({
             ) : (
               <ul className="mb-4 divide-y divide-zinc-100">
                 {documents.map((d) => (
-                  <li key={d.id} className="flex flex-wrap items-center justify-between gap-2 py-2 text-sm">
-                    <div>
+                  <li key={d.id} className="flex flex-wrap items-start justify-between gap-2 py-2 text-sm">
+                    <div className="min-w-0 flex-1">
                       <span className="font-medium">{DOCUMENT_TYPES[d.document_type]}</span>
                       <span className="ml-2 text-zinc-500">
                         {d.file_name} · {formatDate(d.uploaded_at)}
@@ -470,6 +498,17 @@ export default async function MemberPage({
                       ) : (
                         ISSUED_DOCUMENT_TYPES.includes(d.document_type) &&
                         member.status === "approved" && <div className="text-xs text-amber-700">Not issued yet</div>
+                      )}
+                      <SignatureList signatures={documentSignatures.get(d.id) ?? []} staffName={staffName} />
+                      {canSignDocuments && SIGNABLE_DOCUMENTS.includes(d.document_type) && (
+                        <div className="mt-2">
+                          <ESignForm
+                            action={signMemberDocument.bind(null, member.id, d.id)}
+                            roles={["member", "witness", "staff"]}
+                            names={{ member: memberName }}
+                            what={`the ${DOCUMENT_TYPES[d.document_type].replace(/^Signed /, "").toLowerCase()}`}
+                          />
+                        </div>
                       )}
                     </div>
                     <div className="flex flex-wrap items-center gap-3">
@@ -493,6 +532,12 @@ export default async function MemberPage({
                   </li>
                 ))}
               </ul>
+            )}
+            {canManage && (editable || member.status === "approved") && (
+              <p className="mb-2 text-xs text-zinc-500">
+                Signed on paper? Upload the signed scan. To sign electronically instead, upload the unsigned document, then use
+                &ldquo;Sign electronically&rdquo; on it.
+              </p>
             )}
             {canManage && (editable || member.status === "approved") && (
               <DocumentUpload

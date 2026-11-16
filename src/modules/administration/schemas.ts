@@ -85,6 +85,10 @@ export const marketerReviewSchema = z.object({
   note: z.string().trim().max(1000, "Keep the note under 1,000 characters"),
 });
 
+export const sendToStaffSchema = z.object({
+  staff_id: z.guid("Choose who brought this client in"),
+});
+
 export const returnSchema = z.object({
   reason: z.string().trim().min(5, "Say what needs correcting"),
 });

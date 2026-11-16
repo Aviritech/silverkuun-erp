@@ -10,7 +10,7 @@ import { dbFailure } from "@/lib/db-errors";
 
 type Queued = Pick<
   Member,
-  "id" | "branch_id" | "title" | "first_name" | "middle_name" | "last_name" | "created_by" | "submitted_at" | "sent_to_marketer_by" | "sent_to_marketer_at"
+  "id" | "branch_id" | "title" | "first_name" | "middle_name" | "last_name" | "created_by" | "submitted_at" | "sent_to_marketer_by" | "sent_to_marketer_at" | "introduced_by"
 >;
 
 export default async function ApprovalsPage() {
@@ -23,7 +23,7 @@ export default async function ApprovalsPage() {
   const [{ data, error }, branches] = await Promise.all([
     supabase
       .from("members")
-      .select("id, branch_id, status, title, first_name, middle_name, last_name, created_by, submitted_at, sent_to_marketer_by, sent_to_marketer_at")
+      .select("id, branch_id, status, title, first_name, middle_name, last_name, created_by, submitted_at, sent_to_marketer_by, sent_to_marketer_at, introduced_by")
       .in("status", ["with_marketer", "pending_approval"])
       .order("submitted_at")
       .order("sent_to_marketer_at"),
@@ -39,17 +39,18 @@ export default async function ApprovalsPage() {
 
   const sections = [
     isMarketer && {
-      title: "Waiting for the marketer",
-      hint: "Confirm you know the member and their details are right. The file then goes back to the officer to finish.",
+      title: "Clients to confirm",
+      hint: "Files for clients you brought in, plus older files sent to the branch's marketers. Confirm you know the client and their details are right; the file then goes to the officer to finish.",
       files: rows
-        .filter((m) => m.status === "with_marketer")
-        .filter(inBranches("members.endorse"))
-        .filter((m) => ![m.created_by, m.sent_to_marketer_by].includes(staff.id)),
+        .filter((m) => m.status === "with_marketer" && m.sent_to_marketer_by !== staff.id)
+        .filter((m) =>
+          m.introduced_by ? m.introduced_by === staff.id : inBranches("members.endorse")(m) && m.created_by !== staff.id,
+        ),
       since: (m: Queued) => `sent ${formatDateTime(m.sent_to_marketer_at)}`,
     },
     isManager && {
       title: "Waiting for the Branch Manager",
-      hint: "Completed by the officer after the marketer confirmed the member. Approve with your signature or return it.",
+      hint: "Completed by the officer after the staff member who brought the client in confirmed them. Approve with your signature or return it.",
       files: rows.filter((m) => m.status === "pending_approval").filter(inBranches("members.approve")),
       since: (m: Queued) => `submitted ${formatDateTime(m.submitted_at)}`,
     },

@@ -85,4 +85,27 @@ describe("upgrading a database that already has data", () => {
     const cols = await db.query("select 1 from information_schema.columns where table_name = 'members' and column_name = 'interest_pay_day'");
     expect(cols.rows).toHaveLength(0);
   });
+
+  it("makes the marketer who confirmed each existing member that member's introducer", async () => {
+    const db = await createTestDatabase({ before: "20261116000040" });
+    await db.exec(`
+      set session_replication_role = replica;
+      insert into auth.users (id, email) values ('00000000-0000-0000-0000-0000000000e1', 'm@kuun.test');
+      insert into staff (id, full_name, email, department_code) values ('00000000-0000-0000-0000-0000000000e1', 'Mary Marketer', 'm@kuun.test', 'administration');
+      insert into members (id, branch_id, first_name, last_name, phone, address, nin, id_type, id_number, status, created_by, marketer_id)
+      values ('00000000-0000-0000-0000-0000000000a1', gen_random_uuid(), 'Ada', 'Obi', '08031234567', '12 Marina', '12345678901',
+              'national_id', 'NG-1', 'approved', gen_random_uuid(), '00000000-0000-0000-0000-0000000000e1'),
+             ('00000000-0000-0000-0000-0000000000a2', gen_random_uuid(), 'Bola', 'Ade', '08031234567', '12 Marina', '12345678902',
+              'national_id', 'NG-2', 'draft', gen_random_uuid(), null);
+      set session_replication_role = origin;
+    `);
+
+    await applyMigrations(db, { from: "20261116000040" });
+
+    const res = await db.query("select id, introduced_by, source from members order by id");
+    expect(res.rows).toEqual([
+      { id: "00000000-0000-0000-0000-0000000000a1", introduced_by: "00000000-0000-0000-0000-0000000000e1", source: "staff" },
+      { id: "00000000-0000-0000-0000-0000000000a2", introduced_by: null, source: "staff" },
+    ]);
+  });
 });

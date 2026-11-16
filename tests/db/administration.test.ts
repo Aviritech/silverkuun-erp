@@ -225,7 +225,7 @@ describe("marketer review", () => {
   it("won't send a file to the Branch Manager before the marketer has reviewed it", async () => {
     const id = await createDraft();
     await uploadDocs(id);
-    await expect(commitAs(OFFICER, () => db.query("select submit_member($1)", [id]))).rejects.toThrow(/marketer first/);
+    await expect(commitAs(OFFICER, () => db.query("select submit_member($1)", [id]))).rejects.toThrow(/brought the client in first/);
   });
 
   it("locks the file while it is with the marketer", async () => {
@@ -234,8 +234,8 @@ describe("marketer review", () => {
     expect(await status(id)).toBe("with_marketer");
     const edit = await asUser(db, OFFICER, (tx) => tx.query("update members set phone = '0809' where id = $1", [id]));
     expect(edit.affectedRows).toBe(0);
-    await expect(uploadDocs(id, lagos, ["other"])).rejects.toThrow(/with the marketer/);
-    await expect(commitAs(OFFICER, () => db.query("select marketer_review_member($1, null)", [id]))).rejects.toThrow(/not found/);
+    await expect(uploadDocs(id, lagos, ["other"])).rejects.toThrow(/with the staff member who brought the client in/);
+    await expect(commitAs(OFFICER, () => db.query("select marketer_review_member($1, null)", [id]))).rejects.toThrow(/you prepared this file/);
   });
 
   it("gives the file back to the officer to finish, recording who reviewed it", async () => {
@@ -260,7 +260,7 @@ describe("marketer review", () => {
     const row = await db.query<{ status: string; returned_by: string }>("select status, returned_by from members where id = $1", [id]);
     expect(row.rows[0]).toEqual({ status: "returned", returned_by: MARKETER });
     await uploadDocs(id);
-    await expect(commitAs(OFFICER, () => db.query("select submit_member($1)", [id]))).rejects.toThrow(/marketer first/);
+    await expect(commitAs(OFFICER, () => db.query("select submit_member($1)", [id]))).rejects.toThrow(/brought the client in first/);
   });
 
   it("never lets the marketer who reviewed a file approve it", async () => {
