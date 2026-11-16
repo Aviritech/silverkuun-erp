@@ -30,6 +30,31 @@ export type TopUpRow = {
   decided_by_name: string | null;
   decided_at: string | null;
   decision_note: string | null;
+  /** The member (and plan) Accounts picked when recording it, for the branch to confirm. */
+  matched_member_id: string | null;
+  matched_member_name: string | null;
+  matched_membership_no: string | null;
+  matched_plan_id: string | null;
+  matched_plan_name: string | null;
+};
+
+/** A member from top_up_member_search(): what Accounts needs to match a payment, nothing more. */
+export type TopUpMemberHit = {
+  member_id: string;
+  member_name: string;
+  membership_no: string | null;
+  /** Last four digits of the phone only. */
+  phone_hint: string;
+  branch_id: string;
+  branch_name: string;
+  plans: {
+    id: string;
+    plan_name: string;
+    start_date: string;
+    maturity_date: string;
+    contribution_amount: number;
+    contribution_frequency: string;
+  }[];
 };
 
 export type TopUpStatus = "with_branch" | "logged" | "returned" | "cancelled";

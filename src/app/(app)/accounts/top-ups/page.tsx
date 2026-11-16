@@ -46,7 +46,7 @@ export default async function AccountsTopUpsPage() {
       <PageHeader
         eyebrow="Member receipts"
         title="Member top ups"
-        description="When a member's top up reaches the company, record it here and choose the branch it belongs to. That branch's officer finds the member and logs it against their plan; the Branch Manager verifies it and it comes back to you in Savings pay-ins to post."
+        description="When a member's top up reaches the company, record it here. Search for the member to send it straight to their branch, or type the name on the transfer and choose the branch. That branch's officer confirms the member and logs it against their plan; the Branch Manager verifies it and it comes back to you in Savings pay-ins to post."
         actions={<TopUpForm action={initiateTopUp.bind(null, null)} branches={branches} banks={bankChoices} />}
       />
       <StatGrid>
@@ -131,6 +131,12 @@ export default async function AccountsTopUpsPage() {
                     </td>
                     <td className="px-5 py-3">
                       {t.paid_by}
+                      {t.matched_member_id && (
+                        <span className="block text-xs text-emerald-700">
+                          Member {t.matched_membership_no ?? t.matched_member_name}
+                          {t.matched_plan_name && <> · {t.matched_plan_name}</>}
+                        </span>
+                      )}
                       {t.note && <span className="block text-xs text-zinc-500">{t.note}</span>}
                     </td>
                     <td className="px-5 py-3">{t.branch_name}</td>
