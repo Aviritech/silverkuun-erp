@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useFormAction } from "@/lib/use-form-action";
 import { Button, FormError } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 
@@ -22,7 +23,7 @@ export function InlineForm({
   children: (errors: Record<string, string>) => ReactNode;
 }) {
   const [open, setOpen] = useState(false);
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useFormAction(action, {});
   const form = useRef<HTMLFormElement>(null);
 
   useEffect(() => {
@@ -41,7 +42,7 @@ export function InlineForm({
   }
 
   return (
-    <form ref={form} action={formAction} className="w-full space-y-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
+    <form ref={form} onSubmit={formAction} className="w-full space-y-3 rounded-lg border border-zinc-200 bg-zinc-50 p-4">
       <FormError message={state.error} />
       {children(state.fieldErrors ?? {})}
       <div className="flex gap-2">

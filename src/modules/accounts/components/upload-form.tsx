@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
+import { useFormAction } from "@/lib/use-form-action";
 import { Button, Field, FormError, Input } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 import { withStagedUploads } from "@/lib/uploads/client";
@@ -17,13 +18,13 @@ export function UploadForm({
   accept?: string;
   submitLabel?: string;
 }) {
-  const [state, formAction, pending] = useActionState(withStagedUploads(action), {});
+  const [state, formAction, pending] = useFormAction(withStagedUploads(action), {});
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => {
     if (state.ok) form.current?.reset();
   }, [state]);
   return (
-    <form ref={form} action={formAction} className="grid items-end gap-3 sm:grid-cols-[1fr_auto]">
+    <form ref={form} onSubmit={formAction} className="grid items-end gap-3 sm:grid-cols-[1fr_auto]">
       <Field label={label} error={state.fieldErrors?.file}>
         <Input name="file" type="file" accept={accept} required />
       </Field>

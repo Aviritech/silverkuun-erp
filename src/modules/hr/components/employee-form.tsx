@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useFormAction } from "@/lib/use-form-action";
 import { Button, Field, FormError, Input, Select, Textarea } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 import { EMPLOYMENT_TYPES, ID_TYPES, MARITAL_STATUSES } from "../constants";
@@ -31,11 +31,11 @@ function Options({ choices }: { choices: Record<string, string> }) {
 }
 
 export function EmployeeForm({ action, employee = {}, placement, lockWorkEmail, submitLabel }: Props) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useFormAction(action, {});
   const e = state.fieldErrors ?? {};
 
   return (
-    <form action={formAction} className="space-y-6">
+    <form onSubmit={formAction} className="space-y-6">
       <FormError message={state.error} />
 
       {placement && (

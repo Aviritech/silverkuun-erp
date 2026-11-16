@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState } from "react";
+import { useFormAction } from "@/lib/use-form-action";
 import { Button, Select } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 
@@ -14,9 +14,9 @@ export function ContributionPostForm({
   banks: { id: string; name: string }[];
   defaultBankId?: string;
 }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useFormAction(action, {});
   return (
-    <form action={formAction} className="flex flex-wrap items-start gap-2">
+    <form onSubmit={formAction} className="flex flex-wrap items-start gap-2">
       <div className="w-56">
         <Select name="bank_account_id" defaultValue={defaultBankId ?? ""} required aria-label="Paid into">
           <option value="">Paid into…</option>
