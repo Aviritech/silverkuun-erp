@@ -105,11 +105,13 @@ export function PlanForm({ action, planTypes }: { action: Action; planTypes: Pla
               </Field>
             )}
           </div>
-          {type && (type.min_amount || type.dividends_at_maturity || tenures) && (
+          {type && (
             <p className="text-xs text-zinc-500">
               {[
+                type.description,
                 tenures && `Runs for ${tenures.join(", ")} months; matures that long after the start date.`,
-                type.min_amount && `Minimum ${formatMoney(type.min_amount)}.`,
+                type.min_amount && !type.description.includes("naira") && `Minimum ${formatMoney(type.min_amount)}.`,
+                type.max_amount && !type.description.includes("naira") && `Maximum ${formatMoney(type.max_amount)}.`,
                 type.dividends_at_maturity && "No monthly interest: the savings and all dividends are paid together at maturity.",
               ]
                 .filter(Boolean)

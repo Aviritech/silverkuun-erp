@@ -4,7 +4,7 @@ Everything a brand-new, empty Supabase project needs to run the Silverkuun ERP, 
 
 | File | What it does |
 | --- | --- |
-| `01-schema.sql` | The whole database: all 24 migrations in order (tables, types, functions, triggers, RLS policies, roles and permissions, storage buckets) and the reference data (departments, roles, plan types and rates, loan products, CBN banks, chart of accounts, posting rules, leave types, job titles). No people or branches. |
+| `01-schema.sql` | The whole database: all 25 migrations in order (tables, types, functions, triggers, RLS policies, roles and permissions, storage buckets) and the reference data (departments, roles, plan types and rates, loan products, CBN banks, chart of accounts, posting rules, leave types, job titles). No people or branches. |
 | `02-seed-organisation.sql` | 3 regions, 10 branches, a bank and a cash account per branch, and 81 test logins: every role, and every branch-level role in every branch. |
 | `03-seed-demo-data.sql` | 16 members across all branches and dummy records in every module, created through the real workflow functions. |
 | `build-schema.py` | Rebuilds `01-schema.sql` from `supabase/migrations`. Run it after adding a migration. |
@@ -106,7 +106,7 @@ data was created by the original logins, but every per-branch login sees and wor
 
 Seeded documents are placeholder rows: no file sits behind them, so their download links won't open anything. Files you upload while testing work normally.
 
-Plan interest rates (Silver 10%, Gold 12%, Platinum 15%, Target 12%, Child 10%), the interest formula and the late repayment penalty (0.1% a day on every loan product) are still placeholders until Kuun confirms them.
+Plan interest rates follow Kuun's rates sheet (a month: Silver 4%, Gold 5%, Platinum 6%, Child 5%, Kuun Exploit 3.5%; stored as annual figures, so Silver is 48). Target savings (12% a year), the interest formula and the late repayment penalty (0.1% a day on every loan product) are still placeholders until Kuun confirms them.
 
 ## How this was checked
 
