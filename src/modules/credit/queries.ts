@@ -1,4 +1,5 @@
 import "server-only";
+import { signaturesFor, signatureStaffIds } from "@/modules/signatures/queries";
 import { dbFailure } from "@/lib/db-errors";
 import { createClient } from "@/lib/supabase/server";
 import type {
@@ -324,7 +325,13 @@ export async function getLoanBundle(id: string) {
     ? await supabase.storage.from("loan-documents").createSignedUrls(documents.map((d) => d.storage_path), 120)
     : { data: [] };
   const urls = new Map((signed.data ?? []).map((s) => [s.path, s.signedUrl]));
+  const [documentSignatures, guarantorSignatures] = await Promise.all([
+    signaturesFor("loan_document_id", documents.map((d) => d.id)),
+    signaturesFor("loan_guarantor_id", guarantors.map((g) => g.id)),
+  ]);
   const staffName = await staffNameLookup([
+    ...signatureStaffIds(documentSignatures),
+    ...signatureStaffIds(guarantorSignatures),
     loan.created_by,
     loan.submitted_by,
     loan.appraised_by,
@@ -352,6 +359,8 @@ export async function getLoanBundle(id: string) {
     restructures,
     reminders,
     otherLoans: history,
+    documentSignatures,
+    guarantorSignatures,
     staffName,
   };
 }

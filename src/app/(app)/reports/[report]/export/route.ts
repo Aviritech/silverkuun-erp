@@ -2,6 +2,8 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getCurrentStaff } from "@/lib/auth/session";
 import { reportToPdf } from "@/lib/files/pdf";
 import { reportToXlsx } from "@/lib/files/xlsx";
+import { logActivity } from "@/lib/activity/log";
+import { describePath } from "@/lib/activity/describe";
 import { formatDateTime } from "@/lib/format";
 import { listDimensions, listOrg } from "@/lib/org";
 import { toCsv } from "@/lib/reports/csv";
@@ -36,6 +38,14 @@ export async function GET(request: NextRequest, { params }: { params: Promise<{ 
   const result = await report.run(supabase, filters);
   const scope = describeScope(report, filters, { ...org, ...dimensions });
   const name = `${report.key}-${report.dates === "period" || report.dates === "range" ? `${filters.from}-to-${filters.to}` : filters.to}.${format}`;
+
+  await logActivity("download", {
+    path: `${report.basePath}/reports/${report.key}`,
+    module: describePath(report.basePath).module,
+    label: `${report.title} (${format.toUpperCase()})`,
+    detail: { report: report.key, format, from: filters.from, to: filters.to, branch: filters.branch },
+    supabase,
+  });
 
   let body: Buffer | string;
   if (format === "xlsx") body = reportToXlsx(result, { title: report.title, scope });

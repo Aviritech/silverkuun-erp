@@ -2,6 +2,7 @@
 
 import { redirect } from "next/navigation";
 import { z } from "zod";
+import { logActivity, logFailedSignIn } from "@/lib/activity/log";
 import { createClient } from "@/lib/supabase/server";
 
 const credentials = z.object({
@@ -21,14 +22,17 @@ export async function signIn(_prev: LoginState, formData: FormData): Promise<Log
     // Log the real cause on the server only; the form shows one message for every failure
     // so it does not reveal which accounts exist.
     console.error("Sign-in failed", { email: parsed.data.email, status: error.status, code: error.code, message: error.message });
+    await logFailedSignIn(parsed.data.email);
     return { error: "That email and password don't match an active account." };
   }
 
+  await logActivity("sign_in", { path: "/login", label: "Sign in", module: null, supabase });
   redirect("/");
 }
 
 export async function signOut() {
   const supabase = await createClient();
+  await logActivity("sign_out", { label: "Sign out", module: null, supabase });
   await supabase.auth.signOut();
   redirect("/login");
 }
