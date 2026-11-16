@@ -15,5 +15,6 @@ export const internalAuditModule: DepartmentModule = {
     { section: "Reviews", label: "Branch reports", href: "/internal-audit/reports/branch-operations" },
     { section: "Reviews", label: "Financial reports", href: "/accounts/reports", permission: "accounts.read" },
     { section: "Control", label: "Audit trail", href: "/internal-audit/reports/audit-trail", permission: "audit.trail.read" },
+    { section: "Control", label: "Usage", href: "/internal-audit/usage", permission: "activity.read" },
   ],
 };
