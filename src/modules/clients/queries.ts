@@ -57,3 +57,22 @@ export async function listMyLinks(limit = 50): Promise<SignupLink[]> {
   if (error) throw dbFailure(error);
   return (data ?? []) as SignupLink[];
 }
+
+export type FixLink = { id: string; created_by: string; created_at: string; expires_at: string };
+
+/** The open link (if any) that lets the client correct their returned file. */
+export async function openFixLinkFor(memberId: string): Promise<FixLink | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("member_fix_links")
+    .select("id, created_by, created_at, expires_at")
+    .eq("member_id", memberId)
+    .is("used_at", null)
+    .is("revoked_at", null)
+    .gt("expires_at", new Date().toISOString())
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw dbFailure(error);
+  return data as FixLink | null;
+}

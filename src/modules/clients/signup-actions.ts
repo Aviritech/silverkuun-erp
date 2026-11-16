@@ -6,7 +6,7 @@ import { serviceClient } from "@/lib/supabase/admin";
 import { fieldErrors } from "@/modules/administration/schemas";
 import { CLIENT_DOCUMENTS, looksLike, SIGNUP_BUCKET, SIGNUP_MAX_BYTES, type ClientDocument } from "./constants";
 import { signupSchema, uploadedSchema, uploadRequestSchema } from "./schemas";
-import { clientIp, openLink, withinLimit } from "./signup";
+import { clientIp, openFixLink, openLink, withinLimit } from "./signup";
 import { hashSignupToken } from "./tokens";
 
 /**
@@ -15,6 +15,8 @@ import { hashSignupToken } from "./tokens";
  */
 
 const NOT_OPEN = "This link has expired or has already been used. Ask the Silverkuun staff member who sent it for a new one.";
+const FIX_NOT_OPEN =
+  "This link has expired, has already been used, or your file has already been corrected. Ask the Silverkuun staff member who sent it.";
 const SLOW_DOWN = "Too many attempts from this connection. Wait an hour, then try again.";
 
 export type UploadTicket = { document_type: ClientDocument; path: string; token: string };
@@ -23,6 +25,7 @@ export type UploadTicket = { document_type: ClientDocument; path: string; token:
 export async function prepareSignupUploads(
   token: string,
   files: { document_type: string; name: string; type: string; size: number }[],
+  kind: "signup" | "fix" = "signup",
 ): Promise<{ tickets?: UploadTicket[]; error?: string; fieldErrors?: Record<string, string> }> {
   const parsed = uploadRequestSchema.safeParse(files);
   if (!parsed.success) {
@@ -33,8 +36,8 @@ export async function prepareSignupUploads(
   }
   if (new Set(parsed.data.map((f) => f.document_type)).size !== parsed.data.length) return { error: "Choose one file for each document." };
   if (!(await withinLimit(`upload:${await clientIp()}`, 20))) return { error: SLOW_DOWN };
-  const link = await openLink(token);
-  if (typeof link === "string") return { error: NOT_OPEN };
+  const link = kind === "fix" ? await openFixLink(token) : await openLink(token);
+  if (typeof link === "string") return { error: kind === "fix" ? FIX_NOT_OPEN : NOT_OPEN };
 
   const storage = serviceClient().storage.from(SIGNUP_BUCKET);
   const tickets: UploadTicket[] = [];
@@ -93,20 +96,44 @@ async function placeFiles(linkId: string, branchId: string, memberId: string, fo
   return { placed, problems };
 }
 
+type ParsedForm = { member?: Record<string, unknown>; errors?: ActionState };
+
+/** Checks the client's form fields; shared by a new sign-up and a fix. */
+function parseClientForm(formData: FormData): ParsedForm {
+  const fields = Object.fromEntries(
+    Object.keys(signupSchema.shape).map((k) => [k, (formData.get(k) as string | null) ?? ""]),
+  );
+  const parsed = signupSchema.safeParse(fields);
+  if (!parsed.success) return { errors: { fieldErrors: fieldErrors(parsed.error) } };
+  const v = parsed.data;
+  const hasBank = Boolean(v.bank_code || v.bank_name);
+  if (hasBank && !v.bank_account_no) return { errors: { fieldErrors: { bank_account_no: "Enter the 10-digit account number" } } };
+  if (!hasBank && v.bank_account_no) return { errors: { fieldErrors: { bank_code: "Choose the bank" } } };
+  const { consent: _consent, ...member } = v;
+  return { member: { ...member, bank_name: member.bank_code ? null : member.bank_name } };
+}
+
+/** Turns a refused save into what the client should see. */
+function saveError(error: { code?: string; message: string }, notOpen: string): ActionState {
+  if (error.code === "23505" && /nin/i.test(error.message)) {
+    return { fieldErrors: { nin: "This NIN is already registered with Silverkuun. Contact the staff member who sent you this link." } };
+  }
+  if (/expired|already been used|not valid/i.test(error.message)) return { error: notOpen };
+  if (/date of birth/i.test(error.message)) return { fieldErrors: { date_of_birth: "Your date of birth must be in the past" } };
+  if (error.code === "23514" || error.code === "22007" || error.code === "22008" || error.code === "23503") {
+    return { error: "Some of the details weren't accepted. Check the date of birth, phone, email and bank, then try again." };
+  }
+  console.error("Client form save failed", error);
+  return { error: "Something went wrong saving your form. Try again in a few minutes." };
+}
+
 /** The client sends their form. Their file goes to the staff member who made the link. */
 export async function submitSignup(token: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
   const ip = await clientIp();
   if (!(await withinLimit(`submit:${ip}`, 10))) return { error: SLOW_DOWN };
 
-  const fields = Object.fromEntries(
-    Object.keys(signupSchema.shape).map((k) => [k, (formData.get(k) as string | null) ?? ""]),
-  );
-  const parsed = signupSchema.safeParse(fields);
-  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
-  const v = parsed.data;
-  const hasBank = Boolean(v.bank_code || v.bank_name);
-  if (hasBank && !v.bank_account_no) return { fieldErrors: { bank_account_no: "Enter the 10-digit account number" } };
-  if (!hasBank && v.bank_account_no) return { fieldErrors: { bank_code: "Choose the bank" } };
+  const form = parseClientForm(formData);
+  if (form.errors) return form.errors;
 
   const link = await openLink(token);
   if (typeof link === "string") return { error: NOT_OPEN };
@@ -120,25 +147,55 @@ export async function submitSignup(token: string, _prev: ActionState, formData: 
     return { fieldErrors: problems };
   }
 
-  const { consent: _consent, ...member } = v;
   const { error } = await serviceClient().rpc("submit_member_signup", {
     p_token_hash: hashSignupToken(token),
     p_member_id: memberId,
-    p_member: { ...member, bank_name: member.bank_code ? null : member.bank_name },
+    p_member: form.member,
     p_documents: placed,
   });
   if (error) {
     if (placed.length) await storage.remove(placed.map((p) => p.storage_path));
-    if (error.code === "23505" && /nin/i.test(error.message)) {
-      return { fieldErrors: { nin: "This NIN is already registered with Silverkuun. Contact the staff member who sent you this link." } };
-    }
-    if (/expired|already been used|not valid/i.test(error.message)) return { error: NOT_OPEN };
-    if (/date of birth/i.test(error.message)) return { fieldErrors: { date_of_birth: "Your date of birth must be in the past" } };
-    if (error.code === "23514" || error.code === "22007" || error.code === "22008" || error.code === "23503") {
-      return { error: "Some of the details weren't accepted. Check the date of birth, phone, email and bank, then try again." };
-    }
-    console.error("Client sign-up failed", error);
-    return { error: "Something went wrong saving your form. Try again in a few minutes." };
+    return saveError(error, NOT_OPEN);
+  }
+  return { ok: true };
+}
+
+/**
+ * The client sends their corrected form through a fix link. Their details are updated, any document they chose again
+ * replaces the one on file, and the file goes back to the staff member who brought them in.
+ */
+export async function submitFix(token: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  const ip = await clientIp();
+  if (!(await withinLimit(`submit:${ip}`, 10))) return { error: SLOW_DOWN };
+
+  const form = parseClientForm(formData);
+  if (form.errors) return form.errors;
+
+  const link = await openFixLink(token);
+  if (typeof link === "string") return { error: FIX_NOT_OPEN };
+  if (!(await withinLimit(`link:${link.linkId}`, 10))) return { error: SLOW_DOWN };
+
+  const { placed, problems } = await placeFiles(link.linkId, link.branchId, link.memberId, formData);
+  const storage = serviceClient().storage.from("member-documents");
+  if (Object.keys(problems).length) {
+    if (placed.length) await storage.remove(placed.map((p) => p.storage_path));
+    return { fieldErrors: problems };
+  }
+
+  const { data, error } = await serviceClient().rpc("submit_member_fix", {
+    p_token_hash: hashSignupToken(token),
+    p_member: form.member,
+    p_documents: placed,
+  });
+  if (error) {
+    if (placed.length) await storage.remove(placed.map((p) => p.storage_path));
+    return saveError(error, FIX_NOT_OPEN);
+  }
+  // The files the client replaced. Their records are gone; a failed delete only leaves an unused file behind.
+  const removed = ((data ?? []) as { removed_path: string }[]).map((r) => r.removed_path).filter(Boolean);
+  if (removed.length) {
+    const { error: removeError } = await storage.remove(removed);
+    if (removeError) console.error("Couldn't delete replaced client documents", removeError);
   }
   return { ok: true };
 }
