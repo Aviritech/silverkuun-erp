@@ -5,7 +5,7 @@ import { Letter } from "@/components/letter";
 import { requireModule } from "@/lib/auth/session";
 import { monthlyRate, nextPayDay, tenureWords } from "@/lib/letters/words";
 import { FREQUENCIES } from "@/modules/administration/constants";
-import { getPlanLetter, letterName } from "@/modules/administration/letters";
+import { getPlanLetter, interestPayDay, letterName } from "@/modules/administration/letters";
 import { administrationModule } from "@/modules/administration/module";
 import { accountLine, DepositLetter } from "../../../deposit-letter";
 
@@ -30,12 +30,12 @@ export default async function PlanAgreementLetter({
   const { plan, member, manager } = data;
   const isRollover = rollover === "1";
   const name = letterName(member);
-  const payDay = member.interest_pay_day;
+  const payDay = interestPayDay(plan, member);
   const account = accountLine(member, name);
 
   const gaps = [
     !member.membership_no && "The member's membership number",
-    !plan.dividends_at_maturity && !payDay && "The day of the month interest is paid (on the member's details)",
+    !plan.dividends_at_maturity && !payDay && "The day of the month interest is paid",
     !account && "The member's bank account (on the member's details)",
     !manager && "A Branch Manager for this branch, to sign the letter",
   ].filter((g): g is string => Boolean(g));

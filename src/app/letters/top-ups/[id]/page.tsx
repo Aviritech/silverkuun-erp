@@ -6,7 +6,7 @@ import { dbFailure } from "@/lib/db-errors";
 import { formatDate } from "@/lib/format";
 import { monthlyRate, naira, nextPayDay, tenureWords } from "@/lib/letters/words";
 import { createClient } from "@/lib/supabase/server";
-import { getPlanLetter, letterName, standingContributions } from "@/modules/administration/letters";
+import { getPlanLetter, interestPayDay, letterName, standingContributions } from "@/modules/administration/letters";
 import { administrationModule } from "@/modules/administration/module";
 import type { Contribution } from "@/modules/administration/queries";
 import { accountLine, DepositLetter } from "../../deposit-letter";
@@ -38,12 +38,12 @@ export default async function TopUpLetter({ params }: { params: Promise<{ id: st
     c.paid_on < topUp.paid_on || (c.paid_on === topUp.paid_on && c.recorded_at <= topUp.recorded_at);
   const deposit = standing.filter(upTo).reduce((s, c) => s + Number(c.amount), 0);
   const name = letterName(member);
-  const payDay = member.interest_pay_day;
+  const payDay = interestPayDay(plan, member);
   const account = accountLine(member, name);
 
   const gaps = [
     !member.membership_no && "The member's membership number",
-    !plan.dividends_at_maturity && !payDay && "The day of the month interest is paid (on the member's details)",
+    !plan.dividends_at_maturity && !payDay && "The day of the month interest is paid",
     !account && "The member's bank account (on the member's details)",
     !manager && "A Branch Manager for this branch, to sign the letter",
   ].filter((g): g is string => Boolean(g));

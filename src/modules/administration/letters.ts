@@ -21,11 +21,14 @@ export type LetterMember = Pick<
   | "address"
   | "bank_name"
   | "bank_account_no"
-  | "interest_pay_day"
->;
+> & {
+  /** The member-wide interest pay day. Moving to each plan (member_plans.interest_pay_day); see interestPayDay(). */
+  interest_pay_day?: number | null;
+};
 
-const MEMBER_FIELDS =
-  "id, branch_id, membership_no, status, title, first_name, middle_name, last_name, address, bank_name, bank_account_no, interest_pay_day";
+// "*" rather than a column list, so the letters keep working whether the interest pay day sits on the member or,
+// after the pay day moves to each plan, on the plan.
+const MEMBER_FIELDS = "*";
 
 /** The Branch Manager who signs the branch's letters, or null when the branch has none. */
 export async function branchManagerName(branchId: string): Promise<string | null> {
@@ -48,7 +51,7 @@ export async function getPlanLetter(planId: string) {
   const { data: plan, error } = await supabase.from("member_plans").select("*").eq("id", planId).maybeSingle();
   if (error) throw dbFailure(error);
   if (!plan) return null;
-  const p = plan as Plan & { member_id: string; branch_id: string };
+  const p = plan as Plan & { member_id: string; branch_id: string; interest_pay_day?: number | null };
 
   const [member, type, contributions, manager] = await Promise.all([
     getLetterMember(p.member_id),
@@ -66,6 +69,11 @@ export async function getPlanLetter(planId: string) {
     contributions: (contributions.data ?? []) as Contribution[],
     manager,
   };
+}
+
+/** The day of the month a plan's interest is paid: the plan's own pay day, or the member's where plans have none. */
+export function interestPayDay(plan: { interest_pay_day?: number | null }, member: LetterMember): number | null {
+  return plan.interest_pay_day ?? member.interest_pay_day ?? null;
 }
 
 /** Contributions that still count: everything except reversals and the contributions they reverse. */
