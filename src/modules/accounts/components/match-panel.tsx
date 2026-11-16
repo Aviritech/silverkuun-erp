@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
+import { useFormAction } from "@/lib/use-form-action";
 import { Button, FormError, Input } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 import { formatDate, formatMoney } from "@/lib/format";
@@ -18,7 +19,7 @@ export function MatchPanel({
   statement: OpenStatementLine[];
   ledger: OpenLedgerLine[];
 }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useFormAction(action, {});
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const toggle = (id: string) =>
     setPicked((p) => {
@@ -53,7 +54,7 @@ export function MatchPanel({
   );
 
   return (
-    <form action={formAction} className="space-y-3">
+    <form onSubmit={formAction} className="space-y-3">
       <FormError message={state.error} />
       <div className="grid gap-4 md:grid-cols-2">
         <div>

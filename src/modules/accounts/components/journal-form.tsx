@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useState } from "react";
+import { useFormAction } from "@/lib/use-form-action";
 import { Button, Field, FormError, Input, Select } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 import { formatMoney } from "@/lib/format";
@@ -20,7 +21,7 @@ export function JournalForm({
   accounts: LedgerAccount[];
   members: MemberOption[];
 }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useFormAction(action, {});
   const [lines, setLines] = useState<Line[]>([
     { key: 1, debit: "", credit: "" },
     { key: 2, debit: "", credit: "" },
@@ -34,7 +35,7 @@ export function JournalForm({
   const today = new Date().toISOString().slice(0, 10);
 
   return (
-    <form action={formAction} className="space-y-4">
+    <form onSubmit={formAction} className="space-y-4">
       <FormError message={state.error} />
       <div className="grid gap-4 sm:grid-cols-3">
         <Field label="Branch" error={e.branch_id}>

@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
+import { useFormAction } from "@/lib/use-form-action";
 import { Button, Field, FormError, Select, Textarea } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 import { CASE_STATUSES, type CaseStatus } from "./constants";
@@ -14,10 +15,10 @@ export function CaseForm({
   action: Action;
   current: { status: CaseStatus; findings: string | null; outcome: string | null };
 }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useFormAction(action, {});
   const e = state.fieldErrors ?? {};
   return (
-    <form action={formAction} className="space-y-4">
+    <form onSubmit={formAction} className="space-y-4">
       <FormError message={state.error} />
       <div className="w-56">
         <Field label="Status" error={e.status}>
@@ -51,13 +52,13 @@ export function CaseForm({
 }
 
 export function MessageForm({ action }: { action: Action }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useFormAction(action, {});
   const form = useRef<HTMLFormElement>(null);
   useEffect(() => {
     if (state.ok) form.current?.reset();
   }, [state]);
   return (
-    <form ref={form} action={formAction} className="space-y-2">
+    <form ref={form} onSubmit={formAction} className="space-y-2">
       <FormError message={state.error} />
       <Field
         label="Send a message to the reporter"

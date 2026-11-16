@@ -1,6 +1,7 @@
 "use client";
 
-import { useActionState, useId } from "react";
+import { useId } from "react";
+import { useFormAction } from "@/lib/use-form-action";
 import { InlineForm } from "@/components/inline-form";
 import { Button, Field, FormError, Input, Select, Textarea } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
@@ -101,10 +102,10 @@ export function ReviewNotesForm({
   action: Action;
   initial: { strengths: string | null; improvements: string | null; reviewer_comments: string | null; next_review_date: string | null };
 }) {
-  const [state, formAction, pending] = useActionState(action, {});
+  const [state, formAction, pending] = useFormAction(action, {});
   const e = state.fieldErrors ?? {};
   return (
-    <form action={formAction} className="space-y-3">
+    <form onSubmit={formAction} className="space-y-3">
       <FormError message={state.error} />
       <Field label="Strengths" error={e.strengths}>
         <Textarea name="strengths" rows={3} defaultValue={initial.strengths ?? ""} />

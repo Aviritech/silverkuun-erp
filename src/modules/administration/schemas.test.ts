@@ -11,7 +11,11 @@ const validMember = {
   gender: "",
   phone: "08030000000",
   email: "",
-  address: "1 Marina, Lagos",
+  address: "1 Marina",
+  address_city: "Lagos Island",
+  address_lga: "Lagos Island",
+  address_state: "Lagos",
+  address_landmark: "",
   nin: "12345678901",
   id_type: "national_id",
   id_number: "A123",
@@ -21,7 +25,6 @@ const validMember = {
   bank_code: "",
   bank_name: "",
   bank_account_no: "",
-  interest_pay_day: "",
 };
 
 describe("memberSchema", () => {
@@ -32,15 +35,24 @@ describe("memberSchema", () => {
     expect(parsed.date_of_birth).toBeNull();
   });
 
-  it("checks the bank account number and interest pay day", () => {
-    const result = memberSchema.safeParse({ ...validMember, bank_code: "058", bank_account_no: "12345", interest_pay_day: "32" });
+  it("checks the bank account number", () => {
+    const result = memberSchema.safeParse({ ...validMember, bank_code: "058", bank_account_no: "12345" });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(fieldErrors(result.error).bank_account_no).toBe("An account number is 10 digits");
+  });
+
+  it("asks for the state and LGA, and keeps town and landmark optional", () => {
+    const result = memberSchema.safeParse({ ...validMember, address_state: "", address_lga: " " });
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(fieldErrors(result.error).bank_account_no).toBe("An account number is 10 digits");
-      expect(fieldErrors(result.error).interest_pay_day).toBe("Choose a day from 1 to 31");
+      expect(fieldErrors(result.error).address_state).toBe("Choose the state");
+      expect(fieldErrors(result.error).address_lga).toBe("Enter the LGA");
     }
-    const ok = memberSchema.parse({ ...validMember, bank_code: "058", bank_account_no: "0123456789", interest_pay_day: "15" });
-    expect(ok.interest_pay_day).toBe(15);
+    expect(memberSchema.safeParse({ ...validMember, address_state: "Lagoss" }).success).toBe(false);
+    const ok = memberSchema.parse({ ...validMember, address_city: "", address_landmark: " Opposite First Bank " });
+    expect(ok.address_city).toBeNull();
+    expect(ok.address_landmark).toBe("Opposite First Bank");
+    expect(ok.address_state).toBe("Lagos");
   });
 
   it("explains an invalid NIN", () => {
@@ -51,6 +63,22 @@ describe("memberSchema", () => {
 });
 
 describe("planSchema", () => {
+  it("checks the interest pay day chosen with the plan", () => {
+    const plan = {
+      plan_type: "gold",
+      contribution_amount: "50000",
+      contribution_frequency: "monthly",
+      start_date: "2026-05-01",
+      maturity_date: "2027-05-01",
+    };
+    const result = planSchema.safeParse({ ...plan, interest_pay_day: "32" });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(fieldErrors(result.error).interest_pay_day).toBe("Choose a day from 1 to 31");
+    expect(planSchema.parse({ ...plan, interest_pay_day: "15" }).interest_pay_day).toBe(15);
+    // Left out for plans paid at maturity; the action decides whether the plan type needs one.
+    expect(planSchema.parse({ ...plan, interest_pay_day: "" }).interest_pay_day).toBeNull();
+  });
+
   it("rejects a maturity date before the start date", () => {
     const result = planSchema.safeParse({
       plan_type: "gold",
