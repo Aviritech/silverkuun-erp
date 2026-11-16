@@ -65,6 +65,7 @@ export default async function TopUpsFromAccountsPage() {
         const list = plansByBranch.get(m.branch_id) ?? [];
         list.push({
           id: p.id,
+          member_id: m.id,
           label: `${name}${m.membership_no ? ` (${m.membership_no})` : ""} · ${p.plan_types?.name ?? "Plan"} from ${formatDate(p.start_date)}`,
           search: `${name} ${m.membership_no ?? ""}`.toLowerCase(),
         });
@@ -100,7 +101,16 @@ export default async function TopUpsFromAccountsPage() {
       {waiting.map((t) => (
         <Card key={t.id} title={`${t.top_up_no} · ${formatMoney(t.amount)}`}>
           <dl className="grid gap-4 sm:grid-cols-4">
-            <Detail label="Paid by">{t.paid_by}</Detail>
+            <Detail label="Paid by">
+              {t.paid_by}
+              {t.matched_member_id && (
+                <span className="block text-xs text-emerald-700">
+                  Accounts matched: {t.matched_member_name}
+                  {t.matched_membership_no && <> ({t.matched_membership_no})</>}
+                  {t.matched_plan_name ? <> · {t.matched_plan_name}</> : <> · plan not chosen</>}
+                </span>
+              )}
+            </Detail>
             <Detail label="Date paid">{formatDate(t.paid_on)}</Detail>
             <Detail label="How">
               {PAYMENT_METHODS[t.payment_method as keyof typeof PAYMENT_METHODS] ?? t.payment_method}
@@ -118,7 +128,13 @@ export default async function TopUpsFromAccountsPage() {
           </dl>
           {canLog ? (
             <div className="mt-4 flex flex-wrap items-start gap-3">
-              <LogTopUpForm action={logTopUp.bind(null, t.id)} plans={plansByBranch.get(t.branch_id) ?? []} paidBy={t.paid_by} />
+              <LogTopUpForm
+                action={logTopUp.bind(null, t.id)}
+                plans={plansByBranch.get(t.branch_id) ?? []}
+                paidBy={t.paid_by}
+                matchedMemberId={t.matched_member_id}
+                matchedPlanId={t.matched_plan_id}
+              />
               <ReasonForm
                 action={returnTopUp.bind(null, t.id)}
                 openLabel="Not our member"

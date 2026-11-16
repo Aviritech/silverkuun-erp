@@ -6,7 +6,7 @@ import { Field, Input, Select, Textarea } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 
 type Action = (prev: ActionState, formData: FormData) => Promise<ActionState>;
-export type PlanOption = { id: string; label: string; search: string };
+export type PlanOption = { id: string; member_id: string; label: string; search: string };
 
 /** Words in "paid by" that are worth matching on a member's name. */
 function nameWords(text: string): string[] {
@@ -20,17 +20,35 @@ function nameWords(text: string): string[] {
  * The officer finds the member's plan and logs the top up. Plans whose member's name shares a word with "paid by"
  * are listed first; the search box narrows the list.
  */
-export function LogTopUpForm({ action, plans, paidBy }: { action: Action; plans: PlanOption[]; paidBy: string }) {
+export function LogTopUpForm({
+  action,
+  plans,
+  paidBy,
+  matchedMemberId,
+  matchedPlanId,
+}: {
+  action: Action;
+  plans: PlanOption[];
+  paidBy: string;
+  /** The member and plan Accounts picked, if it did: listed first and pre-selected. */
+  matchedMemberId?: string | null;
+  matchedPlanId?: string | null;
+}) {
   const [query, setQuery] = useState("");
   const ranked = useMemo(() => {
     const words = nameWords(paidBy);
     return plans
-      .map((p) => ({ ...p, likely: words.some((w) => p.search.includes(w)) }))
+      .map((p) => ({
+        ...p,
+        likely: matchedMemberId ? p.member_id === matchedMemberId : words.some((w) => p.search.includes(w)),
+      }))
       .sort((a, b) => Number(b.likely) - Number(a.likely) || a.label.localeCompare(b.label));
-  }, [plans, paidBy]);
+  }, [plans, paidBy, matchedMemberId]);
   const q = query.trim().toLowerCase();
   const shown = (q ? ranked.filter((p) => p.search.includes(q)) : ranked).slice(0, 200);
   const likely = ranked.filter((p) => p.likely);
+  const preselect =
+    matchedPlanId && shown.some((p) => p.id === matchedPlanId) ? matchedPlanId : likely.length === 1 && shown.some((p) => p.id === likely[0].id) ? likely[0].id : "";
 
   return (
     <InlineForm action={action} openLabel="Log for a member" submitLabel="Log top up" variant="primary">
@@ -40,7 +58,7 @@ export function LogTopUpForm({ action, plans, paidBy }: { action: Action; plans:
             <Input value={query} onChange={(ev) => setQuery(ev.target.value)} placeholder="Name or membership number" />
           </Field>
           <Field label="Savings plan" error={e.member_plan_id}>
-            <Select name="member_plan_id" required defaultValue={likely.length === 1 ? likely[0].id : ""} key={q}>
+            <Select name="member_plan_id" required defaultValue={preselect} key={q}>
               <option value="">{shown.length ? "Choose the member's plan" : "No active plan matches"}</option>
               {shown.map((p) => (
                 <option key={p.id} value={p.id}>

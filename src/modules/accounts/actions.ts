@@ -25,6 +25,7 @@ import {
   transactionSchema,
 } from "./schemas";
 import { parseStatement, parseStatementRows } from "./statement";
+import type { TopUpMemberHit } from "./top-ups";
 import { readXlsxRows } from "@/lib/files/xlsx";
 import { formFile } from "@/lib/uploads/server";
 
@@ -242,7 +243,32 @@ export async function postContribution(contributionId: string, _prev: ActionStat
 // Member top ups: Accounts records the money and picks the branch; the branch officer logs it for the member.
 // ---------------------------------------------------------------------------
 
-const TOP_UP_FIELDS = ["branch_id", "amount", "paid_on", "payment_method", "reference", "bank_account_id", "paid_by", "note"] as const;
+const TOP_UP_FIELDS = [
+  "branch_id",
+  "amount",
+  "paid_on",
+  "payment_method",
+  "reference",
+  "bank_account_id",
+  "paid_by",
+  "note",
+  "member_id",
+  "member_plan_id",
+] as const;
+
+/**
+ * Finds approved members by name, membership number or phone, in the branches this accountant records receipts for,
+ * with their branch and active plans. The database decides what the caller may see.
+ */
+export async function searchTopUpMembers(query: string): Promise<TopUpMemberHit[]> {
+  await requireModule(accountsModule);
+  const q = query.trim().slice(0, 80);
+  if (q.length < 2) return [];
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("top_up_member_search", { p_query: q });
+  if (error) return [];
+  return data as TopUpMemberHit[];
+}
 
 /** Sends a new top up to a branch, or (with an id) sends one the branch returned to the same or another branch. */
 export async function initiateTopUp(id: string | null, _prev: ActionState, formData: FormData): Promise<ActionState> {
@@ -262,6 +288,8 @@ export async function initiateTopUp(id: string | null, _prev: ActionState, formD
       p_bank_account_id: v.bank_account_id,
       p_paid_by: v.paid_by,
       p_note: v.note,
+      p_member_id: v.member_id,
+      p_member_plan_id: v.member_id ? v.member_plan_id : null,
     },
     "/accounts/top-ups",
   );

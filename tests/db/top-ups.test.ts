@@ -207,4 +207,54 @@ describe("top ups from Accounts", () => {
     expect(row.status).toBe("cancelled");
     await expect(initiate(HQ_RECEIPTS, abuja, { id: t.id })).rejects.toThrow(/only a top up the branch sent back/);
   });
+
+  it("lets Accounts find the member by name, number or phone, only in branches it records receipts for", async () => {
+    type Hit = { member_id: string; member_name: string; membership_no: string; phone_hint: string; branch_id: string; branch_name: string; plans: { id: string; plan_name: string }[] };
+    const search = (by: string, q: string) => commitAs(by, () => db.query<Hit>("select * from top_up_member_search($1)", [q])).then((r) => r.rows);
+
+    const byName = await search(LAGOS_ACCOUNTANT, "obi ada");
+    expect(byName).toHaveLength(1);
+    expect(byName[0]).toMatchObject({ member_name: "Ada Obi", branch_id: lagos, branch_name: "Lagos", phone_hint: "••• 0000" });
+    expect(byName[0].plans.map((p) => p.id)).toEqual([planId]);
+    expect(byName[0].membership_no).toMatch(/^KUN-LAG-/);
+
+    expect((await search(LAGOS_ACCOUNTANT, byName[0].membership_no.toLowerCase())).map((h) => h.member_id)).toEqual([byName[0].member_id]);
+    expect((await search(LAGOS_ACCOUNTANT, "+234 803 000 0000")).map((h) => h.member_id)).toEqual([byName[0].member_id]);
+    expect(await search(LAGOS_ACCOUNTANT, "a")).toEqual([]);
+    expect(await search(LAGOS_ACCOUNTANT, "nobody")).toEqual([]);
+
+    // An Abuja accountant can't see Lagos members; an all-branch one can; Operations can't use it to bypass its own rules.
+    expect(await search(ABUJA_RECEIPTS, "Ada")).toEqual([]);
+    expect(await search(HQ_RECEIPTS, "Ada")).toHaveLength(1);
+    expect(await search(OFFICER, "Ada")).toEqual([]);
+  });
+
+  it("records the member and plan Accounts picked, for the branch to confirm", async () => {
+    const memberId = (await db.query<{ member_id: string }>("select member_id from member_plans where id = $1", [planId])).rows[0].member_id;
+    const send = (by: string, branch: string, member: string | null, plan: string | null, id: string | null = null) =>
+      commitAs(by, () =>
+        db.query<TopUp & { matched_member_id: string | null; matched_plan_id: string | null }>(
+          `select * from initiate_top_up(p_id => $1, p_branch_id => $2, p_amount => 9000, p_paid_on => current_date, p_payment_method => 'bank_transfer',
+             p_reference => 'TRF-9', p_bank_account_id => null, p_paid_by => 'Ada Obi', p_note => null, p_member_id => $3, p_member_plan_id => $4)`,
+          [id, branch, member, plan],
+        ),
+      ).then((r) => r.rows[0]);
+
+    // The member must belong to the branch it goes to, and the plan must be theirs.
+    await expect(send(HQ_RECEIPTS, abuja, memberId, null)).rejects.toThrow(/another branch/);
+    await expect(send(HQ_RECEIPTS, lagos, null, planId)).rejects.toThrow(/member before the plan/);
+    await expect(send(ABUJA_RECEIPTS, abuja, memberId, null)).rejects.toThrow(/member not found/);
+
+    const t = await send(LAGOS_ACCOUNTANT, lagos, memberId, planId);
+    expect(t).toMatchObject({ status: "with_branch", matched_member_id: memberId, matched_plan_id: planId });
+    const listed = await commitAs(OFFICER, () =>
+      db.query<{ matched_member_name: string; matched_plan_name: string }>("select matched_member_name, matched_plan_name from top_up_list(array['with_branch']) where id = $1", [t.id]),
+    );
+    expect(listed.rows[0]).toEqual({ matched_member_name: "Ada Obi", matched_plan_name: expect.any(String) });
+
+    // Sent back and resent without a match, the match is cleared.
+    await commitAs(OFFICER, () => db.query("select return_top_up($1, 'Wrong member')", [t.id]));
+    const resent = await send(LAGOS_ACCOUNTANT, lagos, null, null, t.id);
+    expect(resent).toMatchObject({ status: "with_branch", matched_member_id: null, matched_plan_id: null });
+  });
 });

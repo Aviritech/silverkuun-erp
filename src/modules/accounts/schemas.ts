@@ -184,4 +184,6 @@ export const topUpSchema = z.object({
   bank_account_id: optionalId,
   paid_by: z.string().trim().min(2, "Say who paid it, so the branch can find the member"),
   note: optionalText,
+  member_id: optionalId,
+  member_plan_id: optionalId,
 });
