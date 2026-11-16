@@ -85,7 +85,7 @@ export type Plan = {
   start_date: string;
   maturity_date: string;
   status: string;
-  /** Annual interest rate (%), fixed from the plan type when the plan was opened. */
+  /** Annual interest rate (%), fixed from the plan type when the plan was opened. Letters quote it a month (/ 12). */
   interest_rate: string;
   /** True when dividends build up and are paid with the principal at maturity (Target savings), not monthly. */
   dividends_at_maturity: boolean;
@@ -103,6 +103,11 @@ export type PlanType = {
   tenure_months: number[] | null;
   /** Smallest plan amount in naira; null means no minimum. */
   min_amount: string | null;
+  /** Largest plan amount in naira; null means no maximum. */
+  max_amount: string | null;
+  /** Annual rate (%); the letters and forms quote it a month (rate / 12). */
+  interest_rate: string;
+  description: string;
   dividends_at_maturity: boolean;
 };
 
@@ -171,7 +176,7 @@ export async function getMemberBundle(memberId: string) {
     supabase.from("contributions").select("*").eq("member_id", memberId).order("paid_on").order("recorded_at"),
     supabase
       .from("plan_types")
-      .select("code, name, tenure_months, min_amount, dividends_at_maturity")
+      .select("code, name, description, interest_rate, tenure_months, min_amount, max_amount, dividends_at_maturity")
       .eq("is_active", true)
       .order("sort_order"),
     supabase

@@ -678,7 +678,8 @@ describe("monthly interest payment schedule", () => {
         [payee, lagos],
       ),
     );
-    expect(res.rows[0].interest_rate).toBe("10.00");
+    // Silver is 4% a month, kept as 48% a year.
+    expect(res.rows[0].interest_rate).toBe("48.00");
   });
 
   it("lists members due today with savings, rate and a month's interest", async () => {
@@ -692,8 +693,9 @@ describe("monthly interest payment schedule", () => {
       bank_account_no: "0123456789",
       branch_name: "Lagos",
       total_savings: "120000.00",
-      interest_rate: "12.00",
-      amount: "1200.00",
+      // Gold is 5% a month (60% a year): 6,000 a month on 120,000.
+      interest_rate: "60.00",
+      amount: "6000.00",
     });
     const tomorrow = await asUser(db, LAGOS_ACCOUNTANT, (tx) =>
       tx.query("select * from interest_payment_schedule(current_date + 1) where member_id = $1", [payee]),
