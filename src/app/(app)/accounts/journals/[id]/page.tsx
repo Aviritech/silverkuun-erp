@@ -7,6 +7,7 @@ import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import { listOrg } from "@/lib/org";
 import { deleteJournal, postJournal, reverseJournal } from "@/modules/accounts/actions";
 import { ReasonForm } from "@/modules/accounts/components/reason-form";
+import { MEMBER_CREDIT_PERMISSION, linesCreditMember } from "@/modules/accounts/member-credit";
 import { accountsModule } from "@/modules/accounts/module";
 import { getJournalBundle } from "@/modules/accounts/queries";
 
@@ -19,6 +20,11 @@ export default async function JournalPage({ params }: { params: Promise<{ id: st
   const org = await listOrg();
   const branch = org.branches.find((b) => b.id === entry.branch_id)!;
   const canPost = staff.permissions.hasForBranch("accounts.journals.post", branch);
+  // Posting a credit to a member, or reversing a debit to one, credits their account: only the Receipts Confirmation
+  // Accountant may do that.
+  const mayCreditMembers = staff.permissions.hasForBranch(MEMBER_CREDIT_PERMISSION, branch);
+  const canPostThis = canPost && (mayCreditMembers || !linesCreditMember(lines, "credit"));
+  const canReverseThis = canPost && (mayCreditMembers || !linesCreditMember(lines, "debit"));
   const debit = lines.reduce((s, l) => s + Number(l.debit), 0);
   const credit = lines.reduce((s, l) => s + Number(l.credit), 0);
 
@@ -100,16 +106,20 @@ export default async function JournalPage({ params }: { params: Promise<{ id: st
           )}
         </ul>
         <div className="mt-4 flex flex-wrap gap-3">
-          {entry.status === "draft" && canPost && entry.created_by !== staff.id && (
+          {entry.status === "draft" && canPostThis && entry.created_by !== staff.id && (
             <ActionButton action={postJournal.bind(null, entry.id)} label="Post to the ledger" pendingLabel="Posting…" confirm="Post this journal? Posted entries are locked." />
           )}
           {entry.status === "draft" && entry.created_by === staff.id && (
             <>
-              <p className="text-sm text-zinc-600">Someone else with permission to post journals must post it.</p>
+              <p className="text-sm text-zinc-600">
+                {linesCreditMember(lines, "credit")
+                  ? "This entry credits a member's account, so the Receipts Confirmation Accountant must post it."
+                  : "Someone else with permission to post journals must post it."}
+              </p>
               <ActionButton action={deleteJournal.bind(null, entry.id)} label="Delete draft" variant="danger" confirm="Delete this draft journal?" />
             </>
           )}
-          {entry.status === "posted" && canPost && !entry.reversed_by_entry_id && !entry.reverses_entry_id && (
+          {entry.status === "posted" && canReverseThis && !entry.reversed_by_entry_id && !entry.reverses_entry_id && (
             <ReasonForm action={reverseJournal.bind(null, entry.id)} openLabel="Reverse entry" submitLabel="Post reversal" question="Why is this entry being reversed?" />
           )}
         </div>

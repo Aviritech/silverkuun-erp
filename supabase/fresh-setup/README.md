@@ -56,6 +56,8 @@ The logins are inserted straight into Supabase Auth (`auth.users` and `auth.iden
 | head.hr@kuun.test | Head of HR |
 | payroll@kuun.test | Payroll Officer |
 | payments@kuun.test | Payments Accountant (home branch Mabushi Main; pays approved payments for every branch) |
+| confirm.receipts@kuun.test | Receipts Confirmation Accountant: the only login that can credit a member's account (confirms savings, capital and loan repayment receipts, posts journals that credit a member) |
+| accounts.officer@kuun.test | Accounts Officer: sees every Accounts page in all branches, prepares and posts journals |
 
 ### By region (every branch in the region)
 

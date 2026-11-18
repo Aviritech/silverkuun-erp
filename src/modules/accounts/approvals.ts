@@ -3,6 +3,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CurrentStaff } from "@/lib/auth/session";
 import { dbFailure } from "@/lib/db-errors";
 import type { BranchRef } from "@/lib/org";
+import { decisionPermissions, linesCreditMember, MEMBER_CREDIT_PERMISSION, receiptCreditsMember } from "./member-credit";
 
 /*
  * The Accounts approvals queue: everything waiting for the signed-in accountant to approve, pay or post.
@@ -46,8 +47,9 @@ type Txn = {
   needs_ops_confirmation: boolean;
   ops_confirmed_at: string | null;
   status: "submitted" | "approved";
+  member_id: string | null;
   members: { first_name: string; last_name: string } | null;
-  posting_rules: { name: string } | null;
+  posting_rules: { name: string; credit_account: string | null; interest_account: string | null } | null;
 };
 
 export async function loadApprovals(supabase: SupabaseClient, staff: CurrentStaff, branches: BranchRef[]): Promise<ApprovalItem[]> {
@@ -65,7 +67,7 @@ export async function loadApprovals(supabase: SupabaseClient, staff: CurrentStaf
     supabase
       .from("finance_transactions")
       .select(
-        "id, txn_no, direction, branch_id, amount, counterparty, description, created_by, submitted_by, submitted_at, approved_at, audited_at, needs_ops_confirmation, ops_confirmed_at, status, members(first_name, last_name), posting_rules(name)",
+        "id, txn_no, direction, branch_id, amount, counterparty, description, created_by, submitted_by, submitted_at, approved_at, audited_at, needs_ops_confirmation, ops_confirmed_at, status, member_id, members(first_name, last_name), posting_rules(name, credit_account, interest_account)",
       )
       .in("status", ["submitted", "approved"])
       .order("submitted_at")
@@ -77,7 +79,12 @@ export async function loadApprovals(supabase: SupabaseClient, staff: CurrentStaf
       .order("submitted_at")
       .limit(500),
     staff.permissions.has("accounts.journals.post")
-      ? supabase.from("journal_entries").select("id, entry_no, branch_id, entry_date, description, created_by, created_at").eq("status", "draft").order("created_at").limit(500)
+      ? supabase
+          .from("journal_entries")
+          .select("id, entry_no, branch_id, entry_date, description, created_by, created_at, journal_lines(account_code, debit, credit, member_id)")
+          .eq("status", "draft")
+          .order("created_at")
+          .limit(500)
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (txns.error) throw dbFailure(txns.error);
@@ -91,7 +98,8 @@ export async function loadApprovals(supabase: SupabaseClient, staff: CurrentStaf
     const type = t.posting_rules?.name ?? (t.direction === "receipt" ? "Receipt" : "Payment");
     if (t.status === "submitted") {
       if (t.needs_ops_confirmation && !t.ops_confirmed_at) continue; // Operations checks it first.
-      if (!holds("accounts.transactions.approve", t.branch_id) || mine(t.created_by, t.submitted_by)) continue;
+      const allowed = decisionPermissions(t.direction, receiptCreditsMember(t, t.posting_rules));
+      if (!allowed.some((p) => holds(p, t.branch_id)) || mine(t.created_by, t.submitted_by)) continue;
       items.push({ ...base, kind: "approve_transaction", detail: type, waitingSince: t.submitted_at });
     } else if (t.direction === "payment" && t.audited_at && canPay(t.branch_id)) {
       items.push({ ...base, kind: "pay", detail: type, waitingSince: t.audited_at });
@@ -112,9 +120,18 @@ export async function loadApprovals(supabase: SupabaseClient, staff: CurrentStaf
       href: `/accounts/bills/${b.id}`,
     });
   }
-  type Journal = { id: string; entry_no: string; branch_id: string; description: string; created_by: string; created_at: string };
-  for (const j of journals.data as Journal[]) {
+  type Journal = {
+    id: string;
+    entry_no: string;
+    branch_id: string;
+    description: string;
+    created_by: string;
+    created_at: string;
+    journal_lines: { account_code: string; debit: string; credit: string; member_id: string | null }[] | null;
+  };
+  for (const j of journals.data as unknown as Journal[]) {
     if (!holds("accounts.journals.post", j.branch_id) || mine(j.created_by)) continue;
+    if (linesCreditMember(j.journal_lines ?? []) && !holds(MEMBER_CREDIT_PERMISSION, j.branch_id)) continue;
     items.push({
       kind: "post_journal",
       id: j.id,
