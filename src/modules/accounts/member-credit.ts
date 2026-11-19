@@ -27,7 +27,7 @@ export function linesCreditMember(
 
 /** Which permissions may confirm, return or approve a submitted transaction. */
 export function decisionPermissions(direction: "receipt" | "payment", creditsMember: boolean): string[] {
-  if (direction === "payment") return ["accounts.transactions.approve"];
+  if (direction === "payment") return ["accounts.transactions.approve", "accounts.payments.approve"];
   if (creditsMember) return [MEMBER_CREDIT_PERMISSION];
   return ["accounts.transactions.approve", MEMBER_CREDIT_PERMISSION];
 }
