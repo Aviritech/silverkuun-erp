@@ -23,6 +23,7 @@ export const accountsModule: DepartmentModule = {
     { section: "Finance", label: "Reports", href: "/accounts/reports", permission: "accounts.read" },
     { section: "Finance", label: "Chart of accounts", href: "/accounts/chart", permission: "accounts.read" },
     { section: "Finance", label: "Settings", href: "/accounts/settings", permission: "accounts.read" },
+    { section: "Control", label: "Month and year end", href: "/accounts/closing", permission: "accounts.read" },
     { section: "Control", label: "Approvals", href: "/accounts/approvals", permission: "accounts.read" },
     { section: "Control", label: "Activity", href: "/accounts/activity", permission: "accounts.read" },
   ],
