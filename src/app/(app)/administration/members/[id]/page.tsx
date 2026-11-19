@@ -673,7 +673,7 @@ export default async function MemberPage({
                                 </td>
                                 <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums">{formatMoney(c.amount)}</td>
                                 <td className="px-4 py-2">
-                                  {PAYMENT_METHODS[c.payment_method as keyof typeof PAYMENT_METHODS]}
+                                  {PAYMENT_METHODS[c.payment_method as keyof typeof PAYMENT_METHODS] ?? "Taken automatically"}
                                   {c.reference && <div className="font-mono text-xs text-zinc-500">{c.reference}</div>}
                                 </td>
                                 <td className="px-4 py-2">
@@ -702,7 +702,7 @@ export default async function MemberPage({
                                         variant="secondary"
                                       />
                                     )}
-                                    {c.kind !== "reversal" && !reversed.has(c.id) && can("contributions.record") && (
+                                    {c.kind !== "reversal" && c.kind !== "loan_penalty" && !reversed.has(c.id) && can("contributions.record") && (
                                       <ReversalForm action={reverseContribution.bind(null, member.id)} contributionId={c.id} />
                                     )}
                                   </div>

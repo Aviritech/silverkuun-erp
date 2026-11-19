@@ -14,6 +14,7 @@ const SOURCES = {
   reversal: "Reversal",
   bill: "Supplier bill",
   payroll: "Payroll",
+  savings_recovery: "Late fee from savings",
 } as const;
 
 export default async function JournalsPage({ searchParams }: { searchParams: Promise<{ status?: string; source?: string }> }) {

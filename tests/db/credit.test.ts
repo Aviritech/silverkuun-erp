@@ -695,3 +695,155 @@ describe("reminders", () => {
     ).rejects.toThrow(/row-level security/);
   });
 });
+
+describe("late fees taken from savings", () => {
+  const recover = async () => (await db.query<{ n: number }>("select app.recover_loan_penalties_from_savings() as n")).rows[0].n;
+
+  /** A new member with active plans holding the given verified savings, oldest plan first. Loans then go to this member. */
+  async function saverWith(...savings: number[]): Promise<string[]> {
+    memberId = await approvedMember();
+    const plans: string[] = [];
+    for (const [i, amount] of savings.entries()) {
+      const plan = (
+        await q<{ id: string }>(
+          ADMIN_OFFICER,
+          `insert into member_plans (member_id, branch_id, plan_type, contribution_amount, contribution_frequency, start_date, maturity_date)
+           values ($1, $2, 'gold', 5000, 'monthly', $3, '2027-06-01') returning id`,
+          [memberId, lagos, `2026-0${i + 1}-01`],
+        )
+      ).rows[0].id;
+      const c = (
+        await q<{ id: string }>(
+          ADMIN_OFFICER,
+          `insert into contributions (member_plan_id, member_id, branch_id, kind, amount, paid_on, payment_method)
+           values ($1, $2, $3, 'scheduled', $4, '2026-07-01', 'cash') returning id`,
+          [plan, memberId, lagos, amount],
+        )
+      ).rows[0].id;
+      await q(BRANCH_MANAGER, "select verify_contribution($1)", [c]);
+      plans.push(plan);
+    }
+    return plans;
+  }
+  const savingsOf = async (plan: string) =>
+    (await db.query<{ s: string }>("select app.plan_savings($1) as s", [plan])).rows[0].s;
+
+  it("takes the unpaid late fee from the oldest plan first, then the next, with the journal and loan updated", async () => {
+    const [older, newer] = await saverWith(100, 50000);
+    const loan = await approvedLoan({ amount: 120000, tenor: 4 });
+    await disburse(loan, 120000, 40);
+    const owed = Number((await book(loan.id)).penalty_outstanding);
+    expect(owed).toBeGreaterThan(100);
+
+    expect(await recover()).toBe(2);
+    expect(await savingsOf(older)).toBe("0.00");
+    expect(await savingsOf(newer)).toBe((50000 - (owed - 100)).toFixed(2));
+    // Only the late fee is taken: the missed instalment is still owed.
+    expect(await book(loan.id)).toMatchObject({ penalty_outstanding: "0.00", penalty_repaid: owed.toFixed(2), overdue_amount: "33000.00" });
+
+    const rows = await asUser(db, HEAD_OF_CREDIT, (tx) =>
+      tx.query<{ amount: string; member_plan_id: string; contribution_id: string; journal_entry_id: string; recovery_no: string }>(
+        "select * from loan_penalty_recoveries where loan_id = $1 order by amount",
+        [loan.id],
+      ),
+    );
+    expect(rows.rows.map((r) => [r.member_plan_id, r.amount])).toEqual([
+      [older, "100.00"],
+      [newer, (owed - 100).toFixed(2)],
+    ]);
+    const deduction = (
+      await db.query<{ kind: string; amount: string; verified_at: Date | null; recorded_by: string | null; payment_method: string }>(
+        "select kind, amount, verified_at, recorded_by, payment_method from contributions where id = $1",
+        [rows.rows[0].contribution_id],
+      )
+    ).rows[0];
+    expect(deduction).toMatchObject({ kind: "loan_penalty", amount: "-100.00", recorded_by: null, payment_method: "savings_deduction" });
+    expect(deduction.verified_at).not.toBeNull();
+    const lines = await db.query<{ account_code: string; debit: string; credit: string; member_id: string }>(
+      "select account_code, debit, credit, member_id from journal_lines where entry_id = $1 order by line_no",
+      [rows.rows[0].journal_entry_id],
+    );
+    expect(lines.rows).toEqual([
+      { account_code: "2110", debit: "100.00", credit: "0.00", member_id: memberId },
+      { account_code: "4150", debit: "0.00", credit: "100.00", member_id: memberId },
+    ]);
+    const entry = (await db.query<{ status: string; source: string }>("select status, source from journal_entries where id = $1", [rows.rows[0].journal_entry_id]))
+      .rows[0];
+    expect(entry).toEqual({ status: "posted", source: "savings_recovery" });
+    // Accounts isn't asked to post the deduction as a receipt or payment.
+    const awaiting = await db.query("select 1 from contributions_awaiting_posting where id = $1", [rows.rows[0].contribution_id]);
+    expect(awaiting.rows).toHaveLength(0);
+
+    // Nothing more is owed today, so a second run takes nothing.
+    expect(await recover()).toBe(0);
+
+    // A cash repayment afterwards isn't charged the penalty again.
+    const txn = await repay(loan, 33000);
+    const split = (await db.query<{ penalty_amount: string }>("select penalty_amount from finance_transactions where id = $1", [txn.id])).rows[0];
+    expect(split.penalty_amount).toBe("0.00");
+  });
+
+  it("never takes a plan below zero, and leaves the rest of the fee owed", async () => {
+    const [plan] = await saverWith(50);
+    const loan = await approvedLoan({ amount: 120000, tenor: 4 });
+    await disburse(loan, 120000, 40);
+    const owed = Number((await book(loan.id)).penalty_outstanding);
+    expect(await recover()).toBe(1);
+    expect(await savingsOf(plan)).toBe("0.00");
+    expect(await book(loan.id)).toMatchObject({ penalty_outstanding: (owed - 50).toFixed(2) });
+    expect(await recover()).toBe(0);
+  });
+
+  it("waits while Accounts has a repayment for the loan in progress", async () => {
+    const [plan] = await saverWith(5000);
+    const loan = await approvedLoan({ amount: 120000, tenor: 4 });
+    await disburse(loan, 120000, 40);
+    await q(
+      ACCOUNTANT,
+      `insert into finance_transactions (direction, transaction_type, txn_date, amount, bank_account_id, member_id, loan_id, reference, description, branch_id)
+       values ('receipt', 'loan_repayment', current_date, 1000, $1, $2, $3, $4, 'Repayment', $5)`,
+      [lagosBank, memberId, loan.id, `RPY-${ref++}`, lagos],
+    );
+    expect(await recover()).toBe(0);
+    expect(await savingsOf(plan)).toBe("5000.00");
+  });
+
+  it("closes a loan whose instalments are paid once its late fee is cleared", async () => {
+    await saverWith(20000);
+    const loan = await approvedLoan({ amount: 60000, tenor: 2 });
+    await disburse(loan, 60000, 75);
+    await repay(loan, 63000);
+    expect(await book(loan.id)).toMatchObject({ status: "active", outstanding_principal: "0.00" });
+    expect(await recover()).toBe(1);
+    expect(await book(loan.id)).toMatchObject({ status: "closed", penalty_outstanding: "0.00" });
+  });
+
+  it("can't be recorded, reversed or run by staff", async () => {
+    const [plan] = await saverWith(1000);
+    await expect(
+      q(
+        ADMIN_OFFICER,
+        `insert into contributions (member_plan_id, member_id, branch_id, kind, amount, paid_on, payment_method, reference)
+         values ($1, $2, $3, 'loan_penalty', -10, current_date, 'savings_deduction', 'x')`,
+        [plan, memberId, lagos],
+      ),
+    ).rejects.toThrow(/automatically/);
+    await expect(q(HEAD_OF_CREDIT, "select app.recover_loan_penalties_from_savings()")).rejects.toThrow(/permission denied/);
+
+    const loan = await approvedLoan({ amount: 120000, tenor: 4 });
+    await disburse(loan, 120000, 40);
+    expect(await recover()).toBe(1);
+    const deduction = (await db.query<{ id: string; amount: string }>("select id, amount from contributions where member_plan_id = $1 and kind = 'loan_penalty'", [plan]))
+      .rows[0];
+    await expect(
+      q(
+        ADMIN_OFFICER,
+        `insert into contributions (member_plan_id, member_id, branch_id, kind, amount, paid_on, payment_method, reverses_id, notes)
+         values ($1, $2, $3, 'reversal', $4, current_date, 'cash', $5, 'Undo')`,
+        [plan, memberId, lagos, -Number(deduction.amount), deduction.id],
+      ),
+    ).rejects.toThrow();
+    await expect(q(HEAD_OF_CREDIT, "delete from loan_penalty_recoveries")).resolves.toBeDefined();
+    expect((await db.query("select 1 from loan_penalty_recoveries where loan_id = $1", [loan.id])).rows).toHaveLength(1);
+  });
+});

@@ -139,14 +139,15 @@ export type PlanProgress = {
 export type Contribution = {
   id: string;
   member_plan_id: string;
-  kind: "scheduled" | "top_up" | "reversal";
+  kind: "scheduled" | "top_up" | "reversal" | "loan_penalty";
   amount: string;
   paid_on: string;
   payment_method: string;
   reference: string | null;
   notes: string | null;
   reverses_id: string | null;
-  recorded_by: string;
+  /** Null for a late fee the daily job took from savings. */
+  recorded_by: string | null;
   recorded_at: string;
   verified_by: string | null;
   verified_at: string | null;

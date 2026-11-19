@@ -221,7 +221,9 @@ export type LoanDocument = {
 
 export type Repayment = {
   id: string;
-  finance_transaction_id: string;
+  /** Null when the late fee was taken from the member's savings. */
+  finance_transaction_id: string | null;
+  source: "receipt" | "savings";
   txn_no: string;
   paid_on: string;
   amount: string;
