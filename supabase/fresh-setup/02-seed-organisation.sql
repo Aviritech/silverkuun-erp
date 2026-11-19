@@ -70,6 +70,8 @@ insert into seed_staff values
   ('30000000-0000-0000-0000-000000000007', 'head.business@kuun.test',  'Bayo Head of Business','management',        'head_of_business',       'org', null),
   ('30000000-0000-0000-0000-000000000008', 'head.hr@kuun.test',        'Kunle Head of HR',     'hr',                'head_of_hr',             'org', null),
   ('30000000-0000-0000-0000-000000000009', 'payroll@kuun.test',        'Pat Payroll',          'hr',                'payroll_officer',        'org', null),
+  ('30000000-0000-0000-0000-000000000024', 'confirm.receipts@kuun.test','Rukky Receipts Confirmation','accounts',    'receipts_confirmer',     'org', null),
+  ('30000000-0000-0000-0000-000000000025', 'accounts.officer@kuun.test','Ayo Accounts Officer',  'accounts',          'accounts_officer',       'org', null),
   -- Accounts: the payments desk pays for every branch; regional accountants and receipts accountants work a region
   ('30000000-0000-0000-0000-000000000010', 'payments@kuun.test',       'Pius Payments',        'accounts',          'payments_accountant',    'branch', 'MBM'),
   ('30000000-0000-0000-0000-000000000011', 'accountant.abuja@kuun.test','Aisha Accountant',    'accounts',          'regional_accountant',    'region', 'ABJ'),

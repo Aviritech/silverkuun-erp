@@ -13,6 +13,9 @@ const CONTROLLER = "00000000-0000-0000-0000-0000000000f1";
 const AUDITOR = "00000000-0000-0000-0000-0000000000d1";
 const HEAD_OPS = "00000000-0000-0000-0000-0000000000c1";
 const ABUJA_PAYMENTS = "00000000-0000-0000-0000-0000000000e4";
+const CONFIRMER = "00000000-0000-0000-0000-0000000000e5";
+const ACCOUNTS_OFFICER = "00000000-0000-0000-0000-0000000000e6";
+const ACCOUNTS_OFFICER_2 = "00000000-0000-0000-0000-0000000000e7";
 
 let db: PGlite;
 let lagos: string;
@@ -153,6 +156,10 @@ beforeAll(async () => {
   await addStaff(ABUJA_RECEIPTS, "accounts", "receipts_accountant", abuja);
   await addStaff(ABUJA_PAYMENTS, "accounts", "payments_accountant", abuja);
   await addStaff(CONTROLLER, "accounts", "financial_controller", null);
+  await addStaff(CONFIRMER, "accounts", "receipts_confirmer", null);
+  await db.query("insert into staff_roles (staff_id, role_code) values ($1, 'accounts_officer')", [CONFIRMER]);
+  await addStaff(ACCOUNTS_OFFICER, "accounts", "accounts_officer", null);
+  await addStaff(ACCOUNTS_OFFICER_2, "accounts", "accounts_officer", null);
   await addStaff(AUDITOR, "internal_audit", "internal_auditor", null);
   await addStaff(HEAD_OPS, "administration", "head_of_administration", null);
 
@@ -189,15 +196,18 @@ describe("receipts", () => {
     );
     await setPlan(txn.id, await newPlan());
     await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [txn.id]));
-    await expect(commitAs(CONTROLLER, () => db.query("select approve_finance_transaction($1)", [txn.id]))).rejects.toThrow(
+    await expect(commitAs(CONFIRMER, () => db.query("select approve_finance_transaction($1)", [txn.id]))).rejects.toThrow(
       /Operations has to confirm/,
     );
     await commitAs(OFFICER, () => db.query("select confirm_member_receipt($1, 'Matches the passbook')", [txn.id]));
 
-    await expect(commitAs(LAGOS_ACCOUNTANT, () => db.query("select approve_finance_transaction($1)", [txn.id]))).rejects.toThrow(
-      /someone else must approve/,
-    );
-    await commitAs(CONTROLLER, () => db.query("select approve_finance_transaction($1)", [txn.id]));
+    // Only the Receipts Confirmation Accountant credits a member's account, not the accountants or the controller.
+    for (const who of [LAGOS_ACCOUNTANT, LAGOS_ACCOUNTANT_2, CONTROLLER]) {
+      await expect(commitAs(who, () => db.query("select approve_finance_transaction($1)", [txn.id]))).rejects.toThrow(
+        /only the Receipts Confirmation Accountant/,
+      );
+    }
+    await commitAs(CONFIRMER, () => db.query("select approve_finance_transaction($1)", [txn.id]));
 
     const posted = await txnRow(txn.id);
     expect(posted.status).toBe("posted");
@@ -599,7 +609,7 @@ describe("Operations confirms member receipts", () => {
     await expect(commitAs(OFFICER, () => db.query("select confirm_member_receipt($1, null)", [txn.id]))).rejects.toThrow(
       /waiting for Operations/,
     );
-    await commitAs(CONTROLLER, () => db.query("select approve_finance_transaction($1)", [txn.id]));
+    await commitAs(CONFIRMER, () => db.query("select approve_finance_transaction($1)", [txn.id]));
     expect((await txnRow(txn.id)).status).toBe("posted");
   });
 
@@ -612,7 +622,7 @@ describe("Operations confirms member receipts", () => {
 
     await commitAs(LAGOS_ACCOUNTANT, () => db.query("update finance_transactions set amount = 5000 where id = $1", [txn.id]));
     await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [txn.id]));
-    await expect(commitAs(CONTROLLER, () => db.query("select approve_finance_transaction($1)", [txn.id]))).rejects.toThrow(
+    await expect(commitAs(CONFIRMER, () => db.query("select approve_finance_transaction($1)", [txn.id]))).rejects.toThrow(
       /Operations has to confirm/,
     );
   });
@@ -965,5 +975,110 @@ describe("the paying accountant checks a payment before paying it", () => {
     await expect(commitAs(LAGOS_ACCOUNTANT, () => db.query("select pay_finance_transaction($1)", [txn.id]))).rejects.toThrow(
       /Internal Audit has to approve/,
     );
+  });
+});
+
+describe("only the Receipts Confirmation Accountant credits a member's account", () => {
+  async function memberJournal(by: string, lines: [string, number, number, string | null][]): Promise<string> {
+    const id = (
+      await commitAs(by, () =>
+        db.query<{ id: string }>(
+          "insert into journal_entries (branch_id, entry_date, description) values ($1, current_date, 'Member adjustment') returning id",
+          [lagos],
+        ),
+      )
+    ).rows[0].id;
+    for (const [i, [account, debit, credit, member]] of lines.entries()) {
+      await commitAs(by, () =>
+        db.query(
+          "insert into journal_lines (entry_id, line_no, branch_id, account_code, debit, credit, member_id) values ($1, $2, $3, $4, $5, $6, $7)",
+          [id, i, lagos, account, debit, credit, member],
+        ),
+      );
+    }
+    return id;
+  }
+
+  it("confirms member money once Operations has checked it; nobody else can", async () => {
+    const txn = await draft(LAGOS_ACCOUNTANT, { direction: "receipt", type: "member_capital", amount: 2500, member: memberId });
+    await attach(LAGOS_ACCOUNTANT, txn);
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [txn.id]));
+    if ((await db.query<{ n: boolean }>("select needs_ops_confirmation as n from finance_transactions where id = $1", [txn.id])).rows[0].n) {
+      await commitAs(OFFICER, () => db.query("select confirm_member_receipt($1, 'Matches')", [txn.id]));
+    }
+    await expect(commitAs(CONTROLLER, () => db.query("select approve_finance_transaction($1)", [txn.id]))).rejects.toThrow(
+      /only the Receipts Confirmation Accountant/,
+    );
+    await commitAs(CONFIRMER, () => db.query("select approve_finance_transaction($1)", [txn.id]));
+    expect((await txnRow(txn.id)).status).toBe("posted");
+  });
+
+  it("can also confirm, return or reject other receipts, but not approve payments", async () => {
+    const fee = await draft(LAGOS_ACCOUNTANT, { direction: "receipt", type: "fee_income", amount: 150 });
+    await attach(LAGOS_ACCOUNTANT, fee);
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [fee.id]));
+    await commitAs(CONFIRMER, () => db.query("select approve_finance_transaction($1)", [fee.id]));
+    expect((await txnRow(fee.id)).status).toBe("posted");
+
+    const savings = await draft(LAGOS_ACCOUNTANT, { direction: "receipt", type: "member_capital", amount: 10, member: memberId });
+    await attach(LAGOS_ACCOUNTANT, savings);
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [savings.id]));
+    await commitAs(CONFIRMER, () => db.query("select decline_finance_transaction($1, 'returned', 'Wrong member')", [savings.id]));
+    expect((await txnRow(savings.id)).status).toBe("returned");
+
+    const payment = await draft(LAGOS_ACCOUNTANT, { direction: "payment", type: "admin_expense", amount: 50 });
+    await attach(LAGOS_ACCOUNTANT, payment);
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [payment.id]));
+    await expect(commitAs(CONFIRMER, () => db.query("select approve_finance_transaction($1)", [payment.id]))).rejects.toThrow(
+      /can't approve this transaction/,
+    );
+  });
+
+  it("is the only one who can post a journal that credits a member, while anyone with postings posts the rest", async () => {
+    const credit = await memberJournal(ACCOUNTS_OFFICER, [
+      ["1150", 300, 0, null],
+      ["2110", 0, 300, memberId],
+    ]);
+    for (const who of [ACCOUNTS_OFFICER_2, CONTROLLER]) {
+      await expect(commitAs(who, () => db.query("select post_journal_entry($1)", [credit]))).rejects.toThrow(
+        /only the Receipts Confirmation Accountant/,
+      );
+    }
+    await commitAs(CONFIRMER, () => db.query("select post_journal_entry($1)", [credit]));
+
+    const ordinary = await memberJournal(ACCOUNTS_OFFICER, [
+      ["5800", 40, 0, null],
+      ["1131", 0, 40, null],
+    ]);
+    await commitAs(ACCOUNTS_OFFICER_2, () => db.query("select post_journal_entry($1)", [ordinary]));
+
+    // Taking money off a member is not a credit, so any poster can do it; reversing that would credit them back.
+    const debit = await memberJournal(ACCOUNTS_OFFICER, [
+      ["2110", 20, 0, memberId],
+      ["1150", 0, 20, null],
+    ]);
+    await commitAs(ACCOUNTS_OFFICER_2, () => db.query("select post_journal_entry($1)", [debit]));
+    await expect(commitAs(ACCOUNTS_OFFICER_2, () => db.query("select reverse_journal_entry($1, 'Wrong member')", [debit]))).rejects.toThrow(
+      /only the Receipts Confirmation Accountant/,
+    );
+    await commitAs(CONFIRMER, () => db.query("select reverse_journal_entry($1, 'Wrong member')", [debit]));
+  });
+
+  it("can be held by one active person at a time", async () => {
+    const other = "00000000-0000-0000-0000-0000000000e8";
+    await addStaff(other, "accounts", "accounts_officer", null);
+    await expect(db.query("insert into staff_roles (staff_id, role_code) values ($1, 'receipts_confirmer')", [other])).rejects.toThrow(
+      /only one person may credit/,
+    );
+    // A branch-scoped second copy for the same person is fine.
+    await db.query("insert into staff_roles (staff_id, role_code, branch_id) values ($1, 'receipts_confirmer', $2)", [CONFIRMER, lagos]);
+    await db.query("delete from staff_roles where staff_id = $1 and role_code = 'receipts_confirmer' and branch_id = $2", [CONFIRMER, lagos]);
+  });
+
+  it("is the only holder of the permission among the built-in roles", async () => {
+    const holders = await db.query<{ role_code: string }>(
+      "select role_code from role_permissions where permission_code = 'accounts.members.credit' order by 1",
+    );
+    expect(holders.rows.map((r) => r.role_code)).toEqual(["receipts_confirmer"]);
   });
 });

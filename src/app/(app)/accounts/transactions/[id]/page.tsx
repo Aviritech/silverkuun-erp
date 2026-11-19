@@ -30,6 +30,7 @@ import {
   financeStatus,
 } from "@/modules/accounts/constants";
 import { accountsModule } from "@/modules/accounts/module";
+import { decisionPermissions, receiptCreditsMember } from "@/modules/accounts/member-credit";
 import {
   getTransactionBundle,
   listLedgerAccounts,
@@ -97,9 +98,10 @@ export default async function TransactionPage({
   const editable = ["draft", "returned"].includes(txn.status);
   const isOwner = txn.created_by === staff.id;
   const isPreparer = isOwner || txn.submitted_by === staff.id;
+  const creditsMember = receiptCreditsMember(txn, rule);
   const canReview =
     txn.status === "submitted" &&
-    can("accounts.transactions.approve") &&
+    decisionPermissions(txn.direction, creditsMember).some(can) &&
     !isPreparer;
   const awaitingOps =
     txn.status === "submitted" &&

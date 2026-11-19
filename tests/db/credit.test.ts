@@ -16,6 +16,7 @@ const HEAD_OF_CREDIT_2 = "00000000-0000-0000-0000-0000000000c6";
 const ACCOUNTANT = "00000000-0000-0000-0000-0000000000e1";
 const ACCOUNTANT_2 = "00000000-0000-0000-0000-0000000000e2";
 const CONTROLLER = "00000000-0000-0000-0000-0000000000f1";
+const CONFIRMER = "00000000-0000-0000-0000-0000000000e5";
 const AUDITOR = "00000000-0000-0000-0000-0000000000d1";
 const HEAD_OF_BUSINESS = "00000000-0000-0000-0000-0000000000f5";
 
@@ -182,7 +183,7 @@ async function repay(loan: Loan, amount: number, daysAgo = 0): Promise<Txn> {
   ).rows[0];
   await attach(ACCOUNTANT, txn);
   await q(ACCOUNTANT, "select submit_finance_transaction($1)", [txn.id]);
-  await q(ACCOUNTANT_2, "select approve_finance_transaction($1)", [txn.id]);
+  await q(CONFIRMER, "select approve_finance_transaction($1)", [txn.id]);
   return (await db.query<Txn>("select id, status, branch_id, interest_amount, journal_entry_id from finance_transactions where id = $1", [txn.id])).rows[0];
 }
 
@@ -225,6 +226,7 @@ beforeAll(async () => {
   await addStaff(ACCOUNTANT, "accounts", "regional_accountant", lagos);
   await addStaff(ACCOUNTANT_2, "accounts", "regional_accountant", lagos);
   await addStaff(CONTROLLER, "accounts", "financial_controller", null);
+  await addStaff(CONFIRMER, "accounts", "receipts_confirmer", null);
   await addStaff(AUDITOR, "internal_audit", "internal_auditor", null);
   await addStaff(HEAD_OF_BUSINESS, "management", "head_of_business", null);
 

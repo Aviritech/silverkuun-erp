@@ -269,14 +269,15 @@ end $$;
 -- Receipts and payments. IDs 90000000-...
 -- ---------------------------------------------------------------------------
 
--- Ada's first verified contribution becomes a receipt in Accounts, approved by the Financial Controller.
+-- Ada's first verified contribution becomes a receipt in Accounts, confirmed by the Receipts Confirmation Accountant
+-- (the only login that can credit a member's account).
 select pg_temp.as_role('regional_accountant', pg_temp.b(5));
 insert into public.finance_transactions (id, direction, transaction_type, txn_date, amount, bank_account_id, member_id, reference, description, contribution_id, branch_id)
 select '90000000-0000-0000-0000-000000000001', 'receipt', 'member_savings', c.paid_on, c.amount, pg_temp.bank(pg_temp.b(5)),
        pg_temp.m(6), c.reference, 'Gold plan contribution', c.id, pg_temp.b(5)
 from public.contributions c where c.reference = 'SEED-P08-1';
 select public.submit_finance_transaction('90000000-0000-0000-0000-000000000001');
-select pg_temp.act_as('controller@kuun.test');
+select pg_temp.act_as('confirm.receipts@kuun.test');
 select public.approve_finance_transaction('90000000-0000-0000-0000-000000000001');
 
 -- Member receipts recorded by Accounts against a plan go to Operations to check before Accounts posts them:
@@ -303,7 +304,7 @@ select pg_temp.member_receipt('90000000-0000-0000-0000-000000000007', 13, 18, 10
 
 select pg_temp.as_role('admin_officer', pg_temp.b(1));
 select public.confirm_member_receipt('90000000-0000-0000-0000-000000000006', 'Matches his passbook');
-select pg_temp.act_as('controller@kuun.test');
+select pg_temp.act_as('confirm.receipts@kuun.test');
 select public.approve_finance_transaction('90000000-0000-0000-0000-000000000006');
 select pg_temp.as_role('admin_officer', pg_temp.b(9));
 select public.return_member_receipt('90000000-0000-0000-0000-000000000007', 'Ebi says he paid 15,000, not 10,000. Please check the bank alert.');
@@ -525,7 +526,7 @@ begin
   from public.loans l where l.id = p_loan;
   perform pg_temp.attach(p_txn, 'supporting', 'teller.pdf');
   perform public.submit_finance_transaction(p_txn);
-  perform pg_temp.act_as('controller@kuun.test');
+  perform pg_temp.act_as('confirm.receipts@kuun.test');
   perform public.approve_finance_transaction(p_txn);
 end $$;
 
