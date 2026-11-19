@@ -90,8 +90,10 @@ export type Plan = {
   start_date: string;
   maturity_date: string;
   status: string;
-  /** Annual interest rate (%), fixed from the plan type when the plan was opened. Letters quote it a month (/ 12). */
+  /** Annual interest rate (%), from the plan type when the plan was opened, or a special rate the CEO approved. Letters quote it a month (/ 12). */
   interest_rate: string;
+  /** The approved special rate request that set interest_rate, if any. */
+  special_rate_request_id: string | null;
   /** True when dividends build up and are paid with the principal at maturity (Target savings), not monthly. */
   dividends_at_maturity: boolean;
   /** Day of the month this plan's interest is paid (the last day in shorter months); null for plans paid at maturity. */
@@ -293,6 +295,41 @@ export async function listLiquidations(statuses?: string[]): Promise<Liquidation
   const { data, error } = await supabase.rpc("liquidation_requests", { p_status: statuses ?? null });
   if (error) throw dbFailure(error);
   return data as Liquidation[];
+}
+
+export type PlanRateStage = "branch_manager" | "head_of_operations" | "regional_manager" | "bdm" | "ceo";
+
+export type PlanRateRequest = {
+  id: string;
+  request_no: string;
+  branch_id: string;
+  branch_name: string;
+  member_id: string;
+  member_name: string;
+  membership_no: string | null;
+  member_plan_id: string;
+  plan_name: string;
+  /** Annual rates (%), as plans store them. */
+  current_rate: string;
+  requested_rate: string;
+  reason: string;
+  status: "pending" | "approved" | "declined" | "cancelled";
+  stage: PlanRateStage | null;
+  requested_by: string;
+  requested_by_name: string;
+  requested_at: string;
+  closed_by_name: string | null;
+  closed_at: string | null;
+  close_note: string | null;
+  approvals: { stage: PlanRateStage; by: string; by_id: string; at: string; note: string | null }[];
+};
+
+/** Special plan rate requests in the caller's branches, newest first. */
+export async function listPlanRateRequests(): Promise<PlanRateRequest[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("plan_rate_request_list");
+  if (error) throw dbFailure(error);
+  return data as PlanRateRequest[];
 }
 
 /** A receipt or payment Accounts recorded for a member (from member_money_history; needs members.full_view). */

@@ -72,6 +72,12 @@ insert into seed_staff values
   ('30000000-0000-0000-0000-000000000009', 'payroll@kuun.test',        'Pat Payroll',          'hr',                'payroll_officer',        'org', null),
   ('30000000-0000-0000-0000-000000000024', 'confirm.receipts@kuun.test','Rukky Receipts Confirmation','accounts',    'receipts_confirmer',     'org', null),
   ('30000000-0000-0000-0000-000000000025', 'accounts.officer@kuun.test','Ayo Accounts Officer',  'accounts',          'accounts_officer',       'org', null),
+  -- Special plan rates go Branch Manager, Head of Operations, Regional Manager, BDM, then the CEO
+  ('30000000-0000-0000-0000-000000000026', 'bdm@kuun.test',            'Dayo BDM',             'management',        'bdm',                    'org', null),
+  ('30000000-0000-0000-0000-000000000027', 'ceo@kuun.test',            'Chioma CEO',           'management',        'ceo',                    'org', null),
+  ('30000000-0000-0000-0000-000000000028', 'regional.abuja@kuun.test', 'Rabi Regional Manager','branch_operations', 'regional_manager',       'region', 'ABJ'),
+  ('30000000-0000-0000-0000-000000000029', 'regional.lagos@kuun.test', 'Remi Regional Manager','branch_operations', 'regional_manager',       'region', 'LAG'),
+  ('30000000-0000-0000-0000-000000000030', 'regional.ph@kuun.test',    'Reme Regional Manager','branch_operations', 'regional_manager',       'region', 'PHC'),
   -- Accounts: the payments desk pays for every branch; regional accountants and receipts accountants work a region
   ('30000000-0000-0000-0000-000000000010', 'payments@kuun.test',       'Pius Payments',        'accounts',          'payments_accountant',    'branch', 'MBM'),
   ('30000000-0000-0000-0000-000000000011', 'accountant.abuja@kuun.test','Aisha Accountant',    'accounts',          'regional_accountant',    'region', 'ABJ'),

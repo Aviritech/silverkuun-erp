@@ -5,7 +5,7 @@ Everything a brand-new, empty Supabase project needs to run the Silverkuun ERP, 
 | File | What it does |
 | --- | --- |
 | `01-schema.sql` | The whole database: all 29 migrations in order (tables, types, functions, triggers, RLS policies, roles and permissions, storage buckets) and the reference data (departments, roles, plan types and rates, loan products, CBN banks, chart of accounts, posting rules, leave types, job titles). No people or branches. |
-| `02-seed-organisation.sql` | 3 regions, 10 branches, a bank and a cash account per branch, and 81 test logins: every role, and every branch-level role in every branch. |
+| `02-seed-organisation.sql` | 3 regions, 10 branches, a bank and a cash account per branch, and 86 test logins: every role, and every branch-level role in every branch. |
 | `03-seed-demo-data.sql` | 16 members across all branches and dummy records in every module, created through the real workflow functions. |
 | `build-schema.py` | Rebuilds `01-schema.sql` from `supabase/migrations`. Run it after adding a migration. |
 
@@ -58,6 +58,8 @@ The logins are inserted straight into Supabase Auth (`auth.users` and `auth.iden
 | payments@kuun.test | Payments Accountant (home branch Mabushi Main; pays approved payments for every branch) |
 | confirm.receipts@kuun.test | Receipts Confirmation Accountant: the only login that can credit a member's account (confirms savings, capital and loan repayment receipts, posts journals that credit a member) |
 | accounts.officer@kuun.test | Accounts Officer: sees every Accounts page in all branches, prepares and posts journals |
+| bdm@kuun.test | BDM: approves special plan rates after the Regional Manager |
+| ceo@kuun.test | CEO: gives the final approval of special plan rates |
 
 ### By region (every branch in the region)
 
@@ -67,6 +69,7 @@ The logins are inserted straight into Supabase Auth (`auth.users` and `auth.iden
 | Receipts Accountant | receipts.abuja@kuun.test | receipts.lagos@kuun.test | |
 | Marketer | marketer.abuja@kuun.test | marketer.lagos@kuun.test | marketer.ph@kuun.test |
 | Account Officer (Credit) | credit.abuja@kuun.test | credit.lagos@kuun.test | credit.ph@kuun.test |
+| Regional Manager (special plan rates) | regional.abuja@kuun.test | regional.lagos@kuun.test | regional.ph@kuun.test |
 
 ### By branch: every department in every branch
 

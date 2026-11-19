@@ -177,6 +177,46 @@ export function PayDayForm({ action, current }: { action: Action; current: numbe
   );
 }
 
+/** An Operations officer asks for a special rate on one plan; it then goes up the approval chain to the CEO. */
+export function SpecialRateForm({ action, currentMonthly }: { action: Action; currentMonthly: string }) {
+  return (
+    <InlineForm action={action} openLabel="Ask for a special rate" submitLabel="Send to the Branch Manager">
+      {(e) => (
+        <div className="grid gap-3 sm:grid-cols-[10rem_1fr]">
+          <Field label="Rate a month (%)" error={e.monthly_rate} hint={`Now ${currentMonthly}% a month`}>
+            <Input name="monthly_rate" type="number" min="0.01" max="8.33" step="0.0001" required />
+          </Field>
+          <Field
+            label="Why this member should have it"
+            error={e.reason}
+            hint="Goes to the Branch Manager, Head of Operations, Regional Manager, BDM and then the CEO for the final approval."
+          >
+            <Input name="reason" placeholder="For example: moving ₦50m from another bank for 12 months" required />
+          </Field>
+        </div>
+      )}
+    </InlineForm>
+  );
+}
+
+/** Approves the current step of a special rate, with an optional note. The CEO's approval sets the plan's rate. */
+export function ApproveRateForm({ action, final }: { action: Action; final: boolean }) {
+  return (
+    <InlineForm
+      action={action}
+      openLabel={final ? "Give final approval" : "Approve"}
+      submitLabel={final ? "Approve and set the rate" : "Approve and pass on"}
+      variant="primary"
+    >
+      {(e) => (
+        <Field label="Note (optional)" error={e.note}>
+          <Textarea name="note" rows={2} />
+        </Field>
+      )}
+    </InlineForm>
+  );
+}
+
 /** A scheduled contribution. Top-ups aren't recorded here: they come from Accounts (see the Top ups from Accounts queue). */
 export function ContributionForm({ action, planId }: { action: Action; planId: string }) {
   const label = "Record contribution";

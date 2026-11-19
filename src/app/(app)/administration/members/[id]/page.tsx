@@ -10,6 +10,7 @@ import { FINANCE_STATUSES } from "@/modules/accounts/constants";
 import {
   addPlan,
   changePlanPayDay,
+  requestPlanRate,
   approveMember,
   marketerReview,
   recordContribution,
@@ -36,6 +37,7 @@ import {
   SendToStaffForm,
   StaffConfirmForm,
   PayDayForm,
+  SpecialRateForm,
   PlanForm,
   ReturnForm,
   ReversalForm,
@@ -63,9 +65,10 @@ import {
   listCbnBanks,
   listIntroducerOptions,
   listLiquidations,
+  listPlanRateRequests,
 } from "@/modules/administration/queries";
 import { LiquidationForm } from "@/modules/administration/components/liquidation-form";
-import { LIQUIDATION_STATUSES } from "@/modules/administration/constants";
+import { LIQUIDATION_STATUSES, PLAN_RATE_STAGES } from "@/modules/administration/constants";
 import { requestLiquidation } from "@/modules/administration/actions";
 
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
@@ -213,8 +216,10 @@ export default async function MemberPage({
   const tab = tabs.some((t) => t.key === tabParam) ? tabParam! : "file";
   // Liquidation requests on this member's plans, and the bank list for raising one (Plans tab only).
   const canLiquidate = member.status === "approved" && can("liquidations.request");
-  const [liquidations, cbnBanks] =
-    tab === "plans" ? await Promise.all([listLiquidations(), canLiquidate ? listCbnBanks() : Promise.resolve([])]) : [[], []];
+  const [liquidations, cbnBanks, rateRequests] =
+    tab === "plans"
+      ? await Promise.all([listLiquidations(), canLiquidate ? listCbnBanks() : Promise.resolve([]), listPlanRateRequests()])
+      : [[], [], []];
   const memberLiquidations = liquidations.filter((l) => l.member_id === member.id);
   const approved = member.status === "approved";
   const [money, history, guarantors] = await Promise.all([
@@ -612,6 +617,41 @@ export default async function MemberPage({
                             />
                           </div>
                         )}
+                        {(() => {
+                          const planRates = rateRequests.filter((r) => r.member_plan_id === plan.id);
+                          const open = planRates.find((r) => r.status === "pending");
+                          const special = plan.special_rate_request_id && planRates.find((r) => r.id === plan.special_rate_request_id);
+                          return (
+                            <>
+                              {special && (
+                                <p className="text-xs text-zinc-500">
+                                  Special rate {special.request_no}, approved by the CEO on {formatDate(special.closed_at)}
+                                </p>
+                              )}
+                              {open ? (
+                                <p className="mt-1 text-xs">
+                                  Special rate of {monthlyRate(open.requested_rate)}% a month{" "}
+                                  <span className="font-mono">{open.request_no}</span> is waiting for the{" "}
+                                  {PLAN_RATE_STAGES[open.stage!].label}.{" "}
+                                  <Link href="/administration/special-rates" className="underline">
+                                    Special rates
+                                  </Link>
+                                </p>
+                              ) : (
+                                plan.status === "active" &&
+                                member.status === "approved" &&
+                                can("plans.rate.request") && (
+                                  <div className="mt-2">
+                                    <SpecialRateForm
+                                      action={requestPlanRate.bind(null, plan.id)}
+                                      currentMonthly={String(monthlyRate(plan.interest_rate))}
+                                    />
+                                  </div>
+                                )
+                              )}
+                            </>
+                          );
+                        })()}
                         {member.status === "approved" && plan.status !== "cancelled" && (
                           <div className="mt-2 flex flex-wrap gap-2">
                             <ButtonLink href={`/letters/plans/${plan.id}/agreement`} variant="secondary">

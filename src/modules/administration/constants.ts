@@ -90,3 +90,19 @@ export const LIQUIDATION_STATUSES = {
   cancelled: { label: "Cancelled", tone: "gray" },
 } as const;
 export type LiquidationStatus = keyof typeof LIQUIDATION_STATUSES;
+
+/** The steps a special plan rate goes through, in order, with the permission each needs. */
+export const PLAN_RATE_STAGES = {
+  branch_manager: { label: "Branch Manager", permission: "plans.rate.approve_branch" },
+  head_of_operations: { label: "Head of Operations", permission: "plans.rate.approve_operations" },
+  regional_manager: { label: "Regional Manager", permission: "plans.rate.approve_region" },
+  bdm: { label: "BDM", permission: "plans.rate.approve_bdm" },
+  ceo: { label: "CEO", permission: "plans.rate.approve_ceo" },
+} as const;
+
+export const PLAN_RATE_STATUSES = {
+  pending: { label: "Waiting", tone: "amber" },
+  approved: { label: "Approved", tone: "green" },
+  declined: { label: "Declined", tone: "red" },
+  cancelled: { label: "Cancelled", tone: "gray" },
+} as const;

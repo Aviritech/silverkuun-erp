@@ -27,6 +27,7 @@ import {
   returnSchema,
   reversalSchema,
   sendToStaffSchema,
+  specialRateSchema,
   targetSchema,
 } from "./schemas";
 import { formFile } from "@/lib/uploads/server";
@@ -666,6 +667,53 @@ export async function cancelLiquidation(liquidationId: string, _prev: ActionStat
   const { error } = await supabase.rpc("cancel_liquidation", { p_id: liquidationId, p_reason: parsed.data.reason });
   if (error) return { error: friendlyDbError(error) };
   return liquidationDone();
+}
+
+// ---------------------------------------------------------------------------
+// Special rate on one plan: officer, Branch Manager, Head of Operations, Regional Manager, BDM, then the CEO.
+// ---------------------------------------------------------------------------
+
+function specialRateDone() {
+  revalidatePath("/administration", "layout");
+  return { ok: true };
+}
+
+export async function requestPlanRate(planId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireModule(administrationModule);
+  const parsed = specialRateSchema.safeParse(formObject(formData, ["monthly_rate", "reason"]));
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("request_plan_rate", {
+    p_plan_id: planId,
+    p_monthly_rate: parsed.data.monthly_rate,
+    p_reason: parsed.data.reason,
+  });
+  if (error) return { error: friendlyDbError(error) };
+  return specialRateDone();
+}
+
+/** The person at the current step approves (optional note) or declines (reason required). */
+export async function decidePlanRate(id: string, approve: boolean, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireModule(administrationModule);
+  const parsed = approve
+    ? marketerReviewSchema.safeParse({ note: formData.get("note") ?? "" })
+    : returnSchema.safeParse({ reason: formData.get("reason") ?? "" });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  const note = "note" in parsed.data ? parsed.data.note : parsed.data.reason;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("decide_plan_rate", { p_id: id, p_approve: approve, p_note: note });
+  if (error) return { error: friendlyDbError(error) };
+  return specialRateDone();
+}
+
+export async function cancelPlanRate(id: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireModule(administrationModule);
+  const parsed = returnSchema.safeParse({ reason: formData.get("reason") ?? "" });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("cancel_plan_rate", { p_id: id, p_note: parsed.data.reason });
+  if (error) return { error: friendlyDbError(error) };
+  return specialRateDone();
 }
 
 // ---------------------------------------------------------------------------
