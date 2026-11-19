@@ -135,6 +135,22 @@ export const restructureDecisionSchema = z
   .object({ decision: z.enum(["approve", "reject"]), note: optionalText })
   .refine((v) => v.decision === "approve" || (v.note?.length ?? 0) >= 5, { path: ["note"], message: "Give the reason for declining" });
 
+export const penaltySchema = z
+  .object({
+    basis: z.enum(["rate", "amount"]),
+    rate: z.coerce.number().optional(),
+    amount: z.coerce.number().optional(),
+    reason: z.string().trim().min(5, "Say why the penalty is being applied"),
+  })
+  .superRefine((v, ctx) => {
+    if (v.basis === "rate" && !(v.rate && v.rate > 0 && v.rate <= 100)) {
+      ctx.addIssue({ code: "custom", path: ["rate"], message: "Enter a percentage above 0 and at most 100" });
+    }
+    if (v.basis === "amount" && !(v.amount && v.amount > 0)) {
+      ctx.addIssue({ code: "custom", path: ["amount"], message: "Enter an amount above zero" });
+    }
+  });
+
 export const reminderSchema = z.object({
   kind: z.enum(["upcoming", "overdue"]),
   channel: z.enum(keys(REMINDER_CHANNELS), "Choose how you reached the customer"),
@@ -154,7 +170,6 @@ export const productSchema = z
     min_amount: z.coerce.number().min(0, "Can't be negative"),
     max_amount: optionalMoney,
     max_tenor_months: tenor,
-    late_penalty_rate: z.coerce.number("Enter the daily penalty rate").min(0, "Can't be negative").max(10, "Enter at most 10% a day"),
     requires_guarantor: z.enum(["on", ""]).optional().transform((v) => v === "on"),
     requires_collateral: z.enum(["on", ""]).optional().transform((v) => v === "on"),
     requires_proforma: z.enum(["on", ""]).optional().transform((v) => v === "on"),

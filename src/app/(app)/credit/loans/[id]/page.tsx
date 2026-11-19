@@ -9,6 +9,7 @@ import { ReasonForm } from "@/modules/accounts/components/reason-form";
 import {
   addCollateral,
   addGuarantor,
+  applyPenalty,
   appraiseLoan,
   businessDecideLoan,
   cancelLoan,
@@ -23,6 +24,7 @@ import {
   returnLoan,
   submitLoan,
   uploadLoanDocument,
+  withdrawPenalty,
 } from "@/modules/credit/actions";
 import {
   AppraisalForm,
@@ -33,6 +35,7 @@ import {
   DecisionForm,
   GuarantorForm,
   LoanDocumentUpload,
+  PenaltyForm,
   ReassignForm,
   ReminderForm,
   RestructureDecisionForm,
@@ -159,7 +162,7 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   const [bundle, org, officers] = await Promise.all([getLoanBundle(id), listOrg(), listOfficers()]);
   if (!bundle) notFound();
-  const { loan, position, member, memberName, product, guarantors, collaterals, documents, schedule, repayments, restructures, reminders, otherLoans, documentSignatures, guarantorSignatures, staffName, checklist, review } =
+  const { loan, position, member, memberName, product, guarantors, collaterals, documents, schedule, repayments, restructures, reminders, penalties, otherLoans, documentSignatures, guarantorSignatures, staffName, checklist, review } =
     bundle;
   const branch = org.branches.find((b) => b.id === loan.branch_id)!;
   const can = (p: string) => staff.permissions.hasForBranch(p, branch);
@@ -275,7 +278,7 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
           />
           <Stat label="Overdue" value={formatMoney(position.overdue_amount)} tone={overdue ? "red" : undefined} />
           <Stat
-            label={`Late penalty owed (${Number(position.late_penalty_rate)}% a day)`}
+            label="Penalty owed"
             value={formatMoney(position.penalty_outstanding)}
             tone={Number(position.penalty_outstanding) > 0 ? "red" : undefined}
           />
@@ -732,8 +735,9 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
         >
           <p className="mb-3 text-xs text-zinc-500">
             Repayments are receipted by Accounts against this loan. Each one pays the overdue instalments first (oldest first, interest
-            before principal), then any late penalty, then the instalments not yet due. Each night any late penalty still owed is taken
-            from the member&rsquo;s savings plans (oldest first, never below zero); those show as &ldquo;From savings&rdquo;.
+            before principal), then any penalty the Head of Credit applied, then the instalments not yet due. Each night any overdue
+            instalment is taken from the member&rsquo;s savings plans (oldest first, never below zero, with no penalty); those show as
+            &ldquo;From savings&rdquo;.
           </p>
           {repayments.length === 0 ? (
             <EmptyState>No repayments yet.</EmptyState>
@@ -766,6 +770,54 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
                 ))}
               </tbody>
             </table>
+          )}
+        </Card>
+      )}
+
+      {(loan.status === "active" || penalties.length > 0) && live && (
+        <Card
+          title="Penalties"
+          actions={
+            loan.status === "active" &&
+            can("credit.approve") &&
+            position &&
+            Number(position.overdue_amount) > 0 && <PenaltyForm action={applyPenalty.bind(null, loan.id)} overdue={Number(position.overdue_amount)} />
+          }
+        >
+          <p className="mb-3 text-xs text-zinc-500">
+            No penalty builds up by itself. The Head of Credit may apply one to an overdue loan and can withdraw it until it is paid.
+            Members&rsquo; overdue instalments are taken from their savings each night, without a penalty.
+          </p>
+          {penalties.length === 0 ? (
+            <EmptyState>No penalties applied.</EmptyState>
+          ) : (
+            <ul className="divide-y divide-zinc-100 text-sm">
+              {penalties.map((p) => (
+                <li key={p.id} className="flex flex-wrap items-start justify-between gap-3 py-2">
+                  <div className={p.withdrawn_at ? "text-zinc-400" : undefined}>
+                    <span className="font-mono text-xs">{p.charge_no}</span>{" "}
+                    <span className={`font-medium tabular-nums ${p.withdrawn_at ? "line-through" : ""}`}>{formatMoney(p.amount)}</span>
+                    {p.rate && ` (${Number(p.rate)}% of ${formatMoney(p.overdue_amount)} overdue)`} on {formatDate(p.charged_on)}
+                    {p.withdrawn_at && <Badge tone="gray">Withdrawn</Badge>}
+                    {p.schedule_version !== loan.schedule_version && !p.withdrawn_at && <Badge tone="gray">Carried into restructure</Badge>}
+                    <p className="text-zinc-600">{p.reason}</p>
+                    <p className="text-xs text-zinc-500">
+                      Applied by {staffName(p.charged_by)}
+                      {p.withdrawn_at && `; withdrawn by ${staffName(p.withdrawn_by)} on ${formatDateTime(p.withdrawn_at)}: ${p.withdraw_reason}`}
+                    </p>
+                  </div>
+                  {!p.withdrawn_at && p.schedule_version === loan.schedule_version && loan.status === "active" && can("credit.approve") && (
+                    <ReasonForm
+                      action={withdrawPenalty.bind(null, loan.id, p.id)}
+                      openLabel="Withdraw"
+                      submitLabel="Withdraw penalty"
+                      question="Why is it being withdrawn?"
+                      variant="secondary"
+                    />
+                  )}
+                </li>
+              ))}
+            </ul>
           )}
         </Card>
       )}

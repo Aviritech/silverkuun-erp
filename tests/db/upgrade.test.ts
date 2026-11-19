@@ -56,7 +56,8 @@ describe("upgrading a database that already has data", () => {
     expect((await db.query("select penalty from loan_repayments")).rows).toEqual([{ penalty: "0.00" }]);
     expect((await db.query("select penalty_amount from finance_transactions")).rows).toEqual([{ penalty_amount: "0.00" }]);
     const rates = await db.query<{ late_penalty_rate: string }>("select distinct late_penalty_rate from loan_products");
-    expect(rates.rows).toEqual([{ late_penalty_rate: "0.1000" }]);
+    // The daily rate was retired on 2026-11-19: the Head of Credit applies penalties instead.
+    expect(rates.rows).toEqual([{ late_penalty_rate: "0.0000" }]);
   });
 
   it("moves each member's interest pay day onto their plans", async () => {

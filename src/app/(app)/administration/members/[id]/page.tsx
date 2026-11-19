@@ -702,7 +702,7 @@ export default async function MemberPage({
                                         variant="secondary"
                                       />
                                     )}
-                                    {c.kind !== "reversal" && c.kind !== "loan_penalty" && !reversed.has(c.id) && can("contributions.record") && (
+                                    {c.kind !== "reversal" && c.kind !== "loan_penalty" && c.kind !== "loan_deduction" && !reversed.has(c.id) && can("contributions.record") && (
                                       <ReversalForm action={reverseContribution.bind(null, member.id)} contributionId={c.id} />
                                     )}
                                   </div>

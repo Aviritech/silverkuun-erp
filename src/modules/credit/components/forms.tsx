@@ -343,6 +343,48 @@ export function RestructureDecisionForm({ action }: { action: Action }) {
   );
 }
 
+/** The Head of Credit applies a penalty to an overdue loan: a percentage of what is overdue, or an amount. */
+export function PenaltyForm({ action, overdue }: { action: Action; overdue: number }) {
+  const [basis, setBasis] = useState<"rate" | "amount">("rate");
+  const [rate, setRate] = useState("");
+  const preview = basis === "rate" && Number(rate) > 0 ? Math.round(overdue * Number(rate)) / 100 : null;
+  return (
+    <InlineForm action={action} openLabel="Apply a penalty" submitLabel="Apply penalty">
+      {(e) => (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <Field label="Set it as">
+            <Select name="basis" value={basis} onChange={(ev) => setBasis(ev.target.value as "rate" | "amount")}>
+              <option value="rate">A percentage of the overdue amount</option>
+              <option value="amount">An amount</option>
+            </Select>
+          </Field>
+          {basis === "rate" ? (
+            <Field
+              label="Percentage"
+              error={e.rate}
+              hint={preview ? `₦${preview.toLocaleString("en-US", { minimumFractionDigits: 2 })} of ₦${overdue.toLocaleString("en-US", { minimumFractionDigits: 2 })} overdue` : `Of ₦${overdue.toLocaleString("en-US", { minimumFractionDigits: 2 })} overdue today`}
+            >
+              <Input name="rate" type="number" min="0.0001" max="100" step="0.0001" value={rate} onChange={(ev) => setRate(ev.target.value)} required />
+            </Field>
+          ) : (
+            <Field label="Amount (₦)" error={e.amount}>
+              <Input name="amount" type="number" min="0.01" step="0.01" required />
+            </Field>
+          )}
+          <div className="sm:col-span-3">
+            <Field label="Reason" error={e.reason}>
+              <Textarea name="reason" rows={2} required />
+            </Field>
+          </div>
+          <p className="text-xs text-zinc-500 sm:col-span-3">
+            The penalty is owed from today. Repayments pay it after the overdue instalments. It is never taken from the member&rsquo;s savings.
+          </p>
+        </div>
+      )}
+    </InlineForm>
+  );
+}
+
 export function ReminderForm({
   action,
   kind,
@@ -422,9 +464,6 @@ export function ProductForm({ action, product }: { action: Action; product?: Loa
           </Field>
           <Field label="Longest duration (months)" error={e.max_tenor_months}>
             <Input name="max_tenor_months" type="number" min="1" max="120" defaultValue={product?.max_tenor_months ?? 12} required />
-          </Field>
-          <Field label="Late penalty (% a day)" error={e.late_penalty_rate} hint="Of an overdue instalment, for each day it stays unpaid. 0 for none.">
-            <Input name="late_penalty_rate" type="number" min="0" max="10" step="0.0001" defaultValue={product?.late_penalty_rate ?? "0.1"} required />
           </Field>
           <div className="flex flex-wrap items-end gap-4 pb-2 text-sm sm:col-span-3">
             {(

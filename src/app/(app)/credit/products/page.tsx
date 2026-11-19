@@ -19,7 +19,7 @@ export default async function LoanProductsPage() {
     <div className="max-w-5xl">
       <PageHeader
         title="Loan products"
-        description="The rate, limits and requirements each new application starts from. Changes apply to new applications only; existing loans keep their agreed terms, except the late penalty rate: it applies to every loan of the product, and penalties not yet paid are worked out again at the new rate."
+        description="The rate, limits and requirements each new application starts from. Changes apply to new applications only; existing loans keep their agreed terms. Late penalties aren't set here: the Head of Credit applies them on an overdue loan, if they choose to."
         actions={canEdit && <ProductForm action={saveProduct.bind(null, null)} />}
       />
       <div className="space-y-3">
@@ -34,8 +34,7 @@ export default async function LoanProductsPage() {
                 <p className="mt-2 text-sm">
                   {Number(p.interest_rate)}
                   {RATE_BASES[p.rate_basis]}, {INTEREST_METHODS[p.interest_method].toLowerCase()} · {formatMoney(p.min_amount)} to{" "}
-                  {p.max_amount ? formatMoney(p.max_amount) : "no limit"} · up to {p.max_tenor_months} months ·{" "}
-                  {Number(p.late_penalty_rate) > 0 ? `late penalty ${Number(p.late_penalty_rate)}% a day` : "no late penalty"}
+                  {p.max_amount ? formatMoney(p.max_amount) : "no limit"} · up to {p.max_tenor_months} months
                 </p>
                 <p className="mt-1 flex flex-wrap gap-2 text-xs">
                   {isKuunForm(p.application_form) && <Badge tone="amber">Kuun {FORMS[p.application_form].name} form</Badge>}
@@ -66,7 +65,7 @@ export default async function LoanProductsPage() {
           </div>
         ))}
       </div>
-      <p className="mt-6 text-sm text-zinc-500">The starting rates, limits and the 0.1% a day late penalty are placeholders until Kuun confirms its loan policy. That includes the Kuun Asset, Payday and Property-backed loans: their forms don&rsquo;t give rates, limits or tenors.</p>
+      <p className="mt-6 text-sm text-zinc-500">The starting rates and limits are placeholders until Kuun confirms its loan policy. That includes the Kuun Asset, Payday and Property-backed loans: their forms don&rsquo;t give rates, limits or tenors.</p>
     </div>
   );
 }

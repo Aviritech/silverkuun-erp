@@ -150,11 +150,11 @@ export type LoanBookRow = {
   next_due_amount: string;
   remaining_installments: number;
   last_paid_on: string | null;
-  /** Percent a day charged on overdue instalments (from the loan product). */
+  /** Retired: penalties are applied by the Head of Credit, so this is always 0. */
   late_penalty_rate: string;
   /** Late penalty paid, across all schedules. */
   penalty_repaid: string;
-  /** Late penalty run up on the current schedule and not yet paid. */
+  /** Penalties the Head of Credit applied on the current schedule and not yet paid. */
   penalty_outstanding: string;
 };
 
@@ -221,7 +221,7 @@ export type LoanDocument = {
 
 export type Repayment = {
   id: string;
-  /** Null when the late fee was taken from the member's savings. */
+  /** Null when it was taken from the member's savings (an overdue repayment, or an older late fee). */
   finance_transaction_id: string | null;
   source: "receipt" | "savings";
   txn_no: string;
@@ -233,6 +233,24 @@ export type Repayment = {
   schedule_version: number;
   reversed_at: string | null;
   reversal_reason: string | null;
+};
+
+export type PenaltyCharge = {
+  id: string;
+  charge_no: string;
+  loan_id: string;
+  schedule_version: number;
+  charged_on: string;
+  overdue_amount: string;
+  /** Set when the Head of Credit gave a percentage of the overdue amount. */
+  rate: string | null;
+  amount: string;
+  reason: string;
+  charged_by: string;
+  created_at: string;
+  withdrawn_at: string | null;
+  withdrawn_by: string | null;
+  withdraw_reason: string | null;
 };
 
 export type Restructure = {
@@ -322,7 +340,7 @@ export async function getLoanBundle(id: string) {
   if (!data) return null;
   const loan = data as Loan;
 
-  const [position, member, product, guarantors, collaterals, documents, schedule, repayments, restructures, reminders, history, checklist, review] =
+  const [position, member, product, guarantors, collaterals, documents, schedule, repayments, restructures, reminders, history, checklist, review, penalties] =
     await Promise.all([
       rows<LoanBookRow[]>(supabase.from("loan_book").select("*").eq("id", id)),
       rows<{ id: string; first_name: string; middle_name: string | null; last_name: string; membership_no: string | null; phone: string; address: string }>(
@@ -346,6 +364,7 @@ export async function getLoanBundle(id: string) {
       ),
       rows<ChecklistItem[]>(supabase.from("loan_checklist_items").select("item_code, answer, remark, checked_by, checked_at").eq("loan_id", id)),
       rows<ComplianceReview[]>(supabase.from("loan_compliance_reviews").select("*").eq("loan_id", id)),
+      rows<PenaltyCharge[]>(supabase.from("loan_penalty_charges").select("*").eq("loan_id", id).order("created_at")),
     ]);
 
   const signed = documents.length
@@ -370,6 +389,7 @@ export async function getLoanBundle(id: string) {
     ...documents.map((d) => d.uploaded_by),
     ...restructures.flatMap((r) => [r.requested_by, r.decided_by]),
     ...reminders.map((r) => r.sent_by),
+    ...penalties.flatMap((p) => [p.charged_by, p.withdrawn_by]),
     review[0]?.reviewed_by,
   ]);
 
@@ -386,6 +406,7 @@ export async function getLoanBundle(id: string) {
     repayments,
     restructures,
     reminders,
+    penalties,
     otherLoans: history,
     checklist,
     review: review[0] ?? null,

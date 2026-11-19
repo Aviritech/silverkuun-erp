@@ -139,7 +139,7 @@ export type PlanProgress = {
 export type Contribution = {
   id: string;
   member_plan_id: string;
-  kind: "scheduled" | "top_up" | "reversal" | "loan_penalty";
+  kind: "scheduled" | "top_up" | "reversal" | "loan_penalty" | "loan_deduction";
   amount: string;
   paid_on: string;
   payment_method: string;
