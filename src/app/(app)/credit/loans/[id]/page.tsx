@@ -732,7 +732,8 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
         >
           <p className="mb-3 text-xs text-zinc-500">
             Repayments are receipted by Accounts against this loan. Each one pays the overdue instalments first (oldest first, interest
-            before principal), then any late penalty, then the instalments not yet due.
+            before principal), then any late penalty, then the instalments not yet due. Each night any late penalty still owed is taken
+            from the member&rsquo;s savings plans (oldest first, never below zero); those show as &ldquo;From savings&rdquo;.
           </p>
           {repayments.length === 0 ? (
             <EmptyState>No repayments yet.</EmptyState>
@@ -741,7 +742,7 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
               <thead className="text-xs text-zinc-500">
                 <tr>
                   <th className="py-1 font-medium">Date</th>
-                  <th className="py-1 font-medium">Receipt</th>
+                  <th className="py-1 font-medium">Receipt or ref.</th>
                   <th className="py-1 text-right font-medium">Amount</th>
                   <th className="py-1 text-right font-medium">Principal</th>
                   <th className="py-1 text-right font-medium">Interest</th>
@@ -754,6 +755,7 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
                     <td className="py-1.5">{formatDate(r.paid_on)}</td>
                     <td className="py-1.5 font-mono text-xs">
                       {r.txn_no}
+                      {r.source === "savings" && <span className="ml-2 font-sans text-zinc-500">From savings</span>}
                       {r.reversed_at && <span className="ml-2 font-sans no-underline">reversed</span>}
                     </td>
                     <td className="py-1.5 text-right tabular-nums">{formatMoney(r.amount)}</td>

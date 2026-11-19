@@ -75,8 +75,14 @@ export default async function JournalPage({ params }: { params: Promise<{ id: st
       </Card>
       <Card title="History">
         <ul className="space-y-1 text-sm">
-          <li>Prepared by {staffName(entry.created_by)} on {formatDateTime(entry.created_at)}</li>
-          {entry.posted_at && <li>Posted by {staffName(entry.posted_by)} on {formatDateTime(entry.posted_at)}</li>}
+          {entry.source === "savings_recovery" ? (
+            <li>Posted automatically by the nightly late-fee job on {formatDateTime(entry.posted_at ?? entry.created_at)}</li>
+          ) : (
+            <>
+              <li>Prepared by {staffName(entry.created_by)} on {formatDateTime(entry.created_at)}</li>
+              {entry.posted_at && <li>Posted by {staffName(entry.posted_by)} on {formatDateTime(entry.posted_at)}</li>}
+            </>
+          )}
           {entry.transaction_id && (
             <li>
               Written by the{" "}
