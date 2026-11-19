@@ -8,6 +8,9 @@ const DAY_END = "00000000-0000-0000-0000-0000000000f2";
 const AUDITOR = "00000000-0000-0000-0000-0000000000d1";
 const OFFICER = "00000000-0000-0000-0000-0000000000a1";
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- report JSON is checked field by field below
+type Report = Record<string, any>;
+
 let db: PGlite;
 let lagos: string;
 let abuja: string;
@@ -61,7 +64,7 @@ async function prepare(date: string, lines: [string, number, number][], branch =
 
 const post = (id: string) => commitAs(CONTROLLER, () => db.query("select post_journal_entry($1)", [id]));
 const closeDay = (by = CONTROLLER, note: string | null = null) =>
-  commitAs(by, () => db.query<{ business_date: string; status: string; report: Record<string, any> }>(
+  commitAs(by, () => db.query<{ business_date: string; status: string; report: Report }>(
     "select business_date::text, status, report from run_end_of_day($1)",
     [note],
   )).then((r) => r.rows[0]);
@@ -195,7 +198,7 @@ describe("End of Day", () => {
     expect(closed.business_date).toBe("2025-12-31");
     expect(await openDay()).toBe("2026-01-01");
 
-    const closes = (await db.query<{ period_kind: string; period_start: string; period_end: string; report: Record<string, any>; n: number }>(
+    const closes = (await db.query<{ period_kind: string; period_start: string; period_end: string; report: Report; n: number }>(
       "select period_kind, period_start::text, period_end::text, report, cardinality(closing_entry_ids) as n from period_closes order by period_kind",
     )).rows;
     expect(closes.map((c) => [c.period_kind, c.period_start, c.period_end, c.n])).toEqual([
@@ -239,7 +242,7 @@ describe("End of Day", () => {
     await startOn("2026-01-31");
     await post(await prepare("2026-01-31", [["1131", 70, 0], ["4400", 0, 70]]));
     await closeDay();
-    const month = (await db.query<{ report: Record<string, any> }>("select report from period_closes where period_end = '2026-01-31'")).rows[0];
+    const month = (await db.query<{ report: Report }>("select report from period_closes where period_end = '2026-01-31'")).rows[0];
     expect(month.report.profit_and_loss).toEqual({ income: 70, expenses: 0, surplus: 70 });
     expect((await db.query("select 1 from period_closes where period_kind = 'year'")).rows).toHaveLength(0);
     expect(await openDay()).toBe("2026-02-01");
