@@ -125,7 +125,7 @@ export default async function MemberPage({
   const { tab: tabParam } = await searchParams;
   const bundle = await getMemberBundle(id);
   if (!bundle) notFound();
-  const { member, documents, documentSignatures, plans, totals, progress, contributions, planTypes, accruedDividends, staffName } = bundle;
+  const { member, documents, documentSignatures, plans, totals, progress, contributions, confirmedContributions, planTypes, accruedDividends, staffName } = bundle;
 
   const branch = (await listBranches()).find((b) => b.id === member.branch_id)!;
   const can = (permission: string) => staff.permissions.hasForBranch(permission, branch);
@@ -690,11 +690,14 @@ export default async function MemberPage({
                                 </td>
                                 <td className="px-4 py-2">
                                   <div className="flex flex-wrap justify-end gap-2">
-                                    {c.kind === "top_up" && !reversed.has(c.id) && member.status === "approved" && (
-                                      <ButtonLink href={`/letters/top-ups/${c.id}`} variant="secondary">
-                                        Top-up letter
-                                      </ButtonLink>
-                                    )}
+                                    {c.kind === "top_up" && !reversed.has(c.id) && member.status === "approved" &&
+                                      (confirmedContributions.has(c.id) ? (
+                                        <ButtonLink href={`/letters/top-ups/${c.id}`} variant="secondary">
+                                          Top-up letter
+                                        </ButtonLink>
+                                      ) : (
+                                        <span className="self-center text-xs text-zinc-500">Letter once Accounts confirms the money</span>
+                                      ))}
                                     {!c.verified_at && can("contributions.verify") && c.recorded_by !== staff.id && (
                                       <ActionButton
                                         action={verifyContribution.bind(null, member.id, c.id)}

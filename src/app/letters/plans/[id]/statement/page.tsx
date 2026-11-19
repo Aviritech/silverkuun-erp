@@ -56,9 +56,8 @@ export default async function PlanStatement({ params }: { params: Promise<{ id: 
       notes={
         <>
           Counts verified contributions only
-          {unverified.length > 0 && ` (${unverified.length} not verified yet, left out)`}. Dividends use the placeholder
-          calculation the rest of the system uses (the monthly rate on each full month a contribution is held) until Kuun
-          confirms its method. Upload the issued copy on the member&apos;s file as a &quot;Statement of account&quot; or
+          {unverified.length > 0 && ` (${unverified.length} not verified yet, left out)`}. Dividends use the monthly rate on each full month a contribution is held; a month held 21 days or more counts as
+          full, and a shorter part month earns nothing. Upload the issued copy on the member&apos;s file as a &quot;Statement of account&quot; or
           &quot;Maturity and liquidation letter&quot;.
         </>
       }

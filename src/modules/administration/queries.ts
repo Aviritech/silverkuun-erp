@@ -138,6 +138,7 @@ export type PlanProgress = {
 
 export type Contribution = {
   id: string;
+  member_id: string;
   member_plan_id: string;
   kind: "scheduled" | "top_up" | "reversal" | "loan_penalty" | "loan_deduction";
   amount: string;
@@ -146,7 +147,7 @@ export type Contribution = {
   reference: string | null;
   notes: string | null;
   reverses_id: string | null;
-  /** Null for a late fee the daily job took from savings. */
+  /** Null for an entry the nightly job made (a late fee or loan repayment taken from savings). */
   recorded_by: string | null;
   recorded_at: string;
   verified_by: string | null;
@@ -175,7 +176,7 @@ export async function getMemberBundle(memberId: string) {
   if (error) throw dbFailure(error);
   if (!member) return null;
 
-  const [documents, plans, totals, contributions, plansCatalog, progress] = await Promise.all([
+  const [documents, plans, totals, contributions, plansCatalog, progress, confirmed] = await Promise.all([
     supabase.from("member_documents").select("*").eq("member_id", memberId).order("uploaded_at"),
     supabase.from("member_plans").select("*").eq("member_id", memberId).order("start_date"),
     supabase.from("member_plan_totals").select("*").eq("member_id", memberId),
@@ -189,8 +190,9 @@ export async function getMemberBundle(memberId: string) {
       .from("plan_progress")
       .select("plan_id, installments_due, expected_to_date, scheduled_paid, outstanding, last_paid_on, days_to_maturity")
       .eq("member_id", memberId),
+    supabase.rpc("member_confirmed_contributions", { p_member_id: memberId }),
   ]);
-  for (const r of [documents, plans, totals, contributions, plansCatalog, progress]) if (r.error) throw dbFailure(r.error);
+  for (const r of [documents, plans, totals, contributions, plansCatalog, progress, confirmed]) if (r.error) throw dbFailure(r.error);
 
   // Dividends built up so far on plans that pay them at maturity, to show what the member will get at the end.
   const atMaturity = ((plans.data ?? []) as Plan[]).filter((p) => p.dividends_at_maturity);
@@ -234,6 +236,8 @@ export async function getMemberBundle(memberId: string) {
     totals: new Map(((totals.data ?? []) as PlanTotals[]).map((t) => [t.member_plan_id, t])),
     progress: new Map(((progress.data ?? []) as PlanProgress[]).map((p) => [p.plan_id, p])),
     contributions: (contributions.data ?? []) as Contribution[],
+    /** Entries whose receipt Accounts has confirmed and posted. */
+    confirmedContributions: new Set(((confirmed.data ?? []) as { contribution_id: string }[]).map((r) => r.contribution_id)),
     accruedDividends: new Map(atMaturity.map((p, i) => [p.id, String(accrued[i].data ?? 0)])),
     planTypes: (plansCatalog.data ?? []) as PlanType[],
     staffName: (id: string | null) => (id ? (staffNames.get(id) ?? "Another staff member") : "—"),
