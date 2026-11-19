@@ -60,7 +60,8 @@ export type FinanceTransaction = {
   statement_line_id: string | null;
   decision_reason: string | null;
   journal_entry_id: string | null;
-  created_by: string;
+  /** Null on an interest payment request the morning job raised. */
+  created_by: string | null;
   created_at: string;
   submitted_by: string | null;
   submitted_at: string | null;
@@ -68,6 +69,8 @@ export type FinanceTransaction = {
   approved_at: string | null;
   /** The savings plan a member receipt was paid into. */
   member_plan_id: string | null;
+  /** The pay date, on an interest payment request raised automatically from the schedule. */
+  interest_for: string | null;
   /** Savings and capital keyed in by Accounts: Operations checks them against the member's records before approval. */
   needs_ops_confirmation: boolean;
   ops_confirmed_by: string | null;

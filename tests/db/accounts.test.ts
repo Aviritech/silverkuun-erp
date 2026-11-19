@@ -881,6 +881,31 @@ describe("target and child savings", () => {
     );
     expect(Number(schedule.rows[0].total_savings) - Number(before.rows[0].s)).toBe(100000);
   });
+
+  it("raises the day's interest payment requests automatically, once, for Accounts to review", async () => {
+    const raise = async () => (await db.query<{ n: number }>("select app.raise_interest_payment_requests() as n")).rows[0].n;
+    const due = await asUser(db, LAGOS_ACCOUNTANT, (tx) =>
+      tx.query<{ amount: string }>("select amount from interest_payment_schedule(current_date) where member_id = $1", [saver]),
+    );
+    expect(due.rows).toHaveLength(1);
+    expect(await raise()).toBeGreaterThanOrEqual(1);
+    const txn = (
+      await db.query<{ id: string; status: string; amount: string; created_by: string | null; transaction_type: string; direction: string }>(
+        "select id, status, amount, created_by, transaction_type, direction from finance_transactions where member_id = $1 and interest_for = current_date",
+        [saver],
+      )
+    ).rows;
+    expect(txn).toHaveLength(1);
+    expect(txn[0]).toMatchObject({ status: "draft", amount: due.rows[0].amount, created_by: null, transaction_type: "roi_payment", direction: "payment" });
+    // Never twice for the same pay date.
+    expect(await raise()).toBe(0);
+    await expect(commitAs(LAGOS_ACCOUNTANT, () => db.query("select app.raise_interest_payment_requests()"))).rejects.toThrow(/permission denied/);
+    // An accountant reviews and submits it without an attachment: the schedule is the evidence.
+    const submitted = await commitAs(LAGOS_ACCOUNTANT, () =>
+      db.query<{ status: string; submitted_by: string }>("select status, submitted_by from submit_finance_transaction($1)", [txn[0].id]),
+    );
+    expect(submitted.rows[0]).toEqual({ status: "submitted", submitted_by: LAGOS_ACCOUNTANT });
+  });
 });
 
 describe("liquidation of a member's savings", () => {

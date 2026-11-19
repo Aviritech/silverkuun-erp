@@ -23,7 +23,9 @@ export default async function EditTransactionPage({ params }: { params: Promise<
   const { data, error } = await supabase.from("finance_transactions").select("*").eq("id", id).maybeSingle();
   if (error) throw dbFailure(error);
   const txn = data as FinanceTransaction | null;
-  if (!txn || txn.created_by !== staff.id || !["draft", "returned"].includes(txn.status)) notFound();
+  // Their own draft, or an interest payment request the morning job raised (anyone who requests payments may correct it).
+  const automatic = !!txn && !txn.created_by && !!txn.interest_for;
+  if (!txn || (txn.created_by !== staff.id && !automatic) || !["draft", "returned"].includes(txn.status)) notFound();
 
   const [rules, banks, members, org, dimensions, loans] = await Promise.all([
     listPostingRules(),

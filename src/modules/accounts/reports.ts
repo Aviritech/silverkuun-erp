@@ -646,7 +646,7 @@ const payablesAging: ReportDefinition = {
 const interestPayments: ReportDefinition = {
   key: "interest-payments",
   title: "Interest payment schedule",
-  description: "Members whose monthly interest falls due on the date, with their bank details, savings and the amount to pay.",
+  description: "Members whose monthly interest falls due on the date, with their bank details, savings and the amount to pay. Each morning a payment request is raised automatically for every member due that day, for Accounts to review, submit and pay.",
   basePath: "/accounts",
   permission: "accounts.payments.request",
   dates: "asAt",
