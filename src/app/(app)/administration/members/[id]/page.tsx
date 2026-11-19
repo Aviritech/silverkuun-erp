@@ -595,6 +595,14 @@ export default async function MemberPage({
                         <p className="text-xs text-zinc-500">
                           {formatDate(plan.start_date)} to {formatDate(plan.maturity_date)} · {monthlyRate(plan.interest_rate)}% a month · {plan.status}
                         </p>
+                        {plan.from_liquidation_id && (
+                          <p className="text-xs text-zinc-500">
+                            Opened with the rest of the savings from liquidation{" "}
+                            <span className="font-mono">
+                              {memberLiquidations.find((l) => l.id === plan.from_liquidation_id)?.liquidation_no ?? ""}
+                            </span>
+                          </p>
+                        )}
                         {plan.dividends_at_maturity ? (
                           <p className="text-xs text-zinc-500">Dividends build up and are paid with the savings at maturity.</p>
                         ) : (
@@ -614,7 +622,10 @@ export default async function MemberPage({
                         )}
                         {member.status === "approved" && plan.status !== "cancelled" && (
                           <div className="mt-2 flex flex-wrap gap-2">
-                            <ButtonLink href={`/letters/plans/${plan.id}/agreement`} variant="secondary">
+                            <ButtonLink
+                              href={`/letters/plans/${plan.id}/agreement${plan.from_liquidation_id ? "?rollover=1" : ""}`}
+                              variant="secondary"
+                            >
                               Agreement letter
                             </ButtonLink>
                             <ButtonLink href={`/letters/plans/${plan.id}/statement`} variant="secondary">
@@ -673,7 +684,8 @@ export default async function MemberPage({
                                 </td>
                                 <td className="whitespace-nowrap px-4 py-2 text-right tabular-nums">{formatMoney(c.amount)}</td>
                                 <td className="px-4 py-2">
-                                  {PAYMENT_METHODS[c.payment_method as keyof typeof PAYMENT_METHODS] ?? "Taken automatically"}
+                                  {PAYMENT_METHODS[c.payment_method as keyof typeof PAYMENT_METHODS] ??
+                                    (c.payment_method === "plan_transfer" ? "No cash: moved between plans" : "Taken automatically")}
                                   {c.reference && <div className="font-mono text-xs text-zinc-500">{c.reference}</div>}
                                 </td>
                                 <td className="px-4 py-2">
@@ -702,7 +714,7 @@ export default async function MemberPage({
                                         variant="secondary"
                                       />
                                     )}
-                                    {c.kind !== "reversal" && c.kind !== "loan_penalty" && !reversed.has(c.id) && can("contributions.record") && (
+                                    {c.kind !== "reversal" && c.kind !== "loan_penalty" && c.kind !== "plan_transfer" && !reversed.has(c.id) && can("contributions.record") && (
                                       <ReversalForm action={reverseContribution.bind(null, member.id)} contributionId={c.id} />
                                     )}
                                   </div>
@@ -731,6 +743,13 @@ export default async function MemberPage({
                           <p className="flex flex-wrap items-center gap-2 border-t border-zinc-100 p-4 text-sm">
                             Liquidation <span className="font-mono text-xs">{l.liquidation_no}</span> · {formatMoney(l.amount)}
                             <Badge tone={LIQUIDATION_STATUSES[l.status].tone}>{LIQUIDATION_STATUSES[l.status].label}</Badge>
+                            {l.new_plan_type && (
+                              <span className="text-xs text-zinc-600">
+                                {l.rollover_amount
+                                  ? `Rest (${formatMoney(l.rollover_amount)}) moved to a new ${l.new_plan_name} plan`
+                                  : `Rest goes into a new ${l.new_plan_name} plan when paid`}
+                              </span>
+                            )}
                             <Link href="/administration/liquidations" className="text-xs underline">
                               Liquidations
                             </Link>
@@ -743,6 +762,7 @@ export default async function MemberPage({
                           <LiquidationForm
                             action={requestLiquidation.bind(null, plan.id, null)}
                             banks={cbnBanks}
+                            planTypes={planTypes}
                             savings={t?.total_verified ?? "0"}
                             defaults={{
                               amount: t?.total_verified ? String(t.total_verified) : "",

@@ -10,6 +10,7 @@ import { FINANCE_STATUSES, type FinanceStatus } from "@/modules/accounts/constan
 import { accountsModule } from "@/modules/accounts/module";
 import { listBankAccounts } from "@/modules/accounts/queries";
 import { returnLiquidation } from "@/modules/administration/actions";
+import { NewPlanSummary } from "@/modules/administration/components/new-plan-summary";
 import { listLiquidations } from "@/modules/administration/queries";
 
 export default async function LiquidationsToPayPage() {
@@ -30,7 +31,7 @@ export default async function LiquidationsToPayPage() {
     <div className="max-w-5xl space-y-6">
       <PageHeader
         title="Liquidations to pay"
-        description="Members' savings the Branch Manager approved for payout. Check the amount and the beneficiary's account, then raise the payment; it goes through the usual approval, Internal Audit and proof of payment. When it posts, the plan closes as liquidated."
+        description="Members' savings the Branch Manager approved for payout. Check the amount and the beneficiary's account, then raise the payment; it goes through the usual approval, Internal Audit and proof of payment. When it posts, the plan closes as liquidated. On a part payout, the rest of the savings moves into the new plan Operations set up, with no cash leaving."
       />
       <Card title={`Waiting for a payment request (${waiting.length})`}>
         {waiting.length === 0 ? (
@@ -75,9 +76,19 @@ export default async function LiquidationsToPayPage() {
                       </dd>
                     </div>
                   </dl>
-                  {Number(l.amount) !== Number(l.plan_savings) && (
-                    <p className="text-xs text-amber-800">
-                      Verified savings when requested were {formatMoney(l.plan_savings)}; the approved amount differs.
+                  {l.new_plan_type ? (
+                    <NewPlanSummary l={l} memberLink={false} />
+                  ) : (
+                    Number(l.amount) !== Number(l.plan_savings) && (
+                      <p className="text-xs text-amber-800">
+                        Verified savings when requested were {formatMoney(l.plan_savings)}; the approved amount differs.
+                      </p>
+                    )
+                  )}
+                  {!l.new_plan_type && Number(l.current_savings) > Number(l.amount) && (
+                    <p className="text-xs text-red-700">
+                      The plan now holds {formatMoney(l.current_savings)}, more than this payout, and the request has no new plan for
+                      the rest. Send it back to Operations to add one before paying.
                     </p>
                   )}
                   {l.payment_status && (
@@ -142,6 +153,12 @@ export default async function LiquidationsToPayPage() {
               <li key={l.id} className="flex items-center justify-between gap-4 py-2">
                 <span>
                   <span className="font-mono text-xs">{l.liquidation_no}</span> · {l.member_name} · {formatMoney(l.amount)}
+                  {l.rollover_amount && (
+                    <span className="text-xs text-zinc-500">
+                      {" "}
+                      (+ {formatMoney(l.rollover_amount)} moved to a new {l.new_plan_name} plan)
+                    </span>
+                  )}
                 </span>
                 <span className="text-xs text-zinc-500">
                   {formatDate(l.paid_at)}

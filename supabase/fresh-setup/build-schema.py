@@ -23,7 +23,7 @@ REPLACE = {
     "  'guarantor_mandate', 'mortgage_deed', 'cheque_leaves', 'sale_of_assets_agreement', 'insurance_evidence', 'gsi_mandate',\n"
     "  'equity_evidence'\n);",
     "create type public.contribution_kind as enum ('scheduled', 'top_up', 'reversal');":
-    "create type public.contribution_kind as enum ('scheduled', 'top_up', 'reversal', 'loan_penalty');",
+    "create type public.contribution_kind as enum ('scheduled', 'top_up', 'reversal', 'loan_penalty', 'plan_transfer');",
     "  'draft', 'submitted', 'appraised', 'returned', 'rejected', 'approved', 'active', 'closed', 'cancelled'\n);":
     "  'draft', 'submitted', 'appraised', 'credit_approved', 'returned', 'rejected', 'approved', 'active', 'closed', 'cancelled'\n);",
 }

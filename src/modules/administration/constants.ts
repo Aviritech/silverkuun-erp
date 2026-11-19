@@ -74,6 +74,7 @@ export const CONTRIBUTION_KINDS = {
   top_up: "Top-up",
   reversal: "Reversal",
   loan_penalty: "Loan late fee taken from savings",
+  plan_transfer: "Moved between plans (liquidation)",
 } as const;
 
 export const ALLOWED_UPLOAD_TYPES = ["application/pdf", "image/jpeg", "image/png"] as const;

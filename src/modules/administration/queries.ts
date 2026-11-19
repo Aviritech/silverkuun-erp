@@ -96,6 +96,8 @@ export type Plan = {
   dividends_at_maturity: boolean;
   /** Day of the month this plan's interest is paid (the last day in shorter months); null for plans paid at maturity. */
   interest_pay_day: number | null;
+  /** The liquidation whose remaining savings opened this plan, if any. */
+  from_liquidation_id: string | null;
   /** Why the pay day was last changed after the plan was opened. */
   pay_day_change_reason: string | null;
 };
@@ -139,7 +141,7 @@ export type PlanProgress = {
 export type Contribution = {
   id: string;
   member_plan_id: string;
-  kind: "scheduled" | "top_up" | "reversal" | "loan_penalty";
+  kind: "scheduled" | "top_up" | "reversal" | "loan_penalty" | "plan_transfer";
   amount: string;
   paid_on: string;
   payment_method: string;
@@ -281,7 +283,33 @@ export type Liquidation = {
   payment_txn_no: string | null;
   payment_status: string | null;
   paid_at: string | null;
+  /** The plan's verified savings now. */
+  current_savings: string;
+  /** A part payout's instructions for the new plan the rest moves into (null when the whole savings are paid). */
+  new_plan_type: string | null;
+  new_plan_name: string | null;
+  new_contribution_amount: string | null;
+  new_contribution_frequency: string | null;
+  new_tenure_months: number | null;
+  new_interest_pay_day: number | null;
+  /** Annual rate (%) of the new plan's type. */
+  new_plan_rate: string | null;
+  /** Set when the payout posts: what moved, and the plan it moved into. */
+  rollover_amount: string | null;
+  new_member_plan_id: string | null;
 };
+
+/** Active plan types, for choosing a plan (as on the member's Plans tab). */
+export async function listPlanTypes(): Promise<PlanType[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("plan_types")
+    .select("code, name, description, interest_rate, tenure_months, min_amount, max_amount, dividends_at_maturity")
+    .eq("is_active", true)
+    .order("sort_order");
+  if (error) throw dbFailure(error);
+  return (data ?? []) as PlanType[];
+}
 
 /** Liquidation requests in the caller's branches, newest first, with names (Operations and Accounts both use it). */
 export async function listLiquidations(statuses?: string[]): Promise<Liquidation[]> {
