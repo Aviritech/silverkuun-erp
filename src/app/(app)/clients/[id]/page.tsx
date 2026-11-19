@@ -120,10 +120,11 @@ export default async function ClientPage({ params }: { params: Promise<{ id: str
           <Detail label="Phone">{member.phone}</Detail>
           <Detail label="Email">{member.email}</Detail>
           <Detail label="Date of birth">{member.date_of_birth ? formatDate(member.date_of_birth) : null}</Detail>
-          <Detail label="Address">
-            {[member.address, member.address_city, member.address_lga, member.address_state].filter(Boolean).join(", ")}
-            {member.address_landmark && <span className="block text-xs text-zinc-500">Near {member.address_landmark}</span>}
-          </Detail>
+          <Detail label="House number and street">{member.address}</Detail>
+          <Detail label="Town or city">{member.address_city}</Detail>
+          <Detail label="LGA">{member.address_lga}</Detail>
+          <Detail label="State">{member.address_state}</Detail>
+          <Detail label="Nearest landmark">{member.address_landmark}</Detail>
           <Detail label="Means of ID">
             {ID_TYPES[member.id_type as keyof typeof ID_TYPES] ?? member.id_type} · {member.id_number}
           </Detail>
