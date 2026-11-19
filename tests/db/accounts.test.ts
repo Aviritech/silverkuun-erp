@@ -16,6 +16,7 @@ const ABUJA_PAYMENTS = "00000000-0000-0000-0000-0000000000e4";
 const CONFIRMER = "00000000-0000-0000-0000-0000000000e5";
 const ACCOUNTS_OFFICER = "00000000-0000-0000-0000-0000000000e6";
 const ACCOUNTS_OFFICER_2 = "00000000-0000-0000-0000-0000000000e7";
+const PAYMENTS_APPROVER = "00000000-0000-0000-0000-0000000000ea";
 
 let db: PGlite;
 let lagos: string;
@@ -160,6 +161,8 @@ beforeAll(async () => {
   await db.query("insert into staff_roles (staff_id, role_code) values ($1, 'accounts_officer')", [CONFIRMER]);
   await addStaff(ACCOUNTS_OFFICER, "accounts", "accounts_officer", null);
   await addStaff(ACCOUNTS_OFFICER_2, "accounts", "accounts_officer", null);
+  await addStaff(PAYMENTS_APPROVER, "accounts", "payments_approver", null);
+  await db.query("insert into staff_roles (staff_id, role_code) values ($1, 'payments_accountant')", [PAYMENTS_APPROVER]);
   await addStaff(AUDITOR, "internal_audit", "internal_auditor", null);
   await addStaff(HEAD_OPS, "administration", "head_of_administration", null);
 
@@ -1080,5 +1083,35 @@ describe("only the Receipts Confirmation Accountant credits a member's account",
       "select role_code from role_permissions where permission_code = 'accounts.members.credit' order by 1",
     );
     expect(holders.rows.map((r) => r.role_code)).toEqual(["receipts_confirmer"]);
+  });
+});
+
+describe("the Payments Approver", () => {
+  it("approves, returns or rejects payments raised by someone else, but not their own, and not receipts", async () => {
+    const payment = await draft(LAGOS_ACCOUNTANT, { direction: "payment", type: "admin_expense", amount: 75 });
+    await attach(LAGOS_ACCOUNTANT, payment);
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [payment.id]));
+    await commitAs(PAYMENTS_APPROVER, () => db.query("select approve_finance_transaction($1)", [payment.id]));
+    expect((await txnRow(payment.id)).status).toBe("approved");
+
+    const returned = await draft(LAGOS_ACCOUNTANT, { direction: "payment", type: "admin_expense", amount: 76 });
+    await attach(LAGOS_ACCOUNTANT, returned);
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [returned.id]));
+    await commitAs(PAYMENTS_APPROVER, () => db.query("select decline_finance_transaction($1, 'returned', 'No invoice')", [returned.id]));
+    expect((await txnRow(returned.id)).status).toBe("returned");
+
+    const own = await draft(PAYMENTS_APPROVER, { direction: "payment", type: "admin_expense", amount: 77 });
+    await attach(PAYMENTS_APPROVER, own);
+    await commitAs(PAYMENTS_APPROVER, () => db.query("select submit_finance_transaction($1)", [own.id]));
+    await expect(commitAs(PAYMENTS_APPROVER, () => db.query("select approve_finance_transaction($1)", [own.id]))).rejects.toThrow(
+      /someone else must approve/,
+    );
+
+    const fee = await draft(LAGOS_ACCOUNTANT, { direction: "receipt", type: "fee_income", amount: 78 });
+    await attach(LAGOS_ACCOUNTANT, fee);
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select submit_finance_transaction($1)", [fee.id]));
+    await expect(commitAs(PAYMENTS_APPROVER, () => db.query("select approve_finance_transaction($1)", [fee.id]))).rejects.toThrow(
+      /can't approve this transaction/,
+    );
   });
 });
