@@ -177,7 +177,7 @@ export function PayDayForm({ action, current }: { action: Action; current: numbe
   );
 }
 
-/** A scheduled contribution. Top-ups aren't recorded here: they come from Accounts (see the Top ups from Accounts queue). */
+/** A scheduled contribution. Top-ups aren't recorded here: they come from Accounts (see the Inflows from Accounts queue). */
 export function ContributionForm({ action, planId }: { action: Action; planId: string }) {
   const label = "Record contribution";
   return (

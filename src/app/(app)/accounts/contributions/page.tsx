@@ -83,9 +83,9 @@ export default async function SavingsPayInsPage() {
     lines = lineRes.data.map((l) => ({ ...l, amount: Number(l.amount) }));
     receipts = receiptRes.data.filter((r) => r.member_id).map((r) => ({ ...r, member_id: r.member_id!, amount: Number(r.amount) }));
   }
-  // Top ups Accounts sent to the branch: show their number, and default to the account Accounts said it went into.
+  // Inflows Accounts sent to the branch (top ups or regular contributions): show their number, and default to the account Accounts said it went into.
   const topUps = new Map<string, { top_up_no: string; bank_account_id: string | null }>();
-  const topUpIds = list.filter((c) => c.kind === "top_up").map((c) => c.id);
+  const topUpIds = list.filter((c) => c.kind === "top_up" || c.kind === "scheduled").map((c) => c.id);
   if (topUpIds.length) {
     const res = await supabase.from("top_up_requests").select("contribution_id, top_up_no, bank_account_id").in("contribution_id", topUpIds);
     if (res.error) throw dbFailure(res.error);

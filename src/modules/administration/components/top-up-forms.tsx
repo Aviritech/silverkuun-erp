@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { InlineForm } from "@/components/inline-form";
 import { Field, Input, Select, Textarea } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
+import { INFLOW_TYPES, type InflowType } from "@/modules/accounts/top-ups";
 
 type Action = (prev: ActionState, formData: FormData) => Promise<ActionState>;
 export type PlanOption = { id: string; member_id: string; label: string; search: string };
@@ -17,7 +18,7 @@ function nameWords(text: string): string[] {
 }
 
 /**
- * The officer finds the member's plan and logs the top up. Plans whose member's name shares a word with "paid by"
+ * The officer finds the member's plan and logs the inflow, as a regular contribution or a top up. Plans whose member's name shares a word with "paid by"
  * are listed first; the search box narrows the list.
  */
 export function LogTopUpForm({
@@ -26,6 +27,7 @@ export function LogTopUpForm({
   paidBy,
   matchedMemberId,
   matchedPlanId,
+  inflowType,
 }: {
   action: Action;
   plans: PlanOption[];
@@ -33,6 +35,8 @@ export function LogTopUpForm({
   /** The member and plan Accounts picked, if it did: listed first and pre-selected. */
   matchedMemberId?: string | null;
   matchedPlanId?: string | null;
+  /** What Accounts said the money is for; the officer can correct it. */
+  inflowType: InflowType;
 }) {
   const [query, setQuery] = useState("");
   const ranked = useMemo(() => {
@@ -51,7 +55,7 @@ export function LogTopUpForm({
     matchedPlanId && shown.some((p) => p.id === matchedPlanId) ? matchedPlanId : likely.length === 1 && shown.some((p) => p.id === likely[0].id) ? likely[0].id : "";
 
   return (
-    <InlineForm action={action} openLabel="Log for a member" submitLabel="Log top up" variant="primary">
+    <InlineForm action={action} openLabel="Log for a member" submitLabel="Log it" variant="primary">
       {(e) => (
         <div className="grid gap-3 sm:grid-cols-2">
           <Field label="Find the member">
@@ -68,13 +72,22 @@ export function LogTopUpForm({
               ))}
             </Select>
           </Field>
-          <div className="sm:col-span-2">
+          <Field label="What is it for?" error={e.inflow_type}>
+            <Select name="inflow_type" required defaultValue={inflowType}>
+              {Object.entries(INFLOW_TYPES).map(([v, t]) => (
+                <option key={v} value={v}>
+                  {t.label} ({t.hint.toLowerCase()})
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <div>
             <Field label="Note (optional)" error={e.note}>
               <Textarea name="note" rows={2} placeholder="e.g. Member confirmed by phone" />
             </Field>
           </div>
           <p className="text-xs text-zinc-500 sm:col-span-2">
-            The amount, date and reference are the ones Accounts recorded. After you log it, the Branch Manager verifies it and Accounts posts it.
+            The amount, date and reference are the ones Accounts recorded. Change what it is for only if the member&apos;s plan shows Accounts got it wrong. After you log it, the Branch Manager verifies it and Accounts posts it.
           </p>
         </div>
       )}

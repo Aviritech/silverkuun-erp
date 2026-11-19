@@ -174,7 +174,7 @@ export const reconciliationSchema = z.object({
   notes: optionalText,
 });
 
-/** A member top up Accounts received and sends to a branch for the officer to log against the member. */
+/** A member inflow (money in for a member) Accounts received and sends to a branch for the officer to log against the member. */
 export const topUpSchema = z.object({
   branch_id: z.guid("Choose the branch it goes to"),
   amount: money,
@@ -186,4 +186,5 @@ export const topUpSchema = z.object({
   note: optionalText,
   member_id: optionalId,
   member_plan_id: optionalId,
+  inflow_type: z.enum(["contribution", "top_up"], "Say what the money is for"),
 });

@@ -12,7 +12,7 @@ const inputClass =
   "mt-1 w-full rounded-lg border border-zinc-300 bg-white px-3 py-2 text-sm shadow-sm outline-none transition-colors placeholder:text-zinc-400 focus:border-ink focus:ring-2 focus:ring-brand-200";
 
 /**
- * "Paid by" for a top up: type a name, membership number or phone and pick the member, which fills in their branch and
+ * "Paid by" for a member inflow: type a name, membership number or phone and pick the member, which fills in their branch and
  * lets Accounts point at the plan. If nobody matches (the name on a transfer often isn't the member's), whatever was
  * typed goes to the branch as written, as before.
  */
@@ -45,7 +45,7 @@ export function TopUpMemberSearch({
   const seq = useRef(0);
   const listId = useId();
 
-  // The branch was changed by hand to another one: this is no longer the member's top up.
+  // The branch was changed by hand to another one: this is no longer the member's money.
   useEffect(() => {
     if (match && branchId && branchId !== match.branch_id) {
       setMatch(null);

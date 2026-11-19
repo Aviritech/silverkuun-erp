@@ -14,6 +14,13 @@ const nextConfig: NextConfig = {
     // KYC documents are uploaded through server actions; allow up to the 10 MB file limit plus form overhead.
     serverActions: { bodySizeLimit: "11mb" },
   },
+  // Member top ups became Member inflows: old links keep working.
+  async redirects() {
+    return [
+      { source: "/accounts/top-ups", destination: "/accounts/inflows", permanent: true },
+      { source: "/administration/top-ups", destination: "/administration/inflows", permanent: true },
+    ];
+  },
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },

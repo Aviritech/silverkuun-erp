@@ -40,7 +40,7 @@ async function commitAs<T>(userId: string, fn: () => Promise<T>): Promise<T> {
   }
 }
 
-type TopUp = { id: string; top_up_no: string; status: string; branch_id: string; contribution_id: string | null; decision_note: string | null };
+type TopUp = { id: string; top_up_no: string; status: string; inflow_type: string; branch_id: string; contribution_id: string | null; decision_note: string | null };
 
 function initiate(by: string, branch: string, opts: { id?: string; amount?: number; bank?: string | null; paidOn?: string } = {}) {
   return commitAs(by, () =>
@@ -106,7 +106,7 @@ beforeAll(async () => {
   ).rows[0].id;
 });
 
-describe("top ups from Accounts", () => {
+describe("member inflows from Accounts", () => {
   it("Operations can't record a top-up on its own any more", async () => {
     await expect(
       commitAs(OFFICER, () =>
@@ -122,7 +122,8 @@ describe("top ups from Accounts", () => {
   it("goes Accounts → branch officer → Branch Manager → Accounts posting, with Accounts' amount and reference", async () => {
     const t = await initiate(LAGOS_ACCOUNTANT, lagos, { bank: lagosBank });
     expect(t.status).toBe("with_branch");
-    expect(t.top_up_no).toMatch(/^TOP-\d{6}$/);
+    expect(t.top_up_no).toMatch(/^INF-\d{6}$/);
+    expect(t).toMatchObject({ inflow_type: "top_up" });
 
     // The branch sees it in its queue; another branch doesn't.
     const queue = await commitAs(OFFICER, () => db.query<{ id: string; bank_account_name: string }>("select * from top_up_list(array['with_branch'])"));
@@ -205,7 +206,7 @@ describe("top ups from Accounts", () => {
     await commitAs(ABUJA_RECEIPTS, () => db.query("select cancel_top_up($1, 'Customer was refunded')", [t.id]));
     const row = (await db.query<{ status: string }>("select status from top_up_requests where id = $1", [t.id])).rows[0];
     expect(row.status).toBe("cancelled");
-    await expect(initiate(HQ_RECEIPTS, abuja, { id: t.id })).rejects.toThrow(/only a top up the branch sent back/);
+    await expect(initiate(HQ_RECEIPTS, abuja, { id: t.id })).rejects.toThrow(/only an inflow the branch sent back/);
   });
 
   it("lets Accounts find the member by name, number or phone, only in branches it records receipts for", async () => {
@@ -256,5 +257,34 @@ describe("top ups from Accounts", () => {
     await commitAs(OFFICER, () => db.query("select return_top_up($1, 'Wrong member')", [t.id]));
     const resent = await send(LAGOS_ACCOUNTANT, lagos, null, null, t.id);
     expect(resent).toMatchObject({ status: "with_branch", matched_member_id: null, matched_plan_id: null });
+  });
+  it("logs a regular contribution as a contribution, not a top up, and the branch can correct what it is for", async () => {
+    const send = (type: string | null) =>
+      commitAs(LAGOS_ACCOUNTANT, () =>
+        db.query<TopUp>(
+          `select * from initiate_top_up(p_id => null, p_branch_id => $1, p_amount => 5000, p_paid_on => current_date, p_payment_method => 'bank_transfer',
+             p_reference => 'TRF-5', p_bank_account_id => null, p_paid_by => 'Ada Obi', p_note => null, p_inflow_type => $2)`,
+          [lagos, type],
+        ),
+      ).then((r) => r.rows[0]);
+    await expect(send("loan")).rejects.toThrow(/what the money is for/);
+    await expect(send(null)).rejects.toThrow(/what the money is for/);
+
+    const regular = await send("contribution");
+    expect(regular.inflow_type).toBe("contribution");
+    const listed = await commitAs(OFFICER, () => db.query<{ inflow_type: string }>("select inflow_type from top_up_list(array['with_branch']) where id = $1", [regular.id]));
+    expect(listed.rows[0].inflow_type).toBe("contribution");
+    const logged = (await commitAs(OFFICER, () => db.query<TopUp>("select * from log_top_up($1, $2, null)", [regular.id, planId]))).rows[0];
+    const kind = async (id: string | null) => (await db.query<{ kind: string; notes: string }>("select kind, notes from contributions where id = $1", [id])).rows[0];
+    expect(await kind(logged.contribution_id)).toMatchObject({ kind: "scheduled", notes: expect.stringContaining(`Inflow ${regular.top_up_no}`) });
+
+    // Accounts said contribution, but the member's plan shows it's extra: the officer logs it as a top up.
+    const second = await send("contribution");
+    const corrected = (await commitAs(OFFICER, () => db.query<TopUp>("select * from log_top_up($1, $2, null, 'top_up')", [second.id, planId]))).rows[0];
+    expect(corrected.inflow_type).toBe("top_up");
+    expect((await kind(corrected.contribution_id)).kind).toBe("top_up");
+
+    const third = await send("top_up");
+    await expect(commitAs(OFFICER, () => db.query("select log_top_up($1, $2, null, 'loan')", [third.id, planId]))).rejects.toThrow(/what the money is for/);
   });
 });
