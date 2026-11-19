@@ -16,6 +16,7 @@ import type {
   RepaymentMode,
   RiskRating,
 } from "./constants";
+import type { ApplicationForm, ChecklistAnswer, FormDetails, VerificationMethod } from "./loan-forms";
 
 export type LoanProduct = {
   code: string;
@@ -34,6 +35,12 @@ export type LoanProduct = {
   requires_proforma: boolean;
   is_active: boolean;
   sort_order: number;
+  /** The paper form the product follows; Kuun's forms add fields, a guarantor form and a compliance checklist. */
+  application_form: ApplicationForm;
+  /** Guarantors needed before submitting, when the product requires guarantors. */
+  min_guarantors: number;
+  /** Repayment frequencies allowed; null allows all. */
+  repayment_frequencies: RepaymentFrequency[] | null;
 };
 
 export type Loan = {
@@ -93,6 +100,8 @@ export type Loan = {
   created_at: string;
   submitted_by: string | null;
   submitted_at: string | null;
+  /** The extra answers on the product's Kuun application form. */
+  form_details: FormDetails;
 };
 
 /** A row of the loan_book view: the loan with its repayment position today. */
@@ -176,6 +185,20 @@ export type Guarantor = {
   confirmed_by: string | null;
   confirmed_at: string | null;
   confirmation_note: string | null;
+  /** The extra answers on the product's Kuun guarantor form. */
+  form_details: FormDetails;
+};
+
+export type ChecklistItem = { item_code: string; answer: ChecklistAnswer; remark: string | null; checked_by: string; checked_at: string };
+
+export type ComplianceReview = {
+  loan_id: string;
+  verification_methods: VerificationMethod[];
+  kyc_status: "satisfactory" | "unsatisfactory" | null;
+  kyc_recommendation: "proceed" | "deferred" | "decline" | null;
+  note: string | null;
+  reviewed_by: string;
+  reviewed_at: string;
 };
 
 export type Collateral = {
@@ -297,7 +320,7 @@ export async function getLoanBundle(id: string) {
   if (!data) return null;
   const loan = data as Loan;
 
-  const [position, member, product, guarantors, collaterals, documents, schedule, repayments, restructures, reminders, history] =
+  const [position, member, product, guarantors, collaterals, documents, schedule, repayments, restructures, reminders, history, checklist, review] =
     await Promise.all([
       rows<LoanBookRow[]>(supabase.from("loan_book").select("*").eq("id", id)),
       rows<{ id: string; first_name: string; middle_name: string | null; last_name: string; membership_no: string | null; phone: string; address: string }>(
@@ -319,6 +342,8 @@ export async function getLoanBundle(id: string) {
           .neq("id", id)
           .order("created_at", { ascending: false }),
       ),
+      rows<ChecklistItem[]>(supabase.from("loan_checklist_items").select("item_code, answer, remark, checked_by, checked_at").eq("loan_id", id)),
+      rows<ComplianceReview[]>(supabase.from("loan_compliance_reviews").select("*").eq("loan_id", id)),
     ]);
 
   const signed = documents.length
@@ -343,6 +368,7 @@ export async function getLoanBundle(id: string) {
     ...documents.map((d) => d.uploaded_by),
     ...restructures.flatMap((r) => [r.requested_by, r.decided_by]),
     ...reminders.map((r) => r.sent_by),
+    review[0]?.reviewed_by,
   ]);
 
   return {
@@ -359,6 +385,8 @@ export async function getLoanBundle(id: string) {
     restructures,
     reminders,
     otherLoans: history,
+    checklist,
+    review: review[0] ?? null,
     documentSignatures,
     guarantorSignatures,
     staffName,

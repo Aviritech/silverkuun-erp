@@ -17,6 +17,11 @@ REPLACE = {
     "  'kyc_form', 'nin_slip', 'means_of_id', 'utility_bill', 'passport_photo', 'signed_agreement_letter', 'other'\n);":
     "  'kyc_form', 'nin_slip', 'means_of_id', 'utility_bill', 'passport_photo', 'signed_agreement_letter', 'other',\n"
     "  'statement_of_account', 'maturity_letter'\n);",
+    "  'credit_bureau_report', 'offer_letter', 'other'\n);":
+    "  'credit_bureau_report', 'offer_letter', 'other',\n"
+    "  'utility_bill', 'id_document', 'passport_photo', 'employment_letter', 'direct_debit_mandate', 'guarantor_id',\n"
+    "  'guarantor_mandate', 'mortgage_deed', 'cheque_leaves', 'sale_of_assets_agreement', 'insurance_evidence', 'gsi_mandate',\n"
+    "  'equity_evidence'\n);",
     "  'draft', 'submitted', 'appraised', 'returned', 'rejected', 'approved', 'active', 'closed', 'cancelled'\n);":
     "  'draft', 'submitted', 'appraised', 'credit_approved', 'returned', 'rejected', 'approved', 'active', 'closed', 'cancelled'\n);",
 }

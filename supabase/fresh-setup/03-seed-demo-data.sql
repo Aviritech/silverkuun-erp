@@ -480,6 +480,14 @@ begin
   perform pg_temp.act_as('analyst@kuun.test');
   perform public.confirm_loan_guarantor(g.id, 'Called the guarantor, who confirmed they stand for the loan')
   from public.loan_guarantors g where g.loan_id = p_id;
+  -- Loans on Kuun's forms need the compliance checklist before the appraisal.
+  if (select p.application_form from public.loans l join public.loan_products p on p.code = l.product_code where l.id = p_id) <> 'standard' then
+    perform public.record_loan_checklist(p_id,
+      (select jsonb_agg(jsonb_build_object('item', c.item_code, 'answer', 'yes'))
+       from public.loan_checklist_lines c join public.loan_products p on p.application_form = c.application_form
+       join public.loans l on l.product_code = p.code where l.id = p_id),
+      '{telephone,physical_visit}', 'satisfactory', 'proceed', 'All documents seen on file.');
+  end if;
   perform public.appraise_loan(p_id, 'clear', 'CRC Credit Bureau', '702', 'low', 'approve', p_amount,
     'Steady income, no adverse bureau records, repayment within a third of monthly income.');
   if p_stage = 'appraised' then return; end if;
@@ -542,6 +550,33 @@ select pg_temp.new_loan('b0000000-0000-0000-0000-000000000005', pg_temp.m(13), '
 insert into public.loan_documents (loan_id, branch_id, document_type, file_name, storage_path, mime_type, size_bytes)
 values ('b0000000-0000-0000-0000-000000000005', pg_temp.b(9), 'proforma_invoice', 'proforma.pdf',
         pg_temp.b(9) || '/b0000000-0000-0000-0000-000000000005/seed-proforma.pdf', 'application/pdf', 1024);
+update public.loans
+   set form_details = '{"bvn": "22234567890", "years_in_employment": "8 years", "asset_category": "household_appliance",
+     "asset_description": "HP laptop and LaserJet printer", "vendor": "Slot Systems, Ikeja", "proforma_invoice_no": "PF-20931",
+     "asset_total_cost": "750000", "equity_contribution": "300000", "equity_applicable": "yes", "repayment_source": "salary"}'
+ where id = 'b0000000-0000-0000-0000-000000000005';
+-- A payday loan waiting for the analyst's compliance checklist, and a property-backed loan still being prepared.
+select pg_temp.new_loan('b0000000-0000-0000-0000-00000000000a', pg_temp.m(6), 'payday', 150000, 3, 'flat', 5, 'salary_earner',
+  'Bridge to month end');
+update public.loans
+   set form_details = '{"bvn": "22211122233", "marital_status": "married", "remita_reference": "RRR-2910-4471-0021",
+     "house_rent_expiry": "2027-03-31", "sibling_name": "Kemi Ade", "sibling_phone": "08031234567", "nature_of_work": "Teaching",
+     "years_in_organisation": "6 years", "account_name": "Ada Ade", "account_number": "0123456789", "account_bank": "Access Bank"}'
+ where id = 'b0000000-0000-0000-0000-00000000000a';
+insert into public.loan_guarantors (loan_id, branch_id, full_name, phone, address, relationship, occupation, employer, monthly_income, form_details)
+select l.id, l.branch_id, 'Ngozi Eze', '08036660202', '12 Allen Avenue, Ikeja', 'Sister', 'Nurse', 'LASUTH', 310000,
+       '{"bvn": "22299988877", "gender": "female", "marital_status": "married", "annual_income": "3720000", "amount_guaranteed": "150000"}'
+from public.loans l where l.id = 'b0000000-0000-0000-0000-00000000000a';
+select pg_temp.new_loan('b0000000-0000-0000-0000-00000000000b', pg_temp.m(7), 'property_backed', 2000000, 12, 'flat', 4, 'business_owner',
+  'Expand the building materials store');
+update public.loans
+   set form_details = '{"bvn": "22277766655", "marital_status": "married", "direct_debit_reference": "DD-88231",
+     "nature_of_business": "Building materials", "years_in_business": "9 years", "business_rent_expiry": "2027-06-30"}'
+ where id = 'b0000000-0000-0000-0000-00000000000b';
+insert into public.loan_collaterals (loan_id, branch_id, collateral_type, description, estimated_value, valuation_date, valued_by)
+select l.id, l.branch_id, 'land_property', 'Two-bedroom bungalow, 14 Ojo Road, Ajegunle (C of O LA/2019/331)', 9000000, current_date - 20,
+       'Ade & Partners Valuers'
+from public.loans l where l.id = 'b0000000-0000-0000-0000-00000000000b';
 select pg_temp.new_loan('b0000000-0000-0000-0000-000000000006', pg_temp.m(10), 'personal', 150000, 4, 'flat', 2.5, 'business_owner', 'Generator repairs');
 select pg_temp.new_loan('b0000000-0000-0000-0000-000000000007', pg_temp.m(15), 'business', 400000, 6, 'reducing_balance', 3, 'self_employed',
   'Equipment for a home bakery');
@@ -574,6 +609,7 @@ select pg_temp.loan_to('b0000000-0000-0000-0000-000000000008', 'credit_approved'
 select pg_temp.loan_to('b0000000-0000-0000-0000-000000000005', 'appraised', 400000);
 -- Zainab (Ikoyi): submitted, waiting for the analyst.
 select pg_temp.loan_to('b0000000-0000-0000-0000-000000000006', 'submitted', null);
+select pg_temp.loan_to('b0000000-0000-0000-0000-00000000000a', 'submitted', null);
 -- Ifeoma (Peter Odili): still a draft with the account officer.
 
 -- Chinedu is more than 30 days behind, so the Head of Credit asks to restructure his loan over a longer term. It waits

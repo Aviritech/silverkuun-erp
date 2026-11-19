@@ -17,6 +17,8 @@ import {
 } from "../constants";
 import type { Loan, LoanProduct } from "../queries";
 import { loanSchedule } from "../schedule";
+import { FORMS, MIN_EQUITY_SHARE, isKuunForm } from "../loan-forms";
+import { FormDetailsFields } from "./form-details-fields";
 
 export type MemberChoice = {
   id: string;
@@ -73,8 +75,19 @@ export function LoanForm({
   function chooseProduct(code: string) {
     setProductCode(code);
     const p = products.find((x) => x.code === code);
-    if (p) setTerms((t) => ({ ...t, rate: p.interest_rate, basis: p.rate_basis, method: p.interest_method }));
+    if (p)
+      setTerms((t) => ({
+        ...t,
+        rate: p.interest_rate,
+        basis: p.rate_basis,
+        method: p.interest_method,
+        frequency: p.repayment_frequencies && !p.repayment_frequencies.includes(t.frequency) ? p.repayment_frequencies[0] : t.frequency,
+      }));
   }
+  const form = product && isKuunForm(product.application_form) ? FORMS[product.application_form] : null;
+  const frequencies = Object.entries(REPAYMENT_FREQUENCIES).filter(
+    ([v]) => !product?.repayment_frequencies || product.repayment_frequencies.includes(v as RepaymentFrequency),
+  );
 
   const today = new Date().toISOString().slice(0, 10);
   const schedule = useMemo(
@@ -208,7 +221,7 @@ export function LoanForm({
         </Field>
         <Field label="Repayment frequency" error={e.repayment_frequency}>
           <Select name="repayment_frequency" value={terms.frequency} onChange={(ev) => set("frequency", ev.target.value)}>
-            {Object.entries(REPAYMENT_FREQUENCIES).map(([v, l]) => (
+            {frequencies.map(([v, l]) => (
               <option key={v} value={v}>
                 {l}
               </option>
@@ -255,6 +268,18 @@ export function LoanForm({
           </Field>
         </div>
       </fieldset>
+
+      {form && (
+        <>
+          <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+            {form.name}: the questions below follow Kuun&rsquo;s {form.name} application form. The guarantor form and the compliance
+            checklist come after saving.
+            {product?.application_form === "kuun_asset" &&
+              ` Kuun asks the applicant to put in at least ${MIN_EQUITY_SHARE * 100}% of the asset's cost where that applies; the amount requested is the rest.`}
+          </p>
+          <FormDetailsFields key={productCode} sections={form.application} values={loan?.form_details} errors={e} />
+        </>
+      )}
 
       {schedule.length > 0 && (
         <div className="rounded-xl border border-zinc-200 bg-neutral-50/60 p-4 text-sm">

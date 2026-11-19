@@ -13,6 +13,7 @@ import { creditModule } from "./module";
 import {
   appraisalSchema,
   businessDecisionSchema,
+  checklistSchema,
   collateralSchema,
   decisionSchema,
   guarantorConfirmationSchema,
@@ -26,6 +27,21 @@ import {
   restructureSchema,
 } from "./schemas";
 import { formFile } from "@/lib/uploads/server";
+import { FORMS, isKuunForm, parseFormDetails, type FormDetails, type FormSection } from "./loan-forms";
+
+/** The Kuun form a product follows, read from the database. */
+async function productForm(supabase: Awaited<ReturnType<typeof createClient>>, productCode: string) {
+  const { data } = await supabase.from("loan_products").select("application_form").eq("code", productCode).maybeSingle();
+  const form = data?.application_form as string | undefined;
+  return isKuunForm(form) ? FORMS[form] : null;
+}
+
+/** Reads the extra answers for the given sections, or returns their errors. */
+function details(sections: FormSection[] | undefined, formData: FormData): { details: FormDetails } | { fieldErrors: Record<string, string> } {
+  if (!sections) return { details: {} };
+  const parsed = parseFormDetails(sections, formData);
+  return parsed.ok ? { details: parsed.details } : { fieldErrors: parsed.fieldErrors };
+}
 
 function formObject(formData: FormData, keys: readonly string[]) {
   return Object.fromEntries(keys.map((k) => [k, (formData.get(k) as string | null) ?? ""]));
@@ -73,12 +89,18 @@ const LOAN_FIELDS = [
 export async function saveLoan(id: string | null, _prev: ActionState, formData: FormData): Promise<ActionState> {
   await requireModule(creditModule);
   const parsed = loanSchema.safeParse(formObject(formData, LOAN_FIELDS));
-  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
   const supabase = await createClient();
+  const productCode = String(formData.get("product_code") ?? "");
+  const form = productCode ? await productForm(supabase, productCode) : null;
+  const extra = details(form?.application, formData);
+  if (!parsed.success || "fieldErrors" in extra) {
+    return { fieldErrors: { ...(parsed.success ? {} : fieldErrors(parsed.error)), ...("fieldErrors" in extra ? extra.fieldErrors : {}) } };
+  }
+  const form_details = extra.details;
 
   if (id) {
     const { member_id: _m, ...changes } = parsed.data;
-    const { data, error } = await supabase.from("loans").update(changes).eq("id", id).select("id");
+    const { data, error } = await supabase.from("loans").update({ ...changes, form_details }).eq("id", id).select("id");
     if (error) return { error: friendlyDbError(error) };
     if (!data?.length) return { error: "You can't edit this application right now." };
     revalidatePath(loanPath(id));
@@ -90,7 +112,7 @@ export async function saveLoan(id: string | null, _prev: ActionState, formData: 
   // branch_id is set from the member by the database; it is sent only to satisfy NOT NULL.
   const { data, error } = await supabase
     .from("loans")
-    .insert({ ...parsed.data, branch_id: member.branch_id, loan_no: "pending" })
+    .insert({ ...parsed.data, form_details, branch_id: member.branch_id, loan_no: "pending" })
     .select("id")
     .single();
   if (error) return { error: friendlyDbError(error) };
@@ -103,11 +125,16 @@ export async function addGuarantor(loanId: string, _prev: ActionState, formData:
   const parsed = guarantorSchema.safeParse(
     formObject(formData, ["full_name", "phone", "address", "relationship", "occupation", "employer", "monthly_income", "is_member"]),
   );
-  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
   const supabase = await createClient();
-  const { data: loan } = await supabase.from("loans").select("branch_id").eq("id", loanId).maybeSingle();
+  const { data: loan } = await supabase.from("loans").select("branch_id, product_code").eq("id", loanId).maybeSingle();
   if (!loan) return { error: "Loan not found." };
-  const { error } = await supabase.from("loan_guarantors").insert({ ...parsed.data, loan_id: loanId, branch_id: loan.branch_id });
+  const extra = details((await productForm(supabase, loan.product_code))?.guarantor, formData);
+  if (!parsed.success || "fieldErrors" in extra) {
+    return { fieldErrors: { ...(parsed.success ? {} : fieldErrors(parsed.error)), ...("fieldErrors" in extra ? extra.fieldErrors : {}) } };
+  }
+  const { error } = await supabase
+    .from("loan_guarantors")
+    .insert({ ...parsed.data, form_details: extra.details, loan_id: loanId, branch_id: loan.branch_id });
   if (error) return { error: friendlyDbError(error) };
   revalidatePath(loanPath(loanId));
   return { ok: true };
@@ -223,6 +250,34 @@ export async function confirmGuarantor(loanId: string, guarantorId: string, _pre
   const parsed = guarantorConfirmationSchema.safeParse({ note: formData.get("note") ?? "" });
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
   return run("confirm_loan_guarantor", { p_guarantor_id: guarantorId, p_note: parsed.data.note }, loanId);
+}
+
+export async function recordChecklist(loanId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = checklistSchema.safeParse({
+    items: formData.getAll("item").map((item) => ({
+      item: String(item),
+      answer: String(formData.get(`answer_${item}`) ?? ""),
+      remark: String(formData.get(`remark_${item}`) ?? ""),
+    })),
+    verification_methods: formData.getAll("verification_methods").map(String),
+    kyc_status: formData.get("kyc_status") ?? "",
+    kyc_recommendation: formData.get("kyc_recommendation") ?? "",
+    note: formData.get("note") ?? "",
+  });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  const v = parsed.data;
+  return run(
+    "record_loan_checklist",
+    {
+      p_loan_id: loanId,
+      p_items: v.items,
+      p_verification_methods: v.verification_methods,
+      p_kyc_status: v.kyc_status,
+      p_kyc_recommendation: v.kyc_recommendation,
+      p_note: v.note,
+    },
+    loanId,
+  );
 }
 
 export async function cancelLoan(id: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
