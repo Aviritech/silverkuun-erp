@@ -620,6 +620,9 @@ export default async function MemberPage({
                             <ButtonLink href={`/letters/plans/${plan.id}/statement`} variant="secondary">
                               Dividend statement
                             </ButtonLink>
+                            <ButtonLink href={`/letters/plans/${plan.id}/maturity`} variant="secondary">
+                              Maturity letter
+                            </ButtonLink>
                           </div>
                         )}
                       </div>
