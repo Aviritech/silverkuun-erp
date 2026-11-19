@@ -669,16 +669,25 @@ export async function cancelLiquidation(liquidationId: string, _prev: ActionStat
 }
 
 // ---------------------------------------------------------------------------
-// Top ups from Accounts: the branch logs each one against the member's plan, or sends it back.
+// Inflows from Accounts: the branch logs each one against the member's plan, or sends it back.
 // ---------------------------------------------------------------------------
 
 export async function logTopUp(topUpId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
   await requireModule(administrationModule);
-  const parsed = logTopUpSchema.safeParse({ member_plan_id: formData.get("member_plan_id") ?? "", note: formData.get("note") ?? "" });
+  const parsed = logTopUpSchema.safeParse({
+    member_plan_id: formData.get("member_plan_id") ?? "",
+    note: formData.get("note") ?? "",
+    inflow_type: formData.get("inflow_type") ?? "",
+  });
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
   const supabase = await createClient();
   const { data, error } = await supabase
-    .rpc("log_top_up", { p_id: topUpId, p_plan_id: parsed.data.member_plan_id, p_note: parsed.data.note })
+    .rpc("log_top_up", {
+      p_id: topUpId,
+      p_plan_id: parsed.data.member_plan_id,
+      p_note: parsed.data.note,
+      p_inflow_type: parsed.data.inflow_type,
+    })
     .single<{ member_id: string }>();
   if (error) return { error: friendlyDbError(error) };
   revalidatePath("/administration", "layout");

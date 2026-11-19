@@ -5,7 +5,7 @@ import { InlineForm } from "@/components/inline-form";
 import { Field, Input, Select, Textarea } from "@/components/ui";
 import type { ActionState } from "@/lib/action-state";
 import { PAYMENT_METHODS } from "@/modules/administration/constants";
-import type { TopUpMemberHit } from "@/modules/accounts/top-ups";
+import { INFLOW_TYPES, type InflowType, type TopUpMemberHit } from "@/modules/accounts/top-ups";
 import { TopUpMemberSearch } from "./top-up-member-search";
 
 type Action = (prev: ActionState, formData: FormData) => Promise<ActionState>;
@@ -27,6 +27,7 @@ export type TopUpDefaults = {
   matched_membership_no?: string | null;
   matched_plan_id?: string | null;
   matched_plan_name?: string | null;
+  inflow_type?: InflowType;
 };
 
 /** What the form knows about the member matched last time, enough to show it again when resending. */
@@ -53,7 +54,7 @@ export function TopUpForm({
   branches,
   banks,
   defaults,
-  openLabel = "New top up",
+  openLabel = "Record inflow",
   submitLabel = "Send to branch",
   variant = "primary",
   searchMembers,
@@ -69,7 +70,7 @@ export function TopUpForm({
 }) {
   const [branchId, setBranchId] = useState(defaults?.branch_id ?? (branches.length === 1 ? branches[0].id : ""));
   const choices = banks.filter((b) => b.branch_id === branchId);
-  // Picking a member sends the top up to the member's own branch.
+  // Picking a member sends the inflow to the member's own branch.
   const onMatch = useCallback(
     (hit: TopUpMemberHit | null) => {
       if (hit && branches.some((b) => b.id === hit.branch_id)) setBranchId(hit.branch_id);
@@ -91,6 +92,16 @@ export function TopUpForm({
               search={searchMembers}
             />
           </div>
+          <Field label="What is it for?" error={e.inflow_type}>
+            <Select name="inflow_type" required defaultValue={defaults?.inflow_type ?? ""}>
+              <option value="">Choose</option>
+              {Object.entries(INFLOW_TYPES).map(([v, t]) => (
+                <option key={v} value={v}>
+                  {t.label} ({t.hint.toLowerCase()})
+                </option>
+              ))}
+            </Select>
+          </Field>
           <Field label="Branch it goes to" error={e.branch_id}>
             <Select name="branch_id" required value={branchId} onChange={(ev) => setBranchId(ev.target.value)}>
               <option value="">Choose a branch</option>

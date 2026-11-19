@@ -136,7 +136,7 @@ export const payDayChangeSchema = z.object({
 
 export const contributionSchema = z.object({
   member_plan_id: z.guid(),
-  // Top-ups come from Accounts and are logged from the branch's top up queue, never recorded here.
+  // Top-ups come from Accounts and are logged from the branch's Inflows from Accounts queue, never recorded here.
   kind: z.enum(["scheduled"], "Top ups come from Accounts"),
   amount: money,
   paid_on: isoDate.refine((d) => d <= new Date().toISOString().slice(0, 10), "Payment date can't be in the future"),
@@ -170,8 +170,9 @@ export const liquidationSchema = z
   })
   .refine((v) => v.bank_code || v.bank_name, { path: ["bank_code"], message: "Choose the bank" });
 
-/** The branch officer logs a top up Accounts sent against one of the member's plans. */
+/** The branch officer logs an inflow Accounts sent against one of the member's plans. */
 export const logTopUpSchema = z.object({
   member_plan_id: z.guid("Choose the member's savings plan"),
   note: z.string().trim().max(1000, "Keep the note under 1,000 characters"),
+  inflow_type: z.enum(["contribution", "top_up"], "Say what the money is for"),
 });

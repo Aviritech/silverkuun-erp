@@ -1,4 +1,4 @@
-/** A row from top_up_list(): a member top up Accounts sent to a branch, with the names both sides need. */
+/** A row from top_up_list(): a member inflow (money in for a member) Accounts sent to a branch, with the names both sides need. */
 export type TopUpRow = {
   id: string;
   top_up_no: string;
@@ -36,6 +36,8 @@ export type TopUpRow = {
   matched_membership_no: string | null;
   matched_plan_id: string | null;
   matched_plan_name: string | null;
+  /** What the money is for: decides whether it is logged as a regular contribution or a top up. */
+  inflow_type: InflowType;
 };
 
 /** A member from top_up_member_search(): what Accounts needs to match a payment, nothing more. */
@@ -57,6 +59,14 @@ export type TopUpMemberHit = {
   }[];
 };
 
+export type InflowType = "contribution" | "top_up";
+
+/** What an inflow is for. Only a top up gets the top-up letter and counts in the plan's top-up total. */
+export const INFLOW_TYPES: Record<InflowType, { label: string; hint: string }> = {
+  contribution: { label: "Regular contribution", hint: "The member's usual payment on the plan" },
+  top_up: { label: "Top up", hint: "Extra money added to the plan" },
+};
+
 export type TopUpStatus = "with_branch" | "logged" | "returned" | "cancelled";
 
 export const TOP_UP_STATUSES: Record<TopUpStatus, { label: string; tone: "amber" | "green" | "red" | "gray" }> = {
@@ -66,7 +76,7 @@ export const TOP_UP_STATUSES: Record<TopUpStatus, { label: string; tone: "amber"
   cancelled: { label: "Cancelled", tone: "gray" },
 };
 
-/** Where a logged top up is now: Branch Manager verification, ready for Accounts to post, raised, or posted. */
+/** Where a logged inflow is now: Branch Manager verification, ready for Accounts to post, raised, or posted. */
 export function loggedStage(r: Pick<TopUpRow, "contribution_verified" | "contribution_status">): string {
   if (r.contribution_status === "posted") return "Posted to the member's savings";
   if (r.contribution_status) return "Receipt raised in Accounts, waiting for approval";

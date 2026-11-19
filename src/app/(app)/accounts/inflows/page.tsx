@@ -11,12 +11,12 @@ import { ReasonForm } from "@/modules/accounts/components/reason-form";
 import { TopUpForm } from "@/modules/accounts/components/top-up-form";
 import { accountsModule } from "@/modules/accounts/module";
 import { listBankAccounts } from "@/modules/accounts/queries";
-import { TOP_UP_STATUSES, loggedStage, type TopUpRow } from "@/modules/accounts/top-ups";
+import { INFLOW_TYPES, TOP_UP_STATUSES, loggedStage, type TopUpRow } from "@/modules/accounts/top-ups";
 import { PAYMENT_METHODS } from "@/modules/administration/constants";
 
 const method = (m: string) => PAYMENT_METHODS[m as keyof typeof PAYMENT_METHODS] ?? m;
 
-export default async function AccountsTopUpsPage() {
+export default async function AccountsInflowsPage() {
   await requireModule(accountsModule);
   const staff = await requirePermission("accounts.receipts.record");
   const supabase = await createClient();
@@ -45,8 +45,8 @@ export default async function AccountsTopUpsPage() {
     <div className="max-w-6xl space-y-6">
       <PageHeader
         eyebrow="Member receipts"
-        title="Member top ups"
-        description="When a member's top up reaches the company, record it here. Search for the member to send it straight to their branch, or type the name on the transfer and choose the branch. That branch's officer confirms the member and logs it against their plan; the Branch Manager verifies it and it comes back to you in Savings pay-ins to post."
+        title="Member inflows"
+        description="When money for a member reaches the company, record it here and say what it is for: their regular contribution or a top up. Search for the member to send it straight to their branch, or type the name on the transfer and choose the branch. That branch's officer confirms the member and logs it against their plan; the Branch Manager verifies it and it comes back to you in Savings pay-ins to post."
         actions={<TopUpForm action={initiateTopUp.bind(null, null)} branches={branches} banks={bankChoices} />}
       />
       <StatGrid>
@@ -76,7 +76,7 @@ export default async function AccountsTopUpsPage() {
               <div key={t.id} className="rounded-lg border border-red-200 bg-red-50/40 p-4">
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <p className="text-sm font-medium">
-                    <span className="font-mono text-xs">{t.top_up_no}</span> · {t.paid_by} · {formatMoney(t.amount)}
+                    <span className="font-mono text-xs">{t.top_up_no}</span> · {INFLOW_TYPES[t.inflow_type].label} · {t.paid_by} · {formatMoney(t.amount)}
                   </p>
                   <span className="text-xs text-zinc-500">
                     {t.branch_name} · {formatDate(t.paid_on)} · {method(t.payment_method)}
@@ -96,7 +96,7 @@ export default async function AccountsTopUpsPage() {
                     openLabel="Correct and send again"
                     submitLabel="Send to branch"
                   />
-                  <ReasonForm action={cancelTopUp.bind(null, t.id)} openLabel="Cancel top up" submitLabel="Cancel top up" question="Why is it being cancelled?" />
+                  <ReasonForm action={cancelTopUp.bind(null, t.id)} openLabel="Cancel inflow" submitLabel="Cancel inflow" question="Why is it being cancelled?" />
                 </div>
               </div>
             ))}
@@ -106,13 +106,13 @@ export default async function AccountsTopUpsPage() {
 
       <Card title={`With the branch (${withBranch.length})`}>
         {withBranch.length === 0 ? (
-          <EmptyState>No top ups are waiting for a branch. Use New top up to send one.</EmptyState>
+          <EmptyState>No inflows are waiting for a branch. Use Record inflow to send one.</EmptyState>
         ) : (
           <div className="-mx-5 -my-5 overflow-x-auto">
             <table className="w-full text-left text-sm">
               <thead className="border-b border-zinc-100 text-xs text-zinc-500">
                 <tr>
-                  <th className="px-5 py-2.5 font-medium">Top up</th>
+                  <th className="px-5 py-2.5 font-medium">Inflow</th>
                   <th className="px-5 py-2.5 font-medium">Paid by</th>
                   <th className="px-5 py-2.5 font-medium">Branch</th>
                   <th className="px-5 py-2.5 font-medium">Paid</th>
@@ -125,6 +125,7 @@ export default async function AccountsTopUpsPage() {
                   <tr key={t.id} className="border-b border-zinc-100 align-top last:border-0">
                     <td className="px-5 py-3">
                       <span className="font-mono text-xs">{t.top_up_no}</span>
+                      <span className="block text-xs font-medium">{INFLOW_TYPES[t.inflow_type].label}</span>
                       <span className="block text-xs text-zinc-500">
                         {t.requested_by_name} · {formatDateTime(t.requested_at)}
                       </span>
@@ -150,7 +151,7 @@ export default async function AccountsTopUpsPage() {
                     </td>
                     <td className="px-5 py-3 text-right tabular-nums">{formatMoney(t.amount)}</td>
                     <td className="px-5 py-3">
-                      <ReasonForm action={cancelTopUp.bind(null, t.id)} openLabel="Cancel" submitLabel="Cancel top up" question="Why is it being cancelled?" />
+                      <ReasonForm action={cancelTopUp.bind(null, t.id)} openLabel="Cancel" submitLabel="Cancel inflow" question="Why is it being cancelled?" />
                     </td>
                   </tr>
                 ))}
@@ -172,7 +173,7 @@ export default async function AccountsTopUpsPage() {
                 <span>
                   <span className="font-mono text-xs">{t.top_up_no}</span> {t.status === "logged" ? t.member_name : t.paid_by}
                   <span className="block text-xs text-zinc-500">
-                    {t.branch_name} ·{" "}
+                    {INFLOW_TYPES[t.inflow_type].label} · {t.branch_name} ·{" "}
                     {t.status === "logged" ? (
                       <>
                         {t.plan_name ?? "Plan"} · logged by {t.logged_by_name} · {loggedStage(t)}

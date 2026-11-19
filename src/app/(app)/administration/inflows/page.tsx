@@ -7,7 +7,7 @@ import { dbFailure } from "@/lib/db-errors";
 import { formatDate, formatDateTime, formatMoney, formatMoneyShort } from "@/lib/format";
 import { createClient } from "@/lib/supabase/server";
 import { ReasonForm } from "@/modules/accounts/components/reason-form";
-import { TOP_UP_STATUSES, loggedStage, type TopUpRow } from "@/modules/accounts/top-ups";
+import { INFLOW_TYPES, TOP_UP_STATUSES, loggedStage, type TopUpRow } from "@/modules/accounts/top-ups";
 import { logTopUp, returnTopUp } from "@/modules/administration/actions";
 import { PAYMENT_METHODS } from "@/modules/administration/constants";
 import { LogTopUpForm, type PlanOption } from "@/modules/administration/components/top-up-forms";
@@ -32,7 +32,7 @@ type MemberWithPlans = {
   member_plans: { id: string; status: string; start_date: string; plan_types: { name: string } | null }[];
 };
 
-export default async function TopUpsFromAccountsPage() {
+export default async function InflowsFromAccountsPage() {
   const staff = await requireModule(administrationModule);
   if (!staff.permissions.has("members.read")) notFound();
   const canLog = staff.permissions.has("contributions.record");
@@ -47,7 +47,7 @@ export default async function TopUpsFromAccountsPage() {
   const waiting = (waitingRes.data as TopUpRow[]).slice().reverse();
   const recent = recentRes.data as TopUpRow[];
 
-  // Active plans in the branches with top ups waiting, for the officer to choose from.
+  // Active plans in the branches with inflows waiting, for the officer to choose from.
   const plansByBranch = new Map<string, PlanOption[]>();
   const branchIds = [...new Set(waiting.map((t) => t.branch_id))];
   if (canLog && branchIds.length) {
@@ -79,8 +79,8 @@ export default async function TopUpsFromAccountsPage() {
     <div className="max-w-5xl space-y-6">
       <PageHeader
         eyebrow="Member money"
-        title="Top ups from Accounts"
-        description="Accounts records each top up it receives and sends it to the member's branch. Find the member and log it against their plan, or send it back if it isn't one of your members. Logged top ups go to the Branch Manager to verify, then to Accounts to post."
+        title="Inflows from Accounts"
+        description="Accounts records money it receives for a member, says whether it is a regular contribution or a top up, and sends it to the member's branch. Find the member and log it against their plan, or send it back if it isn't one of your members. Logged inflows go to the Branch Manager to verify, then to Accounts to post."
       />
       <StatGrid>
         <StatCard label="Waiting to be logged" icon="clock" tone={waiting.length ? "warn" : "neutral"} value={waiting.length} hint={`${formatMoneyShort(total)} in total`} />
@@ -95,11 +95,11 @@ export default async function TopUpsFromAccountsPage() {
 
       {waiting.length === 0 && (
         <Card>
-          <EmptyState>Nothing is waiting. Top ups Accounts sends to your branch appear here.</EmptyState>
+          <EmptyState>Nothing is waiting. Money Accounts receives for your branch&apos;s members appears here.</EmptyState>
         </Card>
       )}
       {waiting.map((t) => (
-        <Card key={t.id} title={`${t.top_up_no} · ${formatMoney(t.amount)}`}>
+        <Card key={t.id} title={`${t.top_up_no} · ${INFLOW_TYPES[t.inflow_type].label} · ${formatMoney(t.amount)}`}>
           <dl className="grid gap-4 sm:grid-cols-4">
             <Detail label="Paid by">
               {t.paid_by}
@@ -134,6 +134,7 @@ export default async function TopUpsFromAccountsPage() {
                 paidBy={t.paid_by}
                 matchedMemberId={t.matched_member_id}
                 matchedPlanId={t.matched_plan_id}
+                inflowType={t.inflow_type}
               />
               <ReasonForm
                 action={returnTopUp.bind(null, t.id)}
@@ -165,7 +166,7 @@ export default async function TopUpsFromAccountsPage() {
                   )}
                   <span className="block text-xs text-zinc-500">
                     {t.status === "logged"
-                      ? `${t.plan_name ?? "Plan"} · logged by ${t.logged_by_name} · ${loggedStage(t)}`
+                      ? `${INFLOW_TYPES[t.inflow_type].label} · ${t.plan_name ?? "Plan"} · logged by ${t.logged_by_name} · ${loggedStage(t)}`
                       : `${t.decided_by_name}: ${t.decision_note}`}
                   </span>
                 </span>

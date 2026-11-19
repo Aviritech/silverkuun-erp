@@ -716,8 +716,8 @@ export default async function MemberPage({
                     {plan.status === "active" && can("contributions.record") && (
                       <div className="flex flex-wrap gap-2 border-t border-zinc-100 p-4">
                         <ContributionForm action={recordContribution.bind(null, member.id)} planId={plan.id} />
-                        <ButtonLink href="/administration/top-ups" variant="secondary">
-                          Top ups from Accounts
+                        <ButtonLink href="/administration/inflows" variant="secondary">
+                          Inflows from Accounts
                         </ButtonLink>
                       </div>
                     )}

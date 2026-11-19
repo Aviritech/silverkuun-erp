@@ -240,7 +240,7 @@ export async function postContribution(contributionId: string, _prev: ActionStat
 }
 
 // ---------------------------------------------------------------------------
-// Member top ups: Accounts records the money and picks the branch; the branch officer logs it for the member.
+// Member inflows (regular contributions and top ups): Accounts records the money and picks the branch; the branch officer logs it for the member.
 // ---------------------------------------------------------------------------
 
 const TOP_UP_FIELDS = [
@@ -254,6 +254,7 @@ const TOP_UP_FIELDS = [
   "note",
   "member_id",
   "member_plan_id",
+  "inflow_type",
 ] as const;
 
 /**
@@ -270,7 +271,7 @@ export async function searchTopUpMembers(query: string): Promise<TopUpMemberHit[
   return data as TopUpMemberHit[];
 }
 
-/** Sends a new top up to a branch, or (with an id) sends one the branch returned to the same or another branch. */
+/** Sends a new member inflow to a branch, or (with an id) sends one the branch returned to the same or another branch. */
 export async function initiateTopUp(id: string | null, _prev: ActionState, formData: FormData): Promise<ActionState> {
   await requireModule(accountsModule);
   const parsed = topUpSchema.safeParse(formObject(formData, TOP_UP_FIELDS));
@@ -290,15 +291,16 @@ export async function initiateTopUp(id: string | null, _prev: ActionState, formD
       p_note: v.note,
       p_member_id: v.member_id,
       p_member_plan_id: v.member_id ? v.member_plan_id : null,
+      p_inflow_type: v.inflow_type,
     },
-    "/accounts/top-ups",
+    "/accounts/inflows",
   );
 }
 
 export async function cancelTopUp(id: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
   const parsed = reasonSchema.safeParse({ reason: formData.get("reason") ?? "" });
   if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
-  return runWorkflow("cancel_top_up", { p_id: id, p_reason: parsed.data.reason }, "/accounts/top-ups");
+  return runWorkflow("cancel_top_up", { p_id: id, p_reason: parsed.data.reason }, "/accounts/inflows");
 }
 
 // ---------------------------------------------------------------------------
