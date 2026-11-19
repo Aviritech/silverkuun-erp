@@ -813,7 +813,16 @@ describe("target and child savings", () => {
       /3 months/,
     );
     const res = await openPlan("child", 200000, "current_date", "(current_date + interval '3 months')::date");
-    expect(res.rows[0].dividends_at_maturity).toBe(false);
+    // Kuun (2026-11-19): child savings interest is paid at maturity, every 3 months.
+    expect(res.rows[0].dividends_at_maturity).toBe(true);
+  });
+
+  it("counts a month held 21 days or more as a full month, and a shorter part month as nothing", async () => {
+    const months = await db.query<{ a: number; b: number; c: number; d: number }>(
+      `select app.months_held('2026-01-10', '2026-03-30') as a, app.months_held('2026-01-10', '2026-03-31') as b,
+              app.months_held('2026-01-10', '2026-01-30') as c, app.months_held('2026-01-10', '2026-01-31') as d`,
+    );
+    expect(months.rows[0]).toEqual({ a: 2, b: 3, c: 0, d: 1 });
   });
 
   it("keeps target savings off the monthly schedule and builds up its dividends for maturity", async () => {
@@ -841,6 +850,61 @@ describe("target and child savings", () => {
       ),
     );
     expect(accrued.rows[0]).toEqual({ now: "2000.00", at_maturity: "3000.00", later: "3000.00" });
+  });
+
+  it("leaves a deposit out of the monthly interest until it has been held 21 days", async () => {
+    const plan = await openPlan("silver", 100000, "current_date - 60", "(current_date + interval '6 months')::date");
+    for (const [amount, daysAgo] of [
+      [100000, 30],
+      [50000, 20],
+    ]) {
+      const c = await commitAs(OFFICER, () =>
+        db.query<{ id: string }>(
+          `insert into contributions (member_plan_id, member_id, branch_id, kind, amount, paid_on, payment_method)
+           values ($1, $2, $3, 'scheduled', $4, current_date - $5::int, 'bank_transfer') returning id`,
+          [plan.rows[0].id, saver, lagos, amount, daysAgo],
+        ),
+      );
+      await commitAs(MANAGER, () => db.query("select verify_contribution($1)", [c.rows[0].id]));
+    }
+    const schedule = await asUser(db, LAGOS_ACCOUNTANT, (tx) =>
+      tx.query<{ total_savings: string }>("select total_savings from interest_payment_schedule(current_date) where member_id = $1", [saver]),
+    );
+    // Other plans of this member from earlier tests may be on the schedule too: only this plan's deposits are new.
+    const before = await asUser(db, LAGOS_ACCOUNTANT, (tx) =>
+      tx.query<{ s: string }>(
+        `select coalesce(sum(c.amount), 0) as s from contributions c join member_plans p on p.id = c.member_plan_id
+         where p.member_id = $1 and p.id <> $2 and p.status = 'active' and not p.dividends_at_maturity and c.verified_at is not null
+           and c.paid_on <= current_date - 21`,
+        [saver, plan.rows[0].id],
+      ),
+    );
+    expect(Number(schedule.rows[0].total_savings) - Number(before.rows[0].s)).toBe(100000);
+  });
+
+  it("raises the day's interest payment requests automatically, once, for Accounts to review", async () => {
+    const raise = async () => (await db.query<{ n: number }>("select app.raise_interest_payment_requests() as n")).rows[0].n;
+    const due = await asUser(db, LAGOS_ACCOUNTANT, (tx) =>
+      tx.query<{ amount: string }>("select amount from interest_payment_schedule(current_date) where member_id = $1", [saver]),
+    );
+    expect(due.rows).toHaveLength(1);
+    expect(await raise()).toBeGreaterThanOrEqual(1);
+    const txn = (
+      await db.query<{ id: string; status: string; amount: string; created_by: string | null; transaction_type: string; direction: string }>(
+        "select id, status, amount, created_by, transaction_type, direction from finance_transactions where member_id = $1 and interest_for = current_date",
+        [saver],
+      )
+    ).rows;
+    expect(txn).toHaveLength(1);
+    expect(txn[0]).toMatchObject({ status: "draft", amount: due.rows[0].amount, created_by: null, transaction_type: "roi_payment", direction: "payment" });
+    // Never twice for the same pay date.
+    expect(await raise()).toBe(0);
+    await expect(commitAs(LAGOS_ACCOUNTANT, () => db.query("select app.raise_interest_payment_requests()"))).rejects.toThrow(/permission denied/);
+    // An accountant reviews and submits it without an attachment: the schedule is the evidence.
+    const submitted = await commitAs(LAGOS_ACCOUNTANT, () =>
+      db.query<{ status: string; submitted_by: string }>("select status, submitted_by from submit_finance_transaction($1)", [txn[0].id]),
+    );
+    expect(submitted.rows[0]).toEqual({ status: "submitted", submitted_by: LAGOS_ACCOUNTANT });
   });
 });
 

@@ -73,4 +73,13 @@ describe("dividend statement", () => {
     expect(s.totalDividends).toBe(16_000);
     expect(s.totalContributions).toBe(300_000);
   });
+
+  it("counts a part month held for 21 days or more as a full month", () => {
+    const plan = { start_date: "2026-01-10", maturity_date: "2026-07-10", interest_rate: 48 };
+    // Held two months and 21 days: three months earned.
+    const s = dividendStatement(plan, [{ amount: 200_000, paid_on: "2026-01-10" }], "2026-03-31");
+    expect(s.totalDividends).toBe(24_000);
+    // Two months and 20 days: still two.
+    expect(dividendStatement(plan, [{ amount: 200_000, paid_on: "2026-01-10" }], "2026-03-30").totalDividends).toBe(16_000);
+  });
 });

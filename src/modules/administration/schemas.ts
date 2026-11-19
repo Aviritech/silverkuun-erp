@@ -125,6 +125,22 @@ export function addMonths(isoDay: string, months: number): string {
   return target.toISOString().slice(0, 10);
 }
 
+export const rolloverSchema = z.object({
+  tenure_months: z.coerce.number("Choose the new tenure").int().min(1, "Choose the new tenure").max(120, "At most 120 months"),
+  include_earnings: z.enum(["capital", "capital_and_earnings"]).transform((v) => v === "capital_and_earnings"),
+  note: z.string().trim().max(1000, "Keep the note under 1,000 characters"),
+});
+
+/** A special rate on one plan, given a month as the letters quote it. Plans keep at most 100% a year. */
+export const specialRateSchema = z.object({
+  monthly_rate: z.coerce
+    .number("Enter the rate a month")
+    .positive("Enter a rate above zero")
+    .max(8.33, "At most 8.33% a month")
+    .multipleOf(0.0001, "Use at most four decimal places"),
+  reason: z.string().trim().min(5, "Say why this member should have the rate"),
+});
+
 export const payDayChangeSchema = z.object({
   interest_pay_day: z.coerce
     .number("Choose a day")

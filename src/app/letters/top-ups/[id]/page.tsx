@@ -27,6 +27,11 @@ export default async function TopUpLetter({ params }: { params: Promise<{ id: st
   const topUp = row as Contribution | null;
   if (!topUp || topUp.kind !== "top_up") notFound();
 
+  // The letter goes out only once the Receipts Confirmation Accountant has confirmed the money (Kuun, 2026-11-19).
+  const { data: confirmed, error: confirmedError } = await supabase.rpc("member_confirmed_contributions", { p_member_id: topUp.member_id });
+  if (confirmedError) throw dbFailure(confirmedError);
+  if (!((confirmed ?? []) as { contribution_id: string }[]).some((r) => r.contribution_id === topUp.id)) notFound();
+
   const data = await getPlanLetter(topUp.member_plan_id);
   if (!data || data.member.status !== "approved") notFound();
   const { plan, member, manager } = data;

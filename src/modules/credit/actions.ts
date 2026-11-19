@@ -11,6 +11,7 @@ import { fieldErrors } from "@/modules/administration/schemas";
 import { ALLOWED_LOAN_UPLOAD_TYPES, MAX_LOAN_UPLOAD_BYTES } from "./constants";
 import { creditModule } from "./module";
 import {
+  penaltySchema,
   appraisalSchema,
   businessDecisionSchema,
   checklistSchema,
@@ -320,6 +321,23 @@ export async function decideRestructure(loanId: string, restructureId: string, _
   return run("decide_loan_restructure", { p_id: restructureId, p_approve: parsed.data.decision === "approve", p_note: parsed.data.note }, loanId);
 }
 
+export async function applyPenalty(loanId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = penaltySchema.safeParse(formObject(formData, ["basis", "rate", "amount", "reason"]));
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  const v = parsed.data;
+  return run(
+    "apply_loan_penalty",
+    { p_loan_id: loanId, p_rate: v.basis === "rate" ? v.rate : null, p_amount: v.basis === "amount" ? v.amount : null, p_reason: v.reason },
+    loanId,
+  );
+}
+
+export async function withdrawPenalty(loanId: string, chargeId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  const parsed = reasonSchema.safeParse({ reason: formData.get("reason") ?? "" });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  return run("withdraw_loan_penalty", { p_charge_id: chargeId, p_reason: parsed.data.reason }, loanId);
+}
+
 export async function recordReminder(loanId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
   await requireModule(creditModule);
   const parsed = reminderSchema.safeParse(formObject(formData, ["kind", "channel", "due_date", "amount", "note"]));
@@ -348,7 +366,6 @@ const PRODUCT_FIELDS = [
   "min_amount",
   "max_amount",
   "max_tenor_months",
-  "late_penalty_rate",
   "requires_guarantor",
   "requires_collateral",
   "requires_proforma",

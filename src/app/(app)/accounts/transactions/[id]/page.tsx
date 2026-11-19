@@ -97,6 +97,8 @@ export default async function TransactionPage({
       : "accounts.payments.request";
   const editable = ["draft", "returned"].includes(txn.status);
   const isOwner = txn.created_by === staff.id;
+  // A request the interest job raised has no preparer: any accountant who requests payments may correct it.
+  const canEdit = isOwner || (!txn.created_by && !!txn.interest_for && can("accounts.payments.request"));
   const isPreparer = isOwner || txn.submitted_by === staff.id;
   const creditsMember = receiptCreditsMember(txn, rule);
   const canReview =
@@ -131,6 +133,7 @@ export default async function TransactionPage({
     !txn.statement_line_id &&
     !(txn.transaction_type === "loan_disbursement" && txn.loan_id) &&
     !txn.liquidation_id &&
+    !txn.interest_for &&
     supporting.length === 0;
 
   return (
@@ -146,7 +149,7 @@ export default async function TransactionPage({
         }
         actions={
           editable &&
-          isOwner && (
+          canEdit && (
             <ButtonLink
               href={`/accounts/transactions/${txn.id}/edit`}
               variant="secondary"
@@ -289,7 +292,7 @@ export default async function TransactionPage({
       <Card title="Approval trail">
         <ol className="space-y-1 text-sm">
           <li>
-            Prepared by {staffName(txn.created_by)} on{" "}
+            {txn.created_by ? `Prepared by ${staffName(txn.created_by)}` : "Raised automatically from the interest payment schedule"} on{" "}
             {formatDateTime(txn.created_at)}
           </li>
           {txn.submitted_at && (
