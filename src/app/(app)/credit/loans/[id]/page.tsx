@@ -13,6 +13,7 @@ import {
   businessDecideLoan,
   cancelLoan,
   confirmGuarantor,
+  recordChecklist,
   decideLoan,
   decideRestructure,
   reassignOfficer,
@@ -26,6 +27,7 @@ import {
 import {
   AppraisalForm,
   BusinessDecisionForm,
+  ChecklistForm,
   CollateralForm,
   ConfirmGuarantorForm,
   DecisionForm,
@@ -53,6 +55,20 @@ import {
   type LoanDocumentType,
 } from "@/modules/credit/constants";
 import { creditModule } from "@/modules/credit/module";
+import {
+  CHECKLISTS,
+  CHECKLIST_ANSWERS,
+  FORMS,
+  KYC_RECOMMENDATIONS,
+  KYC_STATUSES,
+  MIN_EQUITY_SHARE,
+  VERIFICATION_METHODS,
+  displayValue,
+  equityShare,
+  isKuunForm,
+  type FormDetails,
+  type FormSection,
+} from "@/modules/credit/loan-forms";
 import { getLoanBundle, listOfficers, officersFor } from "@/modules/credit/queries";
 import { signGuarantee, signLoanDocument } from "@/modules/signatures/actions";
 import { ESignForm } from "@/modules/signatures/components/e-sign-form";
@@ -78,7 +94,41 @@ function Stat({ label, value, tone }: { label: string; value: string; tone?: "re
 }
 
 /** Documents that carry signatures, so can be signed electronically as well as on paper. */
-const SIGNABLE_DOCUMENTS: LoanDocumentType[] = ["application_form", "guarantor_form", "offer_letter", "collateral_document", "other"];
+const SIGNABLE_DOCUMENTS: LoanDocumentType[] = [
+  "application_form",
+  "guarantor_form",
+  "offer_letter",
+  "collateral_document",
+  "direct_debit_mandate",
+  "guarantor_mandate",
+  "sale_of_assets_agreement",
+  "gsi_mandate",
+  "other",
+];
+
+/** The answers on one of Kuun's forms, section by section. */
+function FormDetailsView({ sections, details }: { sections: FormSection[]; details: FormDetails }) {
+  const filled = sections.filter((s) => s.fields.some((f) => details[f.key]));
+  if (filled.length === 0) return null;
+  return (
+    <div className="mt-4 space-y-3 border-t border-zinc-100 pt-3">
+      {filled.map((s) => (
+        <div key={s.title}>
+          <p className="mb-1 text-xs font-semibold text-zinc-600">{s.title}</p>
+          <dl className="grid gap-x-4 gap-y-2 sm:grid-cols-3">
+            {s.fields
+              .filter((f) => details[f.key])
+              .map((f) => (
+                <Detail key={f.key} label={f.label.replace(/ \(₦\)$/, "")}>
+                  {displayValue(f, details[f.key], formatMoney, formatDate)}
+                </Detail>
+              ))}
+          </dl>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 const APPLICATION_DOCUMENTS: LoanDocumentType[] = [
   "application_form",
@@ -88,6 +138,19 @@ const APPLICATION_DOCUMENTS: LoanDocumentType[] = [
   "guarantor_form",
   "collateral_document",
   "credit_bureau_report",
+  "utility_bill",
+  "id_document",
+  "passport_photo",
+  "employment_letter",
+  "direct_debit_mandate",
+  "guarantor_id",
+  "guarantor_mandate",
+  "mortgage_deed",
+  "cheque_leaves",
+  "sale_of_assets_agreement",
+  "insurance_evidence",
+  "gsi_mandate",
+  "equity_evidence",
   "other",
 ];
 
@@ -96,11 +159,17 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
   const { id } = await params;
   const [bundle, org, officers] = await Promise.all([getLoanBundle(id), listOrg(), listOfficers()]);
   if (!bundle) notFound();
-  const { loan, position, member, memberName, product, guarantors, collaterals, documents, schedule, repayments, restructures, reminders, otherLoans, documentSignatures, guarantorSignatures, staffName } =
+  const { loan, position, member, memberName, product, guarantors, collaterals, documents, schedule, repayments, restructures, reminders, otherLoans, documentSignatures, guarantorSignatures, staffName, checklist, review } =
     bundle;
   const branch = org.branches.find((b) => b.id === loan.branch_id)!;
   const can = (p: string) => staff.permissions.hasForBranch(p, branch);
   const status = LOAN_STATUSES[loan.status];
+  const formCode = isKuunForm(product.application_form) ? product.application_form : null;
+  const form = formCode ? FORMS[formCode] : null;
+  const lines = formCode ? CHECKLISTS[formCode] : [];
+  const answers = new Map(checklist.map((c) => [c.item_code, c]));
+  const checklistDone = !!review && lines.every((l) => !l.required || answers.get(l.item)?.answer === "yes");
+  const equity = formCode === "kuun_asset" ? equityShare(loan.form_details) : null;
 
   const editable = ["draft", "returned"].includes(loan.status);
   const canManage = can("credit.manage");
@@ -139,7 +208,9 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
   if (editable) {
     if (!documents.some((d) => d.document_type !== "credit_bureau_report")) missing.push("at least one supporting document");
     if (product.requires_proforma && !documents.some((d) => d.document_type === "proforma_invoice")) missing.push("the proforma invoice");
-    if (product.requires_guarantor && guarantors.length === 0) missing.push("a guarantor");
+    if (product.requires_guarantor && guarantors.length < product.min_guarantors)
+      missing.push(product.min_guarantors > 1 ? `${product.min_guarantors} guarantors` : "a guarantor");
+    if (form && !documents.some((d) => d.document_type === "application_form")) missing.push(`the signed ${form.name} application form`);
     if (product.requires_collateral && collaterals.length === 0) missing.push("the collateral");
   }
 
@@ -162,6 +233,16 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
         }
         actions={
           <div className="flex flex-wrap gap-2">
+            {form && (
+              <ButtonLink href={`/letters/loans/${loan.id}/application`} variant="secondary">
+                Print application form
+              </ButtonLink>
+            )}
+            {form && (
+              <ButtonLink href={`/letters/loans/${loan.id}/checklist`} variant="secondary">
+                Print checklist
+              </ButtonLink>
+            )}
             {["approved", "active", "closed"].includes(loan.status) && (
               <ButtonLink href={`/letters/loans/${loan.id}`} variant="secondary">
                 Offer letter
@@ -282,7 +363,12 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
 
       {canAppraise && (
         <Card title="Credit appraisal">
-          {unconfirmed.length > 0 ? (
+          {form && !checklistDone ? (
+            <p className="text-sm text-amber-800">
+              Complete the compliance checklist below, with every required line Yes, before recording the appraisal. If a document is
+              missing, return the application to the account officer.
+            </p>
+          ) : unconfirmed.length > 0 ? (
             <p className="text-sm text-amber-800">
               Confirm {unconfirmed.length === 1 ? "the guarantor" : `all ${unconfirmed.length} guarantors`} below before recording the
               appraisal.
@@ -366,9 +452,29 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
             <Detail label="Purpose">{loan.purpose}</Detail>
           </div>
         </dl>
+        {form && <FormDetailsView sections={form.application} details={loan.form_details} />}
+        {equity !== null && (
+          <p className={`mt-3 text-sm ${equity < MIN_EQUITY_SHARE && loan.form_details.equity_applicable === "yes" ? "text-red-700" : "text-zinc-600"}`}>
+            Equity contribution is {Math.round(equity * 100)}% of the asset&rsquo;s cost
+            {loan.form_details.equity_applicable === "yes" && equity < MIN_EQUITY_SHARE && `, below the ${MIN_EQUITY_SHARE * 100}% minimum`}.
+          </p>
+        )}
       </Card>
 
-      <Card title={product.requires_guarantor ? "Guarantors (required)" : "Guarantors"}>
+      <Card
+        title={
+          product.requires_guarantor
+            ? `Guarantors (${product.min_guarantors > 1 ? `${product.min_guarantors} required` : "required"})`
+            : "Guarantors"
+        }
+        actions={
+          form && (
+            <Link href={`/letters/loan-forms/${formCode}/guarantor`} className="text-sm underline">
+              Blank guarantor form
+            </Link>
+          )
+        }
+      >
         {guarantors.length === 0 ? (
           <EmptyState>No guarantors yet.</EmptyState>
         ) : (
@@ -386,6 +492,18 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
                   <span className="block text-xs text-zinc-500">
                     {[g.phone, g.address, g.occupation, g.employer, g.monthly_income && `${formatMoney(g.monthly_income)} a month`].filter(Boolean).join(" · ")}
                   </span>
+                  {form && (
+                    <span className="mt-1 block text-xs">
+                      {form.guarantor
+                        .flatMap((s) => s.fields)
+                        .filter((f) => g.form_details[f.key])
+                        .map((f) => `${f.label.replace(/ \(.*\)$/, "")}: ${displayValue(f, g.form_details[f.key], formatMoney, formatDate)}`)
+                        .join(" · ")}{" "}
+                      <Link href={`/letters/loans/${loan.id}/guarantors/${g.id}`} className="whitespace-nowrap underline">
+                        Print guarantor form
+                      </Link>
+                    </span>
+                  )}
                   {g.confirmed_at ? (
                     <span className="mt-1 block text-xs text-emerald-800">
                       Confirmed by {staffName(g.confirmed_by)} on {formatDateTime(g.confirmed_at)}: {g.confirmation_note}
@@ -423,7 +541,7 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
         )}
         {editable && canManage && (
           <div className="mt-4">
-            <GuarantorForm action={addGuarantor.bind(null, loan.id)} />
+            <GuarantorForm action={addGuarantor.bind(null, loan.id)} sections={form?.guarantor} />
           </div>
         )}
       </Card>
@@ -460,6 +578,60 @@ export default async function LoanPage({ params }: { params: Promise<{ id: strin
           </div>
         )}
       </Card>
+
+      {form && loan.status !== "draft" && (
+        <Card title={`Compliance checklist (${form.name})`}>
+          {canAppraise ? (
+            <>
+              <p className="mb-3 text-sm text-zinc-600">
+                Tick each document Yes once you have seen it (uploaded here or on paper). Every required line must be Yes before the
+                appraisal; if something is missing, answer No with a remark and return the application to the account officer.
+              </p>
+              <ChecklistForm
+                action={recordChecklist.bind(null, loan.id)}
+                lines={lines}
+                uploaded={[...new Set(documents.map((d) => d.document_type))]}
+                previous={Object.fromEntries(checklist.map((c) => [c.item_code, { answer: c.answer, remark: c.remark }]))}
+                askKyc={formCode === "kuun_asset"}
+              />
+            </>
+          ) : !review ? (
+            <EmptyState>
+              {loan.status === "submitted"
+                ? "Waiting for the credit analyst to do the compliance checklist."
+                : "The checklist is done again each time the application is sent for appraisal."}
+            </EmptyState>
+          ) : null}
+          {review && (
+            <div className={canAppraise ? "mt-6 border-t border-zinc-100 pt-4" : undefined}>
+              <p className="mb-2 text-xs text-zinc-500">
+                Recorded by {staffName(review.reviewed_by)} on {formatDateTime(review.reviewed_at)}
+                {review.verification_methods.length > 0 &&
+                  ` · verified by ${review.verification_methods.map((m) => VERIFICATION_METHODS[m].toLowerCase()).join(", ")}`}
+                {review.kyc_status && ` · KYC ${KYC_STATUSES[review.kyc_status].toLowerCase()}`}
+                {review.kyc_recommendation && `, ${KYC_RECOMMENDATIONS[review.kyc_recommendation].toLowerCase()}`}
+              </p>
+              <ul className="divide-y divide-zinc-100 text-sm">
+                {lines.map((l) => {
+                  const a = answers.get(l.item);
+                  return (
+                    <li key={l.item} className="flex items-start justify-between gap-4 py-1.5">
+                      <span>
+                        {l.label}
+                        {a?.remark && <span className="block text-xs text-zinc-500">{a.remark}</span>}
+                      </span>
+                      <Badge tone={a?.answer === "yes" ? "green" : a?.answer === "no" ? "red" : "gray"}>
+                        {a ? CHECKLIST_ANSWERS[a.answer] : "Not answered"}
+                      </Badge>
+                    </li>
+                  );
+                })}
+              </ul>
+              {review.note && <p className="mt-2 text-sm text-zinc-600">{review.note}</p>}
+            </div>
+          )}
+        </Card>
+      )}
 
       <Card title="Documents">
         {product.requires_proforma && <p className="mb-2 text-sm text-zinc-600">This product needs a proforma invoice for the asset being financed.</p>}

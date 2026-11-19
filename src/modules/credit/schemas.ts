@@ -11,6 +11,7 @@ import {
   REPAYMENT_MODES,
   RISK_RATINGS,
 } from "./constants";
+import { CHECKLIST_ANSWERS, KYC_RECOMMENDATIONS, KYC_STATUSES, VERIFICATION_METHODS } from "./loan-forms";
 
 const keys = <T extends Record<string, unknown>>(o: T) => Object.keys(o) as [keyof T & string, ...(keyof T & string)[]];
 
@@ -160,3 +161,27 @@ export const productSchema = z
     is_active: z.enum(["on", ""]).optional().transform((v) => v === "on"),
   })
   .refine((v) => v.max_amount === null || v.max_amount >= v.min_amount, { path: ["max_amount"], message: "Must be at least the minimum" });
+
+const optionalChoice = <T extends Record<string, unknown>>(o: T) => z.enum(keys(o)).nullable().or(z.literal("").transform(() => null));
+
+export const checklistSchema = z
+  .object({
+    items: z
+      .array(
+        z.object({
+          item: z.string().regex(/^[a-z][a-z0-9_]*$/),
+          answer: z.enum(keys(CHECKLIST_ANSWERS), "Answer every line"),
+          remark: z.string().trim().max(300, "Keep remarks under 300 characters"),
+        }),
+      )
+      .min(1),
+    verification_methods: z.array(z.enum(keys(VERIFICATION_METHODS))),
+    kyc_status: optionalChoice(KYC_STATUSES),
+    kyc_recommendation: optionalChoice(KYC_RECOMMENDATIONS),
+    note: optionalText.pipe(z.string().max(1000, "Keep the note under 1,000 characters").nullable()),
+  })
+  .superRefine((v, ctx) => {
+    v.items.forEach((i) => {
+      if (i.answer === "no" && i.remark.length < 3) ctx.addIssue({ code: "custom", path: [`remark_${i.item}`], message: "Say what is missing" });
+    });
+  });

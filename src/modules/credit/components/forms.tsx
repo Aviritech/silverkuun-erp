@@ -18,6 +18,15 @@ import {
 } from "../constants";
 import type { LoanProduct } from "../queries";
 import { withStagedUploads } from "@/lib/uploads/client";
+import {
+  CHECKLIST_ANSWERS,
+  KYC_RECOMMENDATIONS,
+  KYC_STATUSES,
+  VERIFICATION_METHODS,
+  type ChecklistLine,
+  type FormSection,
+} from "../loan-forms";
+import { FormDetailsFields } from "./form-details-fields";
 
 type Action = (prev: ActionState, formData: FormData) => Promise<ActionState>;
 
@@ -35,10 +44,11 @@ function Options({ values }: { values: Record<string, string | { label: string }
   );
 }
 
-export function GuarantorForm({ action }: { action: Action }) {
+export function GuarantorForm({ action, sections }: { action: Action; sections?: FormSection[] }) {
   return (
     <InlineForm action={action} openLabel="Add guarantor" submitLabel="Add guarantor">
       {(e) => (
+        <div className="space-y-4">
         <div className="grid gap-3 sm:grid-cols-3">
           <Field label="Full name" error={e.full_name}>
             <Input name="full_name" required />
@@ -64,6 +74,8 @@ export function GuarantorForm({ action }: { action: Action }) {
           <label className="flex items-center gap-2 self-end pb-2 text-sm">
             <input type="checkbox" name="is_member" className="h-4 w-4 rounded border-zinc-300" /> Also a Silverkuun member
           </label>
+        </div>
+        {sections && <FormDetailsFields sections={sections} errors={e} />}
         </div>
       )}
     </InlineForm>
@@ -431,5 +443,104 @@ export function ProductForm({ action, product }: { action: Action; product?: Loa
         </div>
       )}
     </InlineForm>
+  );
+}
+
+/** The compliance checklist on one of Kuun's forms: Yes or No (with a remark) for every line, and how the customer was verified. */
+export function ChecklistForm({
+  action,
+  lines,
+  uploaded,
+  previous,
+  askKyc,
+}: {
+  action: Action;
+  lines: ChecklistLine[];
+  /** Document types already uploaded on the loan. */
+  uploaded: string[];
+  previous: Record<string, { answer: string; remark: string | null }>;
+  /** The asset loan form also records the verification method and KYC result. */
+  askKyc: boolean;
+}) {
+  const [state, formAction, pending] = useFormAction(action, {});
+  const e = state.fieldErrors ?? {};
+  return (
+    <form onSubmit={formAction} className="space-y-4">
+      <FormError message={state.error} />
+      <div className="overflow-x-auto">
+        <table className="w-full text-left text-sm">
+          <thead className="text-xs text-zinc-500">
+            <tr>
+              <th className="py-1 font-medium">Document</th>
+              <th className="py-1 font-medium">Answer</th>
+              <th className="py-1 font-medium">Remark</th>
+            </tr>
+          </thead>
+          <tbody>
+            {lines.map((l) => (
+              <tr key={l.item} className="border-t border-zinc-100 align-top">
+                <td className="py-2 pr-3">
+                  <input type="hidden" name="item" value={l.item} />
+                  {l.label}
+                  {l.documentType && (
+                    <span className={`block text-xs ${uploaded.includes(l.documentType) ? "text-emerald-700" : "text-zinc-500"}`}>
+                      {uploaded.includes(l.documentType) ? "Uploaded on this loan" : "Not uploaded: check the paper copy"}
+                    </span>
+                  )}
+                </td>
+                <td className="py-2 pr-3">
+                  <div className="flex flex-wrap gap-3">
+                    {Object.entries(CHECKLIST_ANSWERS)
+                      .filter(([v]) => v !== "not_applicable" || !l.required)
+                      .map(([v, label]) => (
+                        <label key={v} className="flex items-center gap-1 whitespace-nowrap">
+                          <input type="radio" name={`answer_${l.item}`} value={v} defaultChecked={previous[l.item]?.answer === v} required />
+                          {label}
+                        </label>
+                      ))}
+                  </div>
+                </td>
+                <td className="py-2">
+                  <Input name={`remark_${l.item}`} maxLength={300} defaultValue={previous[l.item]?.remark ?? ""} aria-label={`Remark on ${l.label}`} />
+                  {e[`remark_${l.item}`] && <span className="mt-1 block text-xs text-red-700">{e[`remark_${l.item}`]}</span>}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {askKyc && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <fieldset className="sm:col-span-3">
+            <legend className="mb-1 text-sm font-medium text-zinc-700">Verification method</legend>
+            <div className="flex flex-wrap gap-4 text-sm">
+              {Object.entries(VERIFICATION_METHODS).map(([v, label]) => (
+                <label key={v} className="flex items-center gap-1">
+                  <input type="checkbox" name="verification_methods" value={v} className="h-4 w-4 rounded border-zinc-300" /> {label}
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          <Field label="KYC verification status" error={e.kyc_status}>
+            <Select name="kyc_status" defaultValue="">
+              <option value="">Choose</option>
+              <Options values={KYC_STATUSES} />
+            </Select>
+          </Field>
+          <Field label="KYC verification recommendation" error={e.kyc_recommendation}>
+            <Select name="kyc_recommendation" defaultValue="">
+              <option value="">Choose</option>
+              <Options values={KYC_RECOMMENDATIONS} />
+            </Select>
+          </Field>
+        </div>
+      )}
+      <Field label="Compliance note (optional)" error={e.note}>
+        <Textarea name="note" rows={2} maxLength={1000} />
+      </Field>
+      <Button type="submit" disabled={pending}>
+        {pending ? "Saving…" : "Save checklist"}
+      </Button>
+    </form>
   );
 }

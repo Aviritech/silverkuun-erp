@@ -1,9 +1,11 @@
+import Link from "next/link";
 import { Badge, PageHeader } from "@/components/ui";
 import { requireModule, requirePermission } from "@/lib/auth/session";
 import { formatMoney } from "@/lib/format";
 import { saveProduct } from "@/modules/credit/actions";
 import { ProductForm } from "@/modules/credit/components/forms";
-import { INTEREST_METHODS, RATE_BASES } from "@/modules/credit/constants";
+import { INTEREST_METHODS, RATE_BASES, REPAYMENT_FREQUENCIES } from "@/modules/credit/constants";
+import { FORMS, isKuunForm } from "@/modules/credit/loan-forms";
 import { creditModule } from "@/modules/credit/module";
 import { listProducts } from "@/modules/credit/queries";
 
@@ -36,17 +38,35 @@ export default async function LoanProductsPage() {
                   {Number(p.late_penalty_rate) > 0 ? `late penalty ${Number(p.late_penalty_rate)}% a day` : "no late penalty"}
                 </p>
                 <p className="mt-1 flex flex-wrap gap-2 text-xs">
-                  {p.requires_guarantor && <Badge tone="blue">Guarantor</Badge>}
+                  {isKuunForm(p.application_form) && <Badge tone="amber">Kuun {FORMS[p.application_form].name} form</Badge>}
+                  {p.requires_guarantor && <Badge tone="blue">{p.min_guarantors > 1 ? `${p.min_guarantors} guarantors` : "Guarantor"}</Badge>}
+                  {p.repayment_frequencies && (
+                    <Badge tone="gray">Repaid {p.repayment_frequencies.map((f) => REPAYMENT_FREQUENCIES[f].toLowerCase()).join(" or ")}</Badge>
+                  )}
                   {p.requires_collateral && <Badge tone="blue">Collateral</Badge>}
                   {p.requires_proforma && <Badge tone="blue">Proforma invoice</Badge>}
                 </p>
+                {isKuunForm(p.application_form) && (
+                  <p className="mt-2 flex flex-wrap gap-3 text-sm">
+                    <span className="text-zinc-500">Blank forms to print:</span>
+                    <Link href={`/letters/loan-forms/${p.application_form}/application`} className="underline">
+                      Application
+                    </Link>
+                    <Link href={`/letters/loan-forms/${p.application_form}/guarantor`} className="underline">
+                      Guarantor
+                    </Link>
+                    <Link href={`/letters/loan-forms/${p.application_form}/checklist`} className="underline">
+                      Checklist
+                    </Link>
+                  </p>
+                )}
               </div>
               {canEdit && <ProductForm action={saveProduct.bind(null, p.code)} product={p} />}
             </div>
           </div>
         ))}
       </div>
-      <p className="mt-6 text-sm text-zinc-500">The starting rates, limits and the 0.1% a day late penalty are placeholders until Kuun confirms its loan policy.</p>
+      <p className="mt-6 text-sm text-zinc-500">The starting rates, limits and the 0.1% a day late penalty are placeholders until Kuun confirms its loan policy. That includes the Kuun Asset, Payday and Property-backed loans: their forms don&rsquo;t give rates, limits or tenors.</p>
     </div>
   );
 }
