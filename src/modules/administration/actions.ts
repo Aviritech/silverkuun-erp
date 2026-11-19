@@ -26,6 +26,7 @@ import {
   planSchema,
   returnSchema,
   reversalSchema,
+  rolloverSchema,
   sendToStaffSchema,
   specialRateSchema,
   targetSchema,
@@ -714,6 +715,53 @@ export async function cancelPlanRate(id: string, _prev: ActionState, formData: F
   const { error } = await supabase.rpc("cancel_plan_rate", { p_id: id, p_note: parsed.data.reason });
   if (error) return { error: friendlyDbError(error) };
   return specialRateDone();
+}
+
+// ---------------------------------------------------------------------------
+// Roll-over of a matured plan: Operations asks, the Branch Manager approves and the capital moves to a new plan.
+// ---------------------------------------------------------------------------
+
+export async function requestRollover(planId: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireModule(administrationModule);
+  const parsed = rolloverSchema.safeParse({
+    tenure_months: formData.get("tenure_months") ?? "",
+    include_earnings: formData.get("include_earnings") ?? "capital",
+    note: formData.get("note") ?? "",
+  });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("request_plan_rollover", {
+    p_plan_id: planId,
+    p_tenure_months: parsed.data.tenure_months,
+    p_include_earnings: parsed.data.include_earnings,
+    p_note: parsed.data.note,
+  });
+  if (error) return { error: friendlyDbError(error) };
+  return liquidationDone();
+}
+
+export async function decideRollover(id: string, approve: boolean, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireModule(administrationModule);
+  const parsed = approve
+    ? marketerReviewSchema.safeParse({ note: formData.get("note") ?? "" })
+    : returnSchema.safeParse({ reason: formData.get("reason") ?? "" });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  const note = "note" in parsed.data ? parsed.data.note : parsed.data.reason;
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("decide_plan_rollover", { p_id: id, p_approve: approve, p_note: note });
+  if (error) return { error: friendlyDbError(error) };
+  revalidatePath("/accounts", "layout");
+  return liquidationDone();
+}
+
+export async function cancelRollover(id: string, _prev: ActionState, formData: FormData): Promise<ActionState> {
+  await requireModule(administrationModule);
+  const parsed = returnSchema.safeParse({ reason: formData.get("reason") ?? "" });
+  if (!parsed.success) return { fieldErrors: fieldErrors(parsed.error) };
+  const supabase = await createClient();
+  const { error } = await supabase.rpc("cancel_plan_rollover", { p_id: id, p_note: parsed.data.reason });
+  if (error) return { error: friendlyDbError(error) };
+  return liquidationDone();
 }
 
 // ---------------------------------------------------------------------------

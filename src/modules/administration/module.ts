@@ -11,7 +11,12 @@ export const administrationModule: DepartmentModule = {
     { section: "Workspace", label: "Approvals", href: "/administration/approvals", permission: ["members.approve", "members.endorse"] },
     { section: "Workspace", label: "Receipts to check", href: "/administration/receipts", permission: "receipts.confirm" },
     { section: "Workspace", label: "Top ups from Accounts", href: "/administration/top-ups", permission: "members.read" },
-    { section: "Workspace", label: "Liquidations", href: "/administration/liquidations", permission: ["liquidations.request", "liquidations.approve"] },
+    {
+      section: "Workspace",
+      label: "Liquidations and roll-overs",
+      href: "/administration/liquidations",
+      permission: ["liquidations.request", "liquidations.approve"],
+    },
     {
       section: "Workspace",
       label: "Special rates",

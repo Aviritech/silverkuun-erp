@@ -11,6 +11,7 @@ import {
   addPlan,
   changePlanPayDay,
   requestPlanRate,
+  requestRollover,
   approveMember,
   marketerReview,
   recordContribution,
@@ -38,6 +39,7 @@ import {
   StaffConfirmForm,
   PayDayForm,
   SpecialRateForm,
+  RolloverForm,
   PlanForm,
   ReturnForm,
   ReversalForm,
@@ -66,9 +68,10 @@ import {
   listIntroducerOptions,
   listLiquidations,
   listPlanRateRequests,
+  listPlanRollovers,
 } from "@/modules/administration/queries";
 import { LiquidationForm } from "@/modules/administration/components/liquidation-form";
-import { LIQUIDATION_STATUSES, PLAN_RATE_STAGES } from "@/modules/administration/constants";
+import { LIQUIDATION_STATUSES, PLAN_RATE_STAGES, ROLLOVER_STATUSES } from "@/modules/administration/constants";
 import { requestLiquidation } from "@/modules/administration/actions";
 
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
@@ -216,10 +219,17 @@ export default async function MemberPage({
   const tab = tabs.some((t) => t.key === tabParam) ? tabParam! : "file";
   // Liquidation requests on this member's plans, and the bank list for raising one (Plans tab only).
   const canLiquidate = member.status === "approved" && can("liquidations.request");
-  const [liquidations, cbnBanks, rateRequests] =
+  const [liquidations, cbnBanks, rateRequests, rollovers] =
     tab === "plans"
-      ? await Promise.all([listLiquidations(), canLiquidate ? listCbnBanks() : Promise.resolve([]), listPlanRateRequests()])
-      : [[], [], []];
+      ? await Promise.all([
+          listLiquidations(),
+          canLiquidate ? listCbnBanks() : Promise.resolve([]),
+          listPlanRateRequests(),
+          listPlanRollovers(),
+        ])
+      : [[], [], [], []];
+  const planTypeOf = new Map(planTypes.map((p) => [p.code, p]));
+  const todayIso = new Date().toISOString().slice(0, 10);
   const memberLiquidations = liquidations.filter((l) => l.member_id === member.id);
   const approved = member.status === "approved";
   const [money, history, guarantors] = await Promise.all([
@@ -654,8 +664,11 @@ export default async function MemberPage({
                         })()}
                         {member.status === "approved" && plan.status !== "cancelled" && (
                           <div className="mt-2 flex flex-wrap gap-2">
-                            <ButtonLink href={`/letters/plans/${plan.id}/agreement`} variant="secondary">
-                              Agreement letter
+                            <ButtonLink
+                              href={`/letters/plans/${plan.id}/agreement${plan.rolled_over_from ? "?rollover=1" : ""}`}
+                              variant="secondary"
+                            >
+                              {plan.rolled_over_from ? "Roll-over agreement letter" : "Agreement letter"}
                             </ButtonLink>
                             <ButtonLink href={`/letters/plans/${plan.id}/statement`} variant="secondary">
                               Dividend statement
@@ -783,8 +796,38 @@ export default async function MemberPage({
                           </p>
                         );
                       }
-                      if (!canLiquidate || !["active", "matured"].includes(plan.status)) return null;
+                      const planRollovers = rollovers.filter((r) => r.member_plan_id === plan.id);
+                      const rollover = planRollovers.find((r) => r.status === "pending" || r.status === "approved");
+                      if (rollover) {
+                        return (
+                          <p className="flex flex-wrap items-center gap-2 border-t border-zinc-100 p-4 text-sm">
+                            Roll-over <span className="font-mono text-xs">{rollover.rollover_no}</span> · {formatMoney(rollover.capital)}
+                            {rollover.include_earnings && <> plus {formatMoney(rollover.earnings)} earnings</>} for{" "}
+                            {rollover.tenure_months} months
+                            <Badge tone={ROLLOVER_STATUSES[rollover.status].tone}>{ROLLOVER_STATUSES[rollover.status].label}</Badge>
+                            <Link href="/administration/liquidations" className="text-xs underline">
+                              Liquidations and roll-overs
+                            </Link>
+                          </p>
+                        );
+                      }
+                      const matured = plan.maturity_date <= todayIso && ["active", "matured"].includes(plan.status);
+                      const type = planTypeOf.get(plan.plan_type);
+                      const rolloverForm = matured && member.status === "approved" && can("plans.rollover.request") && (
+                        <div className="border-t border-zinc-100 p-4">
+                          <RolloverForm
+                            action={requestRollover.bind(null, plan.id)}
+                            tenures={type?.tenure_months ?? null}
+                            target={plan.dividends_at_maturity}
+                            capital={t?.total_verified ?? "0"}
+                            earnings={accruedDividends.get(plan.id) ?? "0"}
+                          />
+                        </div>
+                      );
+                      if (!canLiquidate || !["active", "matured"].includes(plan.status)) return rolloverForm || null;
                       return (
+                        <>
+                        {rolloverForm}
                         <div className="border-t border-zinc-100 p-4">
                           <LiquidationForm
                             action={requestLiquidation.bind(null, plan.id, null)}
@@ -799,6 +842,7 @@ export default async function MemberPage({
                             }}
                           />
                         </div>
+                        </>
                       );
                     })()}
                   </div>

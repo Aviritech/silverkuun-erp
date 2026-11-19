@@ -43,7 +43,8 @@ revoke all on function public.plan_accrued_dividends(uuid, date) from public, an
 grant execute on function public.plan_accrued_dividends(uuid, date) to authenticated;
 
 -- The monthly interest due on a date. Unchanged, except that a deposit earns the month's interest only once it has
--- been held 21 days by the pay day; anything taken off the plan (reversals, deductions) counts at once.
+-- been held 21 days by the pay day; anything taken off the plan (reversals, deductions) and savings moved in from an
+-- earlier plan (a roll-over or partial liquidation, already held) count at once.
 create or replace function public.interest_payment_schedule(p_date date, p_branch_id uuid default null, p_region_id uuid default null)
 returns table (
   member_id uuid, membership_no text, beneficiary_name text, branch_id uuid, branch_name text,
@@ -59,7 +60,7 @@ as $$
     from public.member_plans p
     left join public.contributions c
       on c.member_plan_id = p.id and c.verified_at is not null and c.paid_on <= p_date
-     and (c.amount < 0 or c.paid_on <= p_date - 21)
+     and (c.amount < 0 or c.kind::text = 'plan_transfer' or c.paid_on <= p_date - 21)
     where p.status = 'active' and p.start_date <= p_date and not p.dividends_at_maturity
       and p.interest_pay_day is not null
       and (p.interest_pay_day = extract(day from p_date)

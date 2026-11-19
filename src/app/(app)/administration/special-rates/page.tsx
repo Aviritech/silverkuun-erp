@@ -5,16 +5,37 @@ import { requireModule } from "@/lib/auth/session";
 import { formatDate, formatDateTime } from "@/lib/format";
 import { monthlyRate } from "@/lib/letters/words";
 import { ReasonForm } from "@/modules/accounts/components/reason-form";
-import { cancelPlanRate, decidePlanRate } from "@/modules/administration/actions";
+import {
+  cancelPlanRate,
+  decidePlanRate,
+} from "@/modules/administration/actions";
 import { ApproveRateForm } from "@/modules/administration/components/forms";
-import { PLAN_RATE_STAGES, PLAN_RATE_STATUSES } from "@/modules/administration/constants";
+import {
+  PLAN_RATE_STAGES,
+  PLAN_RATE_STATUSES,
+} from "@/modules/administration/constants";
 import { administrationModule } from "@/modules/administration/module";
-import { listBranches, listPlanRateRequests, type PlanRateRequest } from "@/modules/administration/queries";
+import {
+  listBranches,
+  listPlanRateRequests,
+  type PlanRateRequest,
+} from "@/modules/administration/queries";
 
-const PERMISSIONS = ["plans.rate.request", ...Object.values(PLAN_RATE_STAGES).map((s) => s.permission)];
-const STAGE_ORDER = Object.keys(PLAN_RATE_STAGES) as (keyof typeof PLAN_RATE_STAGES)[];
+const PERMISSIONS = [
+  "plans.rate.request",
+  ...Object.values(PLAN_RATE_STAGES).map((s) => s.permission),
+];
+const STAGE_ORDER = Object.keys(
+  PLAN_RATE_STAGES,
+) as (keyof typeof PLAN_RATE_STAGES)[];
 
-function Detail({ label, children }: { label: string; children: React.ReactNode }) {
+function Detail({
+  label,
+  children,
+}: {
+  label: string;
+  children: React.ReactNode;
+}) {
   return (
     <div>
       <dt className="text-xs text-zinc-500">{label}</dt>
@@ -34,7 +55,11 @@ function Steps({ r }: { r: PlanRateRequest }) {
           <li
             key={stage}
             className={`rounded-md px-2 py-1 ring-1 ring-inset ${
-              a ? "bg-green-50 text-green-900 ring-green-200" : current ? "bg-amber-50 text-amber-900 ring-amber-200" : "text-zinc-500 ring-zinc-200"
+              a
+                ? "bg-green-50 text-green-900 ring-green-200"
+                : current
+                  ? "bg-amber-50 text-amber-900 ring-amber-200"
+                  : "text-zinc-500 ring-zinc-200"
             }`}
           >
             {PLAN_RATE_STAGES[stage].label}
@@ -56,14 +81,20 @@ function RequestDetails({ r }: { r: PlanRateRequest }) {
   return (
     <dl className="grid gap-4 sm:grid-cols-3">
       <Detail label="Member">
-        <Link href={`/administration/members/${r.member_id}?tab=plans`} className="underline-offset-4 hover:underline">
+        <Link
+          href={`/administration/members/${r.member_id}?tab=plans`}
+          className="underline-offset-4 hover:underline"
+        >
           {r.member_name}
         </Link>
-        {r.membership_no && <span className="block text-xs text-zinc-500">{r.membership_no}</span>}
+        {r.membership_no && (
+          <span className="block text-xs text-zinc-500">{r.membership_no}</span>
+        )}
       </Detail>
       <Detail label="Plan">{r.plan_name}</Detail>
       <Detail label="Rate">
-        {monthlyRate(r.current_rate)}% → <strong>{monthlyRate(r.requested_rate)}% a month</strong>
+        {monthlyRate(r.current_rate)}% →{" "}
+        <strong>{monthlyRate(r.requested_rate)}% a month</strong>
       </Detail>
       <div className="sm:col-span-2">
         <Detail label="Reason">{r.reason}</Detail>
@@ -82,25 +113,39 @@ export default async function SpecialRatesPage() {
   const staff = await requireModule(administrationModule);
   if (!PERMISSIONS.some((p) => staff.permissions.has(p))) notFound();
 
-  const [all, branches] = await Promise.all([listPlanRateRequests(), listBranches()]);
+  const [all, branches] = await Promise.all([
+    listPlanRateRequests(),
+    listBranches(),
+  ]);
   const branchOf = new Map(branches.map((b) => [b.id, b]));
-  const can = (permission: string, r: PlanRateRequest) => staff.permissions.hasForBranch(permission, branchOf.get(r.branch_id)!);
+  const can = (permission: string, r: PlanRateRequest) =>
+    staff.permissions.hasForBranch(permission, branchOf.get(r.branch_id)!);
   const pending = all.filter((r) => r.status === "pending");
-  const mine = pending.filter((r) => r.stage && can(PLAN_RATE_STAGES[r.stage].permission, r));
+  const mine = pending.filter(
+    (r) => r.stage && can(PLAN_RATE_STAGES[r.stage].permission, r),
+  );
   const others = pending.filter((r) => !mine.includes(r));
   const closed = all.filter((r) => r.status !== "pending");
 
   const renderPending = (r: PlanRateRequest, canDecide: boolean) => {
-    const already = r.requested_by === staff.id || r.approvals.some((a) => a.by_id === staff.id);
+    const already =
+      r.requested_by === staff.id ||
+      r.approvals.some((a) => a.by_id === staff.id);
     return (
-      <div key={r.id} className="space-y-4 border-t border-zinc-100 pt-4 first:border-0 first:pt-0">
+      <div
+        key={r.id}
+        className="space-y-4 border-t border-zinc-100 pt-4 first:border-0 first:pt-0"
+      >
         <p className="font-mono text-xs">{r.request_no}</p>
         <RequestDetails r={r} />
         <Steps r={r} />
         <div className="flex flex-wrap items-start gap-3">
           {canDecide &&
             (already ? (
-              <p className="text-sm text-zinc-600">You asked for or already approved this rate, so someone else must take this step.</p>
+              <p className="text-sm text-zinc-600">
+                You asked for or already approved this rate, so someone else
+                must take this step.
+              </p>
             ) : (
               <>
                 <ApproveRateForm
@@ -137,11 +182,23 @@ export default async function SpecialRatesPage() {
       />
 
       <Card title={`Waiting for you (${mine.length})`}>
-        {mine.length === 0 ? <EmptyState>Nothing is waiting for you.</EmptyState> : <div className="space-y-6">{mine.map((r) => renderPending(r, true))}</div>}
+        {mine.length === 0 ? (
+          <EmptyState>Nothing is waiting for you.</EmptyState>
+        ) : (
+          <div className="space-y-6">
+            {mine.map((r) => renderPending(r, true))}
+          </div>
+        )}
       </Card>
 
       <Card title={`With others (${others.length})`}>
-        {others.length === 0 ? <EmptyState>Nothing else is open.</EmptyState> : <div className="space-y-6">{others.map((r) => renderPending(r, false))}</div>}
+        {others.length === 0 ? (
+          <EmptyState>Nothing else is open.</EmptyState>
+        ) : (
+          <div className="space-y-6">
+            {others.map((r) => renderPending(r, false))}
+          </div>
+        )}
       </Card>
 
       <Card title="Approved and closed">
@@ -166,16 +223,22 @@ export default async function SpecialRatesPage() {
                     <div className="text-xs text-zinc-500">{r.branch_name}</div>
                   </td>
                   <td className="py-2">
-                    <Link href={`/administration/members/${r.member_id}?tab=plans`} className="underline-offset-4 hover:underline">
+                    <Link
+                      href={`/administration/members/${r.member_id}?tab=plans`}
+                      className="underline-offset-4 hover:underline"
+                    >
                       {r.member_name}
                     </Link>
                     <div className="text-xs text-zinc-500">{r.plan_name}</div>
                   </td>
                   <td className="py-2 tabular-nums">
-                    {monthlyRate(r.current_rate)}% → {monthlyRate(r.requested_rate)}%
+                    {monthlyRate(r.current_rate)}% →{" "}
+                    {monthlyRate(r.requested_rate)}%
                   </td>
                   <td className="py-2 pl-4">
-                    <Badge tone={PLAN_RATE_STATUSES[r.status].tone}>{PLAN_RATE_STATUSES[r.status].label}</Badge>
+                    <Badge tone={PLAN_RATE_STATUSES[r.status].tone}>
+                      {PLAN_RATE_STATUSES[r.status].label}
+                    </Badge>
                   </td>
                   <td className="py-2 text-xs text-zinc-600">
                     {r.closed_by_name}

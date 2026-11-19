@@ -75,6 +75,7 @@ export const CONTRIBUTION_KINDS = {
   reversal: "Reversal",
   loan_penalty: "Loan late fee taken from savings",
   loan_deduction: "Overdue loan repayment taken from savings",
+  plan_transfer: "Moved between plans",
 } as const;
 
 export const ALLOWED_UPLOAD_TYPES = ["application/pdf", "image/jpeg", "image/png"] as const;
@@ -103,6 +104,13 @@ export const PLAN_RATE_STAGES = {
 export const PLAN_RATE_STATUSES = {
   pending: { label: "Waiting", tone: "amber" },
   approved: { label: "Approved", tone: "green" },
+  declined: { label: "Declined", tone: "red" },
+  cancelled: { label: "Cancelled", tone: "gray" },
+} as const;
+
+export const ROLLOVER_STATUSES = {
+  pending: { label: "With the Branch Manager", tone: "amber" },
+  approved: { label: "Rolled over", tone: "green" },
   declined: { label: "Declined", tone: "red" },
   cancelled: { label: "Cancelled", tone: "gray" },
 } as const;

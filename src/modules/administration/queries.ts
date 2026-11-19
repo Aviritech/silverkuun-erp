@@ -94,6 +94,8 @@ export type Plan = {
   interest_rate: string;
   /** The approved special rate request that set interest_rate, if any. */
   special_rate_request_id: string | null;
+  /** The matured plan this one was rolled over from, if any. */
+  rolled_over_from: string | null;
   /** True when dividends build up and are paid with the principal at maturity (Target savings), not monthly. */
   dividends_at_maturity: boolean;
   /** Day of the month this plan's interest is paid (the last day in shorter months); null for plans paid at maturity. */
@@ -142,7 +144,7 @@ export type Contribution = {
   id: string;
   member_id: string;
   member_plan_id: string;
-  kind: "scheduled" | "top_up" | "reversal" | "loan_penalty" | "loan_deduction";
+  kind: "scheduled" | "top_up" | "reversal" | "loan_penalty" | "loan_deduction" | "plan_transfer";
   amount: string;
   paid_on: string;
   payment_method: string;
@@ -330,6 +332,43 @@ export async function listPlanRateRequests(): Promise<PlanRateRequest[]> {
   const { data, error } = await supabase.rpc("plan_rate_request_list");
   if (error) throw dbFailure(error);
   return data as PlanRateRequest[];
+}
+
+export type PlanRollover = {
+  id: string;
+  rollover_no: string;
+  branch_id: string;
+  branch_name: string;
+  member_id: string;
+  member_name: string;
+  membership_no: string | null;
+  member_plan_id: string;
+  plan_name: string;
+  maturity_date: string;
+  dividends_at_maturity: boolean;
+  tenure_months: number;
+  include_earnings: boolean;
+  note: string | null;
+  status: "pending" | "approved" | "declined" | "cancelled";
+  requested_by: string;
+  requested_by_name: string;
+  requested_at: string;
+  decided_by_name: string | null;
+  decided_at: string | null;
+  decision_note: string | null;
+  /** Verified savings and dividends to maturity: as they stand while pending, as moved once approved. */
+  capital: string;
+  earnings: string;
+  new_plan_id: string | null;
+  payout_txn_no: string | null;
+};
+
+/** Roll-overs of matured plans in the caller's branches, newest first. */
+export async function listPlanRollovers(): Promise<PlanRollover[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("plan_rollover_list");
+  if (error) throw dbFailure(error);
+  return data as PlanRollover[];
 }
 
 /** A receipt or payment Accounts recorded for a member (from member_money_history; needs members.full_view). */
