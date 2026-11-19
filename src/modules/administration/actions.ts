@@ -595,7 +595,19 @@ export async function saveBranchTarget(
 // Liquidation of a member's savings: Operations requests, the Branch Manager approves, Accounts pays.
 // ---------------------------------------------------------------------------
 
-const LIQUIDATION_FIELDS = ["amount", "beneficiary_account_name", "bank_code", "bank_name", "bank_account_no", "note"] as const;
+const LIQUIDATION_FIELDS = [
+  "amount",
+  "beneficiary_account_name",
+  "bank_code",
+  "bank_name",
+  "bank_account_no",
+  "note",
+  "new_plan_type",
+  "new_contribution_amount",
+  "new_contribution_frequency",
+  "new_tenure_months",
+  "new_interest_pay_day",
+] as const;
 
 function liquidationDone() {
   revalidatePath("/administration", "layout");
@@ -624,6 +636,16 @@ export async function requestLiquidation(
     p_bank_name: v.bank_code ? null : v.bank_name,
     p_account_no: v.bank_account_no,
     p_note: v.note,
+    // Only a part payout carries a new plan; the database asks for one when the amount is below the savings.
+    p_new_plan: v.new_plan_type
+      ? {
+          plan_type: v.new_plan_type,
+          contribution_amount: v.new_contribution_amount,
+          contribution_frequency: v.new_contribution_frequency ?? "one_off",
+          tenure_months: v.new_tenure_months,
+          interest_pay_day: v.new_interest_pay_day,
+        }
+      : null,
   });
   if (error) return { error: friendlyDbError(error) };
   return liquidationDone();

@@ -167,8 +167,23 @@ export const liquidationSchema = z
     bank_name: z.string().trim().max(100).transform((v) => v || null),
     bank_account_no: z.string().trim().regex(/^[0-9]{10}$/, "Enter the 10-digit account number"),
     note: z.string().trim().max(1000, "Keep the note under 1,000 characters"),
+    // A part payout: the new plan the rest of the savings moves into. Left blank when the whole savings are paid; the
+    // database decides whether they're needed and checks them against the plan type.
+    new_plan_type: z.string().trim().transform((v) => v || null),
+    new_contribution_amount: z.preprocess((v) => (v === "" || v == null ? null : v), money.nullable()),
+    new_contribution_frequency: z.string().trim().transform((v) => v || null),
+    new_tenure_months: z.preprocess(
+      (v) => (v === "" || v == null ? null : v),
+      z.coerce.number("Choose a tenure").int("Choose a tenure").min(1, "1 to 120 months").max(120, "1 to 120 months").nullable(),
+    ),
+    new_interest_pay_day: z.preprocess((v) => (v == null ? "" : v), optionalPayDay),
   })
-  .refine((v) => v.bank_code || v.bank_name, { path: ["bank_code"], message: "Choose the bank" });
+  .refine((v) => v.bank_code || v.bank_name, { path: ["bank_code"], message: "Choose the bank" })
+  .refine((v) => !v.new_plan_type || v.new_contribution_amount, {
+    path: ["new_contribution_amount"],
+    message: "Enter the new plan's amount",
+  })
+  .refine((v) => !v.new_plan_type || v.new_tenure_months, { path: ["new_tenure_months"], message: "Choose a tenure" });
 
 /** The branch officer logs a top up Accounts sent against one of the member's plans. */
 export const logTopUpSchema = z.object({

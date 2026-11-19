@@ -6,9 +6,10 @@ import { formatDate, formatDateTime, formatMoney } from "@/lib/format";
 import { ReasonForm } from "@/modules/accounts/components/reason-form";
 import { cancelLiquidation, decideLiquidation, requestLiquidation, returnLiquidation } from "@/modules/administration/actions";
 import { ApproveLiquidationForm, LiquidationForm } from "@/modules/administration/components/liquidation-form";
+import { NewPlanSummary } from "@/modules/administration/components/new-plan-summary";
 import { LIQUIDATION_STATUSES } from "@/modules/administration/constants";
 import { administrationModule } from "@/modules/administration/module";
-import { listBranches, listCbnBanks, listLiquidations, type Liquidation } from "@/modules/administration/queries";
+import { listBranches, listCbnBanks, listLiquidations, listPlanTypes, type Liquidation } from "@/modules/administration/queries";
 
 function Detail({ label, children }: { label: string; children: React.ReactNode }) {
   return (
@@ -22,6 +23,7 @@ function Detail({ label, children }: { label: string; children: React.ReactNode 
 function LiquidationDetails({ l }: { l: Liquidation }) {
   const early = l.maturity_date > new Date().toISOString().slice(0, 10);
   return (
+    <div className="space-y-3">
     <dl className="grid gap-4 sm:grid-cols-3">
       <Detail label="Member">
         <Link href={`/administration/members/${l.member_id}?tab=plans`} className="underline-offset-4 hover:underline">
@@ -36,6 +38,9 @@ function LiquidationDetails({ l }: { l: Liquidation }) {
       <Detail label="Amount to pay">
         {formatMoney(l.amount)}
         <span className="block text-xs text-zinc-500">Verified savings when requested: {formatMoney(l.plan_savings)}</span>
+        {Number(l.current_savings) !== Number(l.plan_savings) && l.status !== "paid" && (
+          <span className="block text-xs text-amber-800">Verified savings now: {formatMoney(l.current_savings)}</span>
+        )}
       </Detail>
       <Detail label="Beneficiary account name">{l.beneficiary_account_name}</Detail>
       <Detail label="Bank">
@@ -52,6 +57,8 @@ function LiquidationDetails({ l }: { l: Liquidation }) {
       <Detail label="Branch">{l.branch_name}</Detail>
       <Detail label="Note">{l.note}</Detail>
     </dl>
+    <NewPlanSummary l={l} />
+    </div>
   );
 }
 
@@ -59,7 +66,7 @@ export default async function LiquidationsPage() {
   const staff = await requireModule(administrationModule);
   if (!staff.permissions.has("liquidations.request") && !staff.permissions.has("liquidations.approve")) notFound();
 
-  const [all, branches, banks] = await Promise.all([listLiquidations(), listBranches(), listCbnBanks()]);
+  const [all, branches, banks, planTypes] = await Promise.all([listLiquidations(), listBranches(), listCbnBanks(), listPlanTypes()]);
   const branchOf = new Map(branches.map((b) => [b.id, b]));
   const can = (permission: string, l: Liquidation) => staff.permissions.hasForBranch(permission, branchOf.get(l.branch_id)!);
   const pending = all.filter((l) => l.status === "pending_approval");
@@ -70,7 +77,7 @@ export default async function LiquidationsPage() {
     <div className="max-w-5xl space-y-6">
       <PageHeader
         title="Liquidations"
-        description="Members paying out their savings at the end of a plan. Operations raises the request from the member's Plans tab with the account to pay into; the Branch Manager approves it; Accounts then pays it, and the plan closes when the payment posts."
+        description="Members paying out their savings. Operations raises the request from the member's Plans tab with the account to pay into; the Branch Manager approves it; Accounts then pays it, and the plan closes when the payment posts. Paying out only part of the savings still closes the whole plan: the rest moves into a new plan on the instructions given with the request."
       />
 
       <Card title={`Waiting for the Branch Manager (${pending.length})`}>
@@ -135,7 +142,8 @@ export default async function LiquidationsPage() {
                     <LiquidationForm
                       action={requestLiquidation.bind(null, null, l.id)}
                       banks={banks}
-                      savings={l.plan_savings}
+                      planTypes={planTypes}
+                      savings={l.current_savings}
                       defaults={l}
                       openLabel="Correct and send again"
                     />
@@ -179,7 +187,14 @@ export default async function LiquidationsPage() {
                     {l.member_name}
                     <div className="text-xs text-zinc-500">{l.plan_name}</div>
                   </td>
-                  <td className="py-2 text-right tabular-nums">{formatMoney(l.amount)}</td>
+                  <td className="py-2 text-right tabular-nums">
+                    {formatMoney(l.amount)}
+                    {l.rollover_amount && (
+                      <div className="text-xs text-zinc-500">
+                        + {formatMoney(l.rollover_amount)} to new {l.new_plan_name}
+                      </div>
+                    )}
+                  </td>
                   <td className="py-2 pl-4">
                     <Badge tone={LIQUIDATION_STATUSES[l.status].tone}>{LIQUIDATION_STATUSES[l.status].label}</Badge>
                     {l.payment_txn_no && <div className="mt-1 font-mono text-xs text-zinc-500">{l.payment_txn_no} {l.payment_status}</div>}

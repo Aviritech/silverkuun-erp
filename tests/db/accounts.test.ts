@@ -938,19 +938,183 @@ describe("liquidation of a member's savings", () => {
     let row = await db.query("select status, decision_note from plan_liquidations where id = $1", [liq.id]);
     expect(row.rows[0]).toEqual({ status: "returned", decision_note: "Branch Manager: Account name differs from the member" });
 
-    await request(p, 29000, liq.id);
+    await request(p, 30000, liq.id);
     await commitAs(MANAGER, () => db.query("select decide_liquidation($1, true, null)", [liq.id]));
     await commitAs(LAGOS_ACCOUNTANT, () => db.query("select return_liquidation($1, 'Bank says the account is closed')", [liq.id]));
     row = await db.query("select status, amount from plan_liquidations where id = $1", [liq.id]);
-    expect(row.rows[0]).toEqual({ status: "returned", amount: "29000.00" });
+    expect(row.rows[0]).toEqual({ status: "returned", amount: "30000.00" });
 
-    await request(p, 29000, liq.id);
+    await request(p, 30000, liq.id);
     await expect(commitAs(MANAGER, () => db.query("select decide_liquidation($1, false, '')", [liq.id]))).rejects.toThrow(/why/);
     await commitAs(MANAGER, () => db.query("select decide_liquidation($1, false, 'Member withdrew the request in writing')", [liq.id]));
     // Rejected, so the plan can have a new request.
     const again = await request(p, 30000);
     expect(again.status).toBe("pending_approval");
     await commitAs(OFFICER, () => db.query("select cancel_liquidation($1, 'Raised by mistake')", [again.id]));
+  });
+
+  async function partial(planId: string, amount: number, newPlan: Record<string, unknown> | null) {
+    return (
+      await commitAs(OFFICER, () =>
+        db.query<{ id: string; status: string; new_plan_type: string | null; new_interest_pay_day: number | null }>(
+          "select * from request_liquidation($1, $2, $3, 'Ada Obi', '058', null, '0123456789', 'Part payout', $4)",
+          [null, planId, amount, newPlan === null ? null : JSON.stringify(newPlan)],
+        ),
+      )
+    ).rows[0];
+  }
+
+  async function payOut(liqId: string) {
+    await commitAs(MANAGER, () => db.query("select decide_liquidation($1, true, null)", [liqId]));
+    const txn = (
+      await commitAs(LAGOS_ACCOUNTANT, () =>
+        db.query<{ id: string }>("select * from raise_liquidation_payment($1, $2)", [liqId, lagosBank]),
+      )
+    ).rows[0];
+    await commitAs(LAGOS_ACCOUNTANT_2, () => db.query("select approve_finance_transaction($1)", [txn.id]));
+    await commitAs(AUDITOR, () => db.query("select audit_approve_payment($1)", [txn.id]));
+    await attach(LAGOS_ACCOUNTANT, { id: txn.id, status: "approved", branch_id: lagos, journal_entry_id: null }, "payment_proof");
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select pay_finance_transaction($1)", [txn.id]));
+    return txn.id;
+  }
+
+  const savingsOf = async (planId: string) =>
+    (await db.query<{ s: string }>("select app.plan_savings($1) as s", [planId])).rows[0].s;
+
+  it("on a part payout, liquidates the whole plan and moves the rest into a new plan with its own instructions", async () => {
+    const p = await savedPlan(100000);
+    const gold = { plan_type: "gold", contribution_amount: 60000, contribution_frequency: "one_off", tenure_months: 6, interest_pay_day: 25 };
+
+    // Paying less than the savings needs the new plan's instructions, and they follow the plan type's rules.
+    await expect(partial(p, 40000, null)).rejects.toThrow(/instructions for the new plan/);
+    await expect(partial(p, 40000, { ...gold, interest_pay_day: null })).rejects.toThrow(/interest is paid/);
+    await expect(partial(p, 40000, { ...gold, plan_type: "target", tenure_months: 5 })).rejects.toThrow(/runs for 3, 6, 12 months/);
+    await expect(partial(p, 40000, { ...gold, plan_type: "nope" })).rejects.toThrow(/choose the plan/);
+
+    // A Target plan pays at maturity, so it keeps no pay day.
+    const liq = await partial(p, 40000, { ...gold, plan_type: "target" });
+    expect(liq).toMatchObject({ status: "pending_approval", new_plan_type: "target", new_interest_pay_day: null });
+    await commitAs(OFFICER, () => db.query("select cancel_liquidation($1, 'Member chose Gold instead')", [liq.id]));
+
+    const ok = await partial(p, 40000, gold);
+    const queued = await asUser(db, MANAGER, (tx) =>
+      tx.query<Record<string, unknown>>("select * from liquidation_requests(array['pending_approval']) where id = $1", [ok.id]),
+    );
+    expect(queued.rows[0]).toMatchObject({
+      plan_savings: "100000.00",
+      current_savings: "100000.00",
+      new_plan_name: "Gold",
+      new_tenure_months: 6,
+      new_interest_pay_day: 25,
+      rollover_amount: null,
+    });
+
+    const txnId = await payOut(ok.id);
+
+    const after = (
+      await db.query<{ status: string; rollover_amount: string; new_member_plan_id: string; plan_status: string }>(
+        `select l.status, l.rollover_amount, l.new_member_plan_id, p.status as plan_status
+         from plan_liquidations l join member_plans p on p.id = l.member_plan_id where l.id = $1`,
+        [ok.id],
+      )
+    ).rows[0];
+    expect(after).toMatchObject({ status: "paid", rollover_amount: "60000.00", plan_status: "liquidated" });
+
+    const fresh = (
+      await db.query(
+        `select plan_type, status, contribution_amount, contribution_frequency, start_date = current_date as starts_today,
+                maturity_date = (current_date + interval '6 months')::date as matures_in_6, interest_pay_day, from_liquidation_id
+         from member_plans where id = $1`,
+        [after.new_member_plan_id],
+      )
+    ).rows[0];
+    expect(fresh).toEqual({
+      plan_type: "gold",
+      status: "active",
+      contribution_amount: "60000.00",
+      contribution_frequency: "one_off",
+      starts_today: true,
+      matures_in_6: true,
+      interest_pay_day: 25,
+      from_liquidation_id: ok.id,
+    });
+
+    // The opening money counts as paid, so the one-off new plan owes nothing.
+    const progress = await db.query("select scheduled_paid, outstanding from plan_progress where plan_id = $1", [after.new_member_plan_id]);
+    expect(progress.rows[0]).toEqual({ scheduled_paid: "60000.00", outstanding: "0.00" });
+
+    // The old plan keeps what was paid out; the rest is on the new plan, verified, and Accounts has nothing to post.
+    expect(await savingsOf(p)).toBe("40000.00");
+    expect(await savingsOf(after.new_member_plan_id)).toBe("60000.00");
+    const moves = await db.query<{ amount: string; verified: boolean }>(
+      "select amount, verified_at is not null as verified from contributions where kind = 'plan_transfer' and reference = (select liquidation_no from plan_liquidations where id = $1) order by amount",
+      [ok.id],
+    );
+    expect(moves.rows).toEqual([
+      { amount: "-60000.00", verified: true },
+      { amount: "60000.00", verified: true },
+    ]);
+    const toPost = await db.query("select 1 from contributions_awaiting_posting where member_plan_id in ($1, $2) and kind::text = 'plan_transfer'", [
+      p,
+      after.new_member_plan_id,
+    ]);
+    expect(toPost.rows).toHaveLength(0);
+    // Only the payout reaches the ledger.
+    expect(await journalLines((await txnRow(txnId)).journal_entry_id!)).toEqual([
+      { account_code: "2110", debit: "40000.00", credit: "0.00" },
+      { account_code: "1131", debit: "0.00", credit: "40000.00" },
+    ]);
+
+    // Staff can't write moves or mark a plan as coming from a liquidation themselves.
+    await expect(
+      commitAs(OFFICER, () =>
+        db.query(
+          `insert into contributions (member_plan_id, member_id, branch_id, kind, amount, paid_on, payment_method)
+           values ($1, $2, $3, 'plan_transfer', 500, current_date, 'plan_transfer')`,
+          [after.new_member_plan_id, member, lagos],
+        ),
+      ),
+    ).rejects.toThrow(/only through a liquidation/);
+    const forged = await commitAs(OFFICER, () =>
+      db.query<{ from_liquidation_id: string | null }>(
+        `insert into member_plans (member_id, branch_id, plan_type, contribution_amount, contribution_frequency, start_date, maturity_date,
+           interest_pay_day, from_liquidation_id)
+         values ($1, $2, 'gold', 5000, 'monthly', current_date, current_date + 365, 1, $3) returning from_liquidation_id`,
+        [member, lagos, ok.id],
+      ),
+    );
+    expect(forged.rows[0].from_liquidation_id).toBeNull();
+  });
+
+  it("won't pay a full payout if the savings grew since, until Operations adds a new plan for the rest", async () => {
+    const p = await savedPlan(50000);
+    const liq = await request(p, 50000);
+    expect(liq).toMatchObject({ status: "pending_approval" });
+    await commitAs(MANAGER, () => db.query("select decide_liquidation($1, true, null)", [liq.id]));
+    // Another 10,000 arrives on the plan after the request.
+    const c = await commitAs(OFFICER, () =>
+      db.query<{ id: string }>(
+        `insert into contributions (member_plan_id, member_id, branch_id, kind, amount, paid_on, payment_method)
+         values ($1, $2, $3, 'scheduled', 10000, current_date, 'cash') returning id`,
+        [p, member, lagos],
+      ),
+    );
+    await commitAs(MANAGER, () => db.query("select verify_contribution($1)", [c.rows[0].id]));
+    await expect(
+      commitAs(LAGOS_ACCOUNTANT, () => db.query("select raise_liquidation_payment($1, $2)", [liq.id, lagosBank])),
+    ).rejects.toThrow(/no new plan for the rest/);
+
+    await commitAs(LAGOS_ACCOUNTANT, () => db.query("select return_liquidation($1, 'Savings went up; add a plan for the rest')", [liq.id]));
+    await commitAs(OFFICER, () =>
+      db.query("select request_liquidation($1, null, 50000, 'Ada Obi', '058', null, '0123456789', null, $2)", [
+        liq.id,
+        JSON.stringify({ plan_type: "silver", contribution_amount: 10000, contribution_frequency: "monthly", tenure_months: 12, interest_pay_day: 1 }),
+      ]),
+    );
+    await payOut(liq.id);
+    const row = (await db.query<{ rollover_amount: string; new_member_plan_id: string }>("select * from plan_liquidations where id = $1", [liq.id])).rows[0];
+    expect(row.rollover_amount).toBe("10000.00");
+    expect(await savingsOf(row.new_member_plan_id)).toBe("10000.00");
   });
 });
 
