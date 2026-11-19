@@ -21,12 +21,12 @@ export default async function PeriodCloseReportPage({ params }: { params: Promis
   return (
     <div className="max-w-6xl space-y-4">
       <PageHeader
-        eyebrow={<Link href="/accounts/closing">End of day</Link>}
+        eyebrow={<Link href="/accounts/closing">Month and year end</Link>}
         title={`${title}: ${periodName(close.period_kind, close.period_end)}`}
         description={
           <>
             {formatDate(close.period_start)} to {formatDate(close.period_end)}, closed {formatDateTime(close.closed_at)} by{" "}
-            {close.close_mode === "automatic" ? "the system" : staffName(close.closed_by)}.
+            {staffName(close.closed_by)}.{close.note ? ` Note: ${close.note}` : ""}
             {close.period_kind === "year" && (
               <>
                 {" "}Income and expenses were closed to 3200 Accumulated surplus in {close.closing_entry_ids.length} journal{" "}

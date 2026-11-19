@@ -25,7 +25,7 @@ function Lines({ rows }: { rows: [string, string][] }) {
   );
 }
 
-/** The saved End of Day, Month or Year figures. */
+/** The saved End of Month or End of Year figures. */
 export function CloseReportView({ report }: { report: CloseReport }) {
   const balanced = Number(report.trial_balance.debits) === Number(report.trial_balance.credits);
   const u = report.unfinished;
@@ -78,19 +78,16 @@ export function CloseReportView({ report }: { report: CloseReport }) {
             ]}
           />
         </Card>
-        {(report.interest_due || u) && (
-          <Card title="Due and unfinished">
+        {u && (
+          <Card title="Unfinished work">
             <Lines
               rows={[
-                ...(report.interest_due
-                  ? [[`Interest due to members (${report.interest_due.members})`, formatMoney(report.interest_due.amount)] as [string, string]]
-                  : []),
                 ...(u
                   ? ([
                       ["Receipts and payments in draft or returned", String(u.transactions_draft)],
                       ["Waiting for approval", String(u.transactions_submitted)],
                       ["Approved, not yet paid or posted", String(u.transactions_approved)],
-                      ["Draft journals dated this day or earlier", String(u.journals_draft)],
+                      ["Draft journals dated in the month or earlier", String(u.journals_draft)],
                       ["Savings pay-ins waiting to be posted", String(u.pay_ins_to_post)],
                     ] as [string, string][])
                   : []),

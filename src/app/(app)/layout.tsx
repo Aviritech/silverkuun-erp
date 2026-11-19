@@ -4,8 +4,6 @@ import { LiveUpdates } from "@/components/live-updates";
 import { SidebarNav } from "@/components/sidebar-nav";
 import { UsageTracker } from "@/components/usage-tracker";
 import { getCurrentStaff } from "@/lib/auth/session";
-import { formatDate } from "@/lib/format";
-import { getBusinessDateStatus } from "@/modules/accounts/closing";
 import { myClientsNav } from "@/modules/clients/nav";
 import { myHrNav, speakUpNav } from "@/modules/me/nav";
 import { getMyEmployee } from "@/modules/me/queries";
@@ -22,7 +20,7 @@ function initials(name: string) {
 }
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
-  const [staff, employee, business] = await Promise.all([getCurrentStaff(), getMyEmployee(), getBusinessDateStatus()]);
+  const [staff, employee] = await Promise.all([getCurrentStaff(), getMyEmployee()]);
   const modules = visibleModules(staff.permissions);
   // Everyone's own HR comes first; staff without an employee record still get "Speak up".
   const myHr = { department: "me", name: "My HR", nav: employee ? [...myHrNav, speakUpNav] : [speakUpNav] };
@@ -42,17 +40,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="no-print sticky top-0 z-10 flex items-center justify-between gap-4 border-b border-zinc-200 bg-white/90 px-6 py-3 backdrop-blur">
-          <div className="flex items-center gap-3">
-            <p className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-500">Silverkuun Group</p>
-            {business?.business_date && (
-              <span
-                className="rounded-full bg-brand-100 px-2.5 py-1 text-xs font-medium text-ink"
-                title="The day the system is posting to. It moves on when End of Day closes it."
-              >
-                Business date {formatDate(business.business_date)}
-              </span>
-            )}
-          </div>
+          <p className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-500">Silverkuun Group</p>
           <div className="flex items-center gap-3">
             <LiveUpdates />
             <div className="hidden text-right sm:block">

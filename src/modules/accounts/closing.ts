@@ -1,12 +1,11 @@
 import "server-only";
-import { cache } from "react";
 import { dbFailure } from "@/lib/db-errors";
 import { createClient } from "@/lib/supabase/server";
 
 type Money = number;
 type CountAmount = { count: number; amount: Money };
 
-/** The figures End of Day, Month and Year save. Day reports also carry interest due and unfinished work. */
+/** The figures End of Month and End of Year save. Month reports also carry the unfinished work. */
 export type CloseReport = {
   from: string;
   to: string;
@@ -21,7 +20,6 @@ export type CloseReport = {
   by_branch: { branch: string; entries: number; debits: Money; money_in: Money; money_out: Money; surplus: Money }[];
   late_fees_from_savings: CountAmount;
   loans: { active: number; disbursed: number; outstanding_principal: Money; overdue: Money; par30: Money; penalty_outstanding: Money };
-  interest_due?: { members: number; amount: Money };
   unfinished?: {
     transactions_draft: number;
     transactions_submitted: number;
@@ -29,18 +27,6 @@ export type CloseReport = {
     journals_draft: number;
     pay_ins_to_post: number;
   };
-  days_closed?: number;
-};
-
-export type BusinessDay = {
-  business_date: string;
-  status: "open" | "closed";
-  opened_at: string;
-  closed_at: string | null;
-  closed_by: string | null;
-  close_mode: "manual" | "automatic" | null;
-  note: string | null;
-  report: CloseReport | null;
 };
 
 export type PeriodClose = {
@@ -49,46 +35,26 @@ export type PeriodClose = {
   period_start: string;
   period_end: string;
   closed_at: string;
-  closed_by: string | null;
-  close_mode: "manual" | "automatic";
+  closed_by: string;
+  note: string | null;
   report: CloseReport;
   closing_entry_ids: string[];
 };
 
-export type BusinessDateStatus = { business_date: string | null; last_closed: string | null; auto_close: boolean; auto_close_at: string };
+export type NextMonth = { period_start: string; period_end: string; closed_through: string | null; has_ended: boolean };
 
-/** The open business date, for every signed-in staff member. Null before the End of Day migration has run. */
-export const getBusinessDateStatus = cache(async (): Promise<BusinessDateStatus | null> => {
+export async function nextMonthToClose(): Promise<NextMonth> {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("business_date_status");
-  if (error) return null;
-  return (data as BusinessDateStatus[])[0] ?? null;
-});
+  const { data, error } = await supabase.rpc("next_month_to_close");
+  if (error) throw dbFailure(error);
+  return (data as NextMonth[])[0];
+}
 
-export async function dayEndPreview(): Promise<CloseReport> {
+export async function monthEndPreview(): Promise<CloseReport> {
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("day_end_preview");
+  const { data, error } = await supabase.rpc("month_end_preview");
   if (error) throw dbFailure(error);
   return data as CloseReport;
-}
-
-export async function listClosedDays(limit = 60): Promise<BusinessDay[]> {
-  const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("business_days")
-    .select("*")
-    .eq("status", "closed")
-    .order("business_date", { ascending: false })
-    .limit(limit);
-  if (error) throw dbFailure(error);
-  return data as BusinessDay[];
-}
-
-export async function getBusinessDay(date: string): Promise<BusinessDay | null> {
-  const supabase = await createClient();
-  const { data, error } = await supabase.from("business_days").select("*").eq("business_date", date).maybeSingle();
-  if (error) throw dbFailure(error);
-  return data as BusinessDay | null;
 }
 
 export async function listPeriodCloses(): Promise<PeriodClose[]> {
@@ -103,13 +69,6 @@ export async function getPeriodClose(id: string): Promise<PeriodClose | null> {
   const { data, error } = await supabase.from("period_closes").select("*").eq("id", id).maybeSingle();
   if (error) throw dbFailure(error);
   return data as PeriodClose | null;
-}
-
-/** True when the date is the last day of its month. */
-export function isMonthEnd(date: string): boolean {
-  const d = new Date(`${date}T00:00:00Z`);
-  d.setUTCDate(d.getUTCDate() + 1);
-  return d.getUTCDate() === 1;
 }
 
 export const SOURCE_LABELS: Record<string, string> = {
